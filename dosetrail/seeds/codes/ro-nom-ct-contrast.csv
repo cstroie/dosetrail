@@ -1,0 +1,5 @@
+code,meaning,chapter,modality,attributes
+N,Nativ,Protocol,,"{""bilateral"": ""Examinare fără substanță de contrast, o singură achiziție.""}"
+C,Contrast,Protocol,,"{""bilateral"": ""Examinare cu substanță de contrast iv, o singură fază.""}"
+NC,Nativ + Contrast,Protocol,,"{""bilateral"": ""Achiziție nativă urmată de o fază cu contrast.""}"
+MF,Multifazic,Protocol,,"{""bilateral"": ""Achiziții multiple în faze diferite (ex. arterială, portală, tardivă). Notă: CT-URO (Uro-CT) şi CT-ENTR (EnteroCT) pot fi raportate ca Multifazic, deşi au faze specifice (excretorie, respectiv enterală) distincte de multifazicul standard.""}"

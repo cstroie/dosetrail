@@ -1,0 +1,12 @@
+code,meaning,chapter,modality,attributes
+PA,Posteroanterior,Incidență,,
+AP,Anteroposterior,Incidență,,
+LL,Profil (laterolateral),Incidență,,
+PA+LL,Față şi profil,Incidență,,
+OBL,Oblic,Incidență,,
+AX,Axial,Incidență,,
+SX,Semiaxial,Incidență,,
+TG,Tangențială,Incidență,,
+DD,Decubit dorsal,Incidență,,
+DL,Decubit lateral,Incidență,,
+DV,Decubit ventral,Incidență,,

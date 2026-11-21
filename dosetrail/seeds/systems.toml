@@ -1,0 +1,89 @@
+# Bundled code systems. Each entry's codes live in codes/<key>.csv
+# (columns: code, meaning, chapter, modality, attributes[json]).
+
+[[system]]
+key = "ro-nom-ct"
+name = "Nomenclator investigații tomografie computerizată (propunere)"
+version = "1.2"
+author = "Costin Stroie"
+source = "Proposed national CT nomenclature for dose (DLP) reporting; refs: RP 109, RP 180, RP 185, ICRP 135, Directive 2013/59/Euratom"
+licence = "MIT (contributed by the author)"
+
+[[system]]
+key = "ro-nom-ct-contrast"
+name = "Protocol CT: nativ / contrast / multifazic"
+version = "1.2"
+author = "Costin Stroie"
+source = "Companion list of the CT nomenclature v1.2"
+licence = "MIT (contributed by the author)"
+
+[[system]]
+key = "ro-nom-rx"
+name = "Nomenclator investigații radiologie convențională — grafie și fluoroscopie (propunere)"
+version = "1.3"
+author = "Costin Stroie"
+source = "Proposed national conventional radiology nomenclature for dose (DAP) reporting"
+licence = "MIT (contributed by the author)"
+
+[[system]]
+key = "ro-nom-rx-projection"
+name = "Incidențe radiografice"
+version = "1.3"
+author = "Costin Stroie"
+source = "Companion list of the conventional radiology nomenclature v1.3"
+licence = "MIT (contributed by the author)"
+
+[[system]]
+key = "ro-nom-indications"
+name = "Nomenclator indicații radioimagistice (propunere)"
+version = "1.0"
+author = "Costin Stroie"
+source = "Referral indications for dose reporting; main source: SRIM imaging referral guideline, 2nd ed. 2019"
+licence = "MIT (contributed by the author)"
+
+[[system]]
+key = "ro-insp-1255-rx"
+name = "Coduri proceduri naționale — radiologie (raportare trimestrială OMS 1255/2016)"
+source = "INSP quarterly centralised reporting form, sheet 'Radiologie'"
+
+[[system]]
+key = "ro-insp-1255-ct"
+name = "Coduri proceduri naționale — CT (raportare trimestrială OMS 1255/2016)"
+source = "INSP quarterly centralised reporting form, sheet 'CT'; suffix SC = contrast"
+
+[[system]]
+key = "ro-insp-1255-xa"
+name = "Coduri proceduri naționale — radiologie intervențională (OMS 1255/2016)"
+source = "INSP quarterly centralised reporting form, sheet 'Interventionala RX'"
+
+[[system]]
+key = "ro-insp-1255-ct-int"
+name = "Coduri proceduri naționale — proceduri intervenționale CT (OMS 1255/2016)"
+source = "INSP quarterly centralised reporting form, sheet 'Interventionala CT'"
+
+[[system]]
+key = "ro-insp-1255-dental"
+name = "Coduri proceduri naționale — dentare (OMS 1255/2016)"
+source = "INSP quarterly centralised reporting form, sheet 'Dentare'"
+
+[[system]]
+key = "ro-insp-1255-nm"
+name = "Coduri proceduri naționale — medicină nucleară diagnostic (OMS 1255/2016)"
+source = "INSP quarterly centralised reporting form, sheet 'MN diagnostic'"
+
+[[system]]
+key = "ro-insp-1255-nm-hybrid"
+name = "Coduri proceduri naționale — proceduri hibride (OMS 1255/2016)"
+source = "INSP quarterly centralised reporting form, sheet 'MN Hibride'"
+
+[[system]]
+key = "ro-drl-ms838-2025"
+name = "Examinări cu niveluri de referință în diagnostic — OMS 838/2025"
+version = "2025"
+source = "Order MS 838/2025 amending Order MS 1245/2021, Annex 2 (published by INSP)"
+
+[[system]]
+key = "ec-rp185"
+name = "European paediatric DRL examinations (RP 185)"
+version = "2018"
+source = "European Commission, Radiation Protection No 185 (2018), Tables 10.2a/b"

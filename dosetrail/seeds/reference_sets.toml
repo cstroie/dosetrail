@@ -1,0 +1,18 @@
+# DRL reference sets. Values live in drl/<key>.csv with columns:
+#   exam, scheme, band, quantity, value, unit, applies_to
+# exam = code in `exam_system`; scheme/band empty = applies to all patients.
+# Units are UCUM: mGy.cm, mGy, Gy.cm2, mGy.cm2, MBq.
+
+[[set]]
+key = "ro-ms838-2025"
+name = "România — niveluri de referință în diagnostic (OMS 838/2025)"
+exam_system = "ro-drl-ms838-2025"
+source = "Order MS 838/2025 amending Order MS 1245/2021, Annex 2; values transcribed from the INSP publication and verified against the rendered tables"
+notes = "CT DLP per scan sequence. Interventional values are for adult patients. No CTDIvol and no groups below 1 year."
+
+[[set]]
+key = "ec-rp185-2018"
+name = "European paediatric DRLs (RP 185)"
+exam_system = "ec-rp185"
+source = "European Commission, Radiation Protection No 185 (2018), Tables 10.2a and 10.2b"
+notes = "CT: one complete scan series; head 16 cm phantom, body 32 cm. To be used as preliminary values until NDRLs exist."

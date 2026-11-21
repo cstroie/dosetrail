@@ -1,0 +1,120 @@
+# Patient group schemes. Bands are half-open [lower, upper): a patient exactly on a limit
+# belongs to the upper band. Age units: d / mo / y (calendar arithmetic); weight: kg.
+# Omit lower/upper for an open end.
+
+[[scheme]]
+key = "rp185-head-age"
+name = "RP 185 / ICRP 135 — head examinations by age"
+parameter = "age"
+source = "European Commission RP 185 (2018) Table 7.1; ICRP Publication 135"
+bands = [
+  { key = "0-3mo", label = "0–<3 months", upper = 3, upper_unit = "mo" },
+  { key = "3mo-1y", label = "3 months–<1 y", lower = 3, lower_unit = "mo", upper = 1, upper_unit = "y" },
+  { key = "1-6y", label = "1–<6 y", lower = 1, lower_unit = "y", upper = 6, upper_unit = "y" },
+  { key = "6y+", label = "≥6 y", lower = 6, lower_unit = "y" },
+]
+
+[[scheme]]
+key = "rp185-body-weight"
+name = "RP 185 / ICRP 135 — body examinations by weight"
+parameter = "weight"
+source = "European Commission RP 185 (2018) Table 7.1; ICRP Publication 135"
+bands = [
+  { key = "0-5kg", label = "<5 kg", upper = 5, upper_unit = "kg" },
+  { key = "5-15kg", label = "5–<15 kg", lower = 5, lower_unit = "kg", upper = 15, upper_unit = "kg" },
+  { key = "15-30kg", label = "15–<30 kg", lower = 15, lower_unit = "kg", upper = 30, upper_unit = "kg" },
+  { key = "30-50kg", label = "30–<50 kg", lower = 30, lower_unit = "kg", upper = 50, upper_unit = "kg" },
+  { key = "50-80kg", label = "50–<80 kg", lower = 50, lower_unit = "kg", upper = 80, upper_unit = "kg" },
+]
+
+[[scheme]]
+key = "ext-head-age"
+name = "Extended head age groups (RP 185 + adults)"
+parameter = "age"
+source = "Local LDRL protocol draft (2026): RP 185 head groups, upper group limited at 18 y, plus ≥18 y"
+bands = [
+  { key = "0-3mo", label = "0–<3 months", upper = 3, upper_unit = "mo" },
+  { key = "3mo-1y", label = "3 months–<1 y", lower = 3, lower_unit = "mo", upper = 1, upper_unit = "y" },
+  { key = "1-6y", label = "1–<6 y", lower = 1, lower_unit = "y", upper = 6, upper_unit = "y" },
+  { key = "6-18y", label = "6–<18 y", lower = 6, lower_unit = "y", upper = 18, upper_unit = "y" },
+  { key = "18y+", label = "≥18 y", lower = 18, lower_unit = "y" },
+]
+
+[[scheme]]
+key = "ext-body-weight"
+name = "Extended body weight groups (RP 185 + 80–110 kg + ≥110 kg)"
+parameter = "weight"
+source = "Local LDRL protocol draft (2026): RP 185 weight groups plus two heavy groups"
+bands = [
+  { key = "0-5kg", label = "<5 kg", upper = 5, upper_unit = "kg" },
+  { key = "5-15kg", label = "5–<15 kg", lower = 5, lower_unit = "kg", upper = 15, upper_unit = "kg" },
+  { key = "15-30kg", label = "15–<30 kg", lower = 15, lower_unit = "kg", upper = 30, upper_unit = "kg" },
+  { key = "30-50kg", label = "30–<50 kg", lower = 30, lower_unit = "kg", upper = 50, upper_unit = "kg" },
+  { key = "50-80kg", label = "50–<80 kg", lower = 50, lower_unit = "kg", upper = 80, upper_unit = "kg" },
+  { key = "80-110kg", label = "80–<110 kg", lower = 80, lower_unit = "kg", upper = 110, upper_unit = "kg" },
+  { key = "110kg+", label = "≥110 kg", lower = 110, lower_unit = "kg" },
+]
+
+[[scheme]]
+key = "ro-drl-age"
+name = "Romanian national DRL age groups (OMS 838/2025)"
+parameter = "age"
+source = "Order MS 838/2025, Annex 2. No DRL defined below 1 year."
+bands = [
+  { key = "1-4y", label = "1–4 ani", lower = 1, lower_unit = "y", upper = 5, upper_unit = "y" },
+  { key = "5-9y", label = "5–9 ani", lower = 5, lower_unit = "y", upper = 10, upper_unit = "y" },
+  { key = "10-14y", label = "10–14 ani", lower = 10, lower_unit = "y", upper = 15, upper_unit = "y" },
+  { key = "15y+", label = "≥15 ani", lower = 15, lower_unit = "y" },
+]
+
+[[scheme]]
+key = "ro-1255-count-age"
+name = "OMS 1255/2016 quarterly report — examination counts by age"
+parameter = "age"
+source = "INSP quarterly centralised form (radiology, CT); counts are also split by sex"
+bands = [
+  { key = "0-12mo", label = "0–12 luni", upper = 12, upper_unit = "mo" },
+  { key = "1-4y", label = "1–4 ani", lower = 1, lower_unit = "y", upper = 5, upper_unit = "y" },
+  { key = "5-9y", label = "5–9 ani", lower = 5, lower_unit = "y", upper = 10, upper_unit = "y" },
+  { key = "10-14y", label = "10–14 ani", lower = 10, lower_unit = "y", upper = 15, upper_unit = "y" },
+  { key = "15-39y", label = "15–39 ani", lower = 15, lower_unit = "y", upper = 40, upper_unit = "y" },
+  { key = "40y+", label = "≥40 ani", lower = 40, lower_unit = "y" },
+]
+
+[[scheme]]
+key = "ro-1255-mean-age"
+name = "OMS 1255/2016 quarterly report — mean dose by age"
+parameter = "age"
+source = "INSP quarterly centralised form (radiology, CT)"
+bands = [
+  { key = "0-12mo", label = "0–12 luni", upper = 12, upper_unit = "mo" },
+  { key = "1-4y", label = "1–4 ani", lower = 1, lower_unit = "y", upper = 5, upper_unit = "y" },
+  { key = "5-9y", label = "5–9 ani", lower = 5, lower_unit = "y", upper = 10, upper_unit = "y" },
+  { key = "10-14y", label = "10–14 ani", lower = 10, lower_unit = "y", upper = 15, upper_unit = "y" },
+  { key = "15y+", label = "≥15 ani", lower = 15, lower_unit = "y" },
+]
+
+[[scheme]]
+key = "ro-1255-int-count-age"
+name = "OMS 1255/2016 quarterly report — counts by age (interventional, dental, NM)"
+parameter = "age"
+source = "INSP quarterly centralised form (interventional, dental, nuclear medicine)"
+bands = [
+  { key = "0-4y", label = "0–4 ani", upper = 5, upper_unit = "y" },
+  { key = "5-9y", label = "5–9 ani", lower = 5, lower_unit = "y", upper = 10, upper_unit = "y" },
+  { key = "10-14y", label = "10–14 ani", lower = 10, lower_unit = "y", upper = 15, upper_unit = "y" },
+  { key = "15-39y", label = "15–39 ani", lower = 15, lower_unit = "y", upper = 40, upper_unit = "y" },
+  { key = "40y+", label = "≥40 ani", lower = 40, lower_unit = "y" },
+]
+
+[[scheme]]
+key = "ro-1255-int-mean-age"
+name = "OMS 1255/2016 quarterly report — mean dose by age (interventional, dental, NM)"
+parameter = "age"
+source = "INSP quarterly centralised form (interventional, dental, nuclear medicine)"
+bands = [
+  { key = "0-4y", label = "0–4 ani", upper = 5, upper_unit = "y" },
+  { key = "5-9y", label = "5–9 ani", lower = 5, lower_unit = "y", upper = 10, upper_unit = "y" },
+  { key = "10-14y", label = "10–14 ani", lower = 10, lower_unit = "y", upper = 15, upper_unit = "y" },
+  { key = "15y+", label = "≥15 ani", lower = 15, lower_unit = "y" },
+]

@@ -1,0 +1,62 @@
+code,meaning,chapter,modality,attributes
+RX-CAP-AP,Cap - radiografie AP,Radiologie convențională,DX,
+RX-CAP-LAT,Cap - radiografie LAT,Radiologie convențională,DX,
+RX-SINUS-PA,Sinus - radiografie PA,Radiologie convențională,DX,
+RX-TORACE-PA-AP,Torace - radiografie PA/AP,Radiologie convențională,DX,
+RX-TORACE-LAT,Torace - radiografie LAT,Radiologie convențională,DX,
+RX-COL-CERV-AP,Coloană cervicală - radiografie AP,Radiologie convențională,DX,
+RX-COL-CERV-LAT,Coloană cervicală - radiografie LAT,Radiologie convențională,DX,
+RX-COL-TOR-AP,Coloană toracală - radiografie AP,Radiologie convențională,DX,
+RX-COL-TOR-LAT,Coloană toracală - radiografie LAT,Radiologie convențională,DX,
+RX-COL-LOMB-AP,Coloană lombară - radiografie AP,Radiologie convențională,DX,
+RX-COL-LOMB-LAT,Coloană lombară - radiografie LAT,Radiologie convențională,DX,
+RX-ABDOMEN,Abdomen - radiografie,Radiologie convențională,DX,
+RX-PELVIS-SOLD,Pelvis și șold - radiografie,Radiologie convențională,DX,
+RX-RENOVEZICALA,Renovezicală simplă,Radiologie convențională,DX,
+RX-UROGRAFIE,Urografie,Radiologie convențională,DX,
+RF-TORACE,Torace - fluoroscopie,Radiologie convențională,RF,
+RF-GASTRODUODENAL,Tract gastroduodenal - fluoroscopie,Radiologie convențională,RF,
+RF-COLON,Explorare colon - fluoroscopie,Radiologie convențională,RF,
+DENT-PANORAMIC,Dentare - panoramic,Dentară,DX,
+DENT-CBCT-MULTI,Dentare - CBCT implant multiplu (>25 cm²),Dentară,DX,
+MG-UNILATERAL,Mamografie - unilaterală,Mamografie,MG,
+MG-DBT-BILATERAL,Tomosinteză - bilaterală,Mamografie,MG,
+MG-DBT-UNILATERAL,Tomosinteză - unilaterală,Mamografie,MG,
+XA-ORTOPEDIC,Proceduri intervenționale ortopedice,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-UROLOGIC,Proceduri intervenționale urologice,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-COLOANA,Intervenții coloană vertebrală,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-CORONAROGRAFIE,Coronarografie,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-ANGIO-CEREBRAL,Angiografie cerebrală,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-ANGIO-CAROTIDA,Angiografie carotidiană,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-ANGIO-ABDOMINAL,Angiografie abdominală,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-ANGIO-PELVIN,Angiografie pelvină,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-ANGIO-MI,Angiografie membre inferioare,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-ANGIO-MS,Angiografie membre superioare,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-PTCA,Angioplastie coronariană (PTCA),Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-PTA-CAROTIDA,Angioplastie carotidiană,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-PTA-RENAL,Angioplastie renală,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-PTA-PERIFERIC,Angioplastie periferică,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-EMBOL-ABDOMINAL,Embolizare abdominală,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-EMBOL-CEREBRAL,Embolizare cerebrală,Radiologie intervențională,XA,"{""population"": ""adult""}"
+XA-PACEMAKER,Implant stimulator cardiac,Radiologie intervențională,XA,"{""population"": ""adult""}"
+CT-CAP,Cap,Tomografie computerizată,CT,
+CT-SINUS,Sinus,Tomografie computerizată,CT,
+CT-GAT,Gât - părți moi,Tomografie computerizată,CT,
+CT-COL-CERV,Coloană cervicală,Tomografie computerizată,CT,
+CT-COL-TOR,Coloană toracală,Tomografie computerizată,CT,
+CT-COL-LOMB,Coloană lombară,Tomografie computerizată,CT,
+CT-TORACE,Torace,Tomografie computerizată,CT,
+CT-ABDOMEN,Abdomen,Tomografie computerizată,CT,
+CT-PELVIS,Pelvis,Tomografie computerizată,CT,
+CT-TORACE-ABDOMEN,Torace - abdomen,Tomografie computerizată,CT,
+CT-ABDOMEN-PELVIS,Abdomen - pelvis,Tomografie computerizată,CT,
+CT-TRUNCHI,Trunchi (torace - abdomen - pelvis),Tomografie computerizată,CT,
+NM-TIROIDA-TC,Scintigrafie tiroidiană (Tc-99m pertechnetat),Medicină nucleară,NM,
+NM-CARDIAC-MIBI,Scintigrafie cardiovasculară (Tc-99m MIBI),Medicină nucleară,NM,
+NM-PARATIROIDA-MIBI,Scintigrafie paratiroidiană (Tc-99m SESTAMIBI),Medicină nucleară,NM,
+NM-LIMFO-NANOCOLOID,Limfoscintigrafie (Tc-99m nanocoloid),Medicină nucleară,NM,
+NM-OSOS-HDP,Scintigrafie osoasă (Tc-99m HDP),Medicină nucleară,NM,
+NM-RENAL-DTPA,Scintigrafie renală (Tc-99m DTPA),Medicină nucleară,NM,
+NM-RENAL-DMSA,Scintigrafie renală (Tc-99m DMSA),Medicină nucleară,NM,
+NM-PULM-MAA,Scintigrafie pulmonară - perfuzie (Tc-99m MAA),Medicină nucleară,NM,
+PETCT-FDG,PET-CT (F-18 FDG),Proceduri hibride,NM,

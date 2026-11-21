@@ -1,0 +1,10 @@
+code,meaning,chapter,modality,attributes
+RX-HEAD-AP-PA,Head AP/PA,Radiography and fluoroscopy,DX,"{""grouping"": ""age""}"
+RX-HEAD-LAT,Head LAT,Radiography and fluoroscopy,DX,"{""grouping"": ""age""}"
+RX-THORAX-AP-PA,Thorax AP/PA,Radiography and fluoroscopy,DX,"{""grouping"": ""weight""}"
+RX-ABDOMEN-AP,Abdomen AP,Radiography and fluoroscopy,DX,"{""grouping"": ""weight""}"
+RX-PELVIS-AP,Pelvis AP,Radiography and fluoroscopy,DX,"{""grouping"": ""weight""}"
+RF-MCU,Micturating cystourethrography (MCU),Radiography and fluoroscopy,RF,"{""grouping"": ""weight""}"
+CT-HEAD,Head CT (16 cm phantom),Computed tomography,CT,"{""grouping"": ""age"", ""phantom_cm"": 16}"
+CT-THORAX,Thorax CT (32 cm phantom),Computed tomography,CT,"{""grouping"": ""weight"", ""phantom_cm"": 32}"
+CT-ABDOMEN,Abdomen CT (32 cm phantom),Computed tomography,CT,"{""grouping"": ""weight"", ""phantom_cm"": 32}"
