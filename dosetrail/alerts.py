@@ -189,6 +189,19 @@ def evaluate_range(session: Session, start: dt.datetime | None = None,
     return total
 
 
+def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
+    """Short value and limit texts for the alert queue."""
+    v = a.value or 0.0
+    if r.kind == "drl_ratio" and a.limit_value:
+        ref = a.limit_value / r.threshold
+        return _fmt(v, a.unit), f"DRL {_fmt(ref, a.unit)} ({v / ref:.1f}×)"
+    if r.kind == "cumulative":
+        return f"Σ {_fmt(v, a.unit)}", f"≥ {_fmt(r.threshold, a.unit)} / {r.window_days} d"
+    if r.kind == "count":
+        return f"{v:.0f} studies", f"≥ {r.threshold:.0f} / {r.window_days} d"
+    return _fmt(v, a.unit), f"≥ {_fmt(a.limit_value or r.threshold, a.unit)}"
+
+
 def listing(session: Session, status: str | None = "open", limit: int = 50,
             names: dict[int, str] | None = None) -> list[dict]:
     """Alerts for the UI, newest study first (shape of the overview alert queue)."""
@@ -206,16 +219,16 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
                                      "fluoro_time": "FLUORO", "ctdivol_max": "CTDI"}.get(
             r.metric or "", "DOSE")
         acc = None if s.accession_is_hashed else s.accession
+        value, limit = _value_limit(a, r)
         out.append({
             "id": a.id, "study_id": s.id, "level": a.severity, "kind": kind,
             "rule": r.key, "rule_name": r.name,
-            "title": " · ".join(x for x in (s.study_description, names.get(s.device_id))
-                                if x) or s.modality,
+            "title": " · ".join(x for x in (
+                a.message.split(":")[0] if r.kind == "drl_ratio" else None,
+                s.study_description or s.modality, names.get(s.device_id)) if x),
             "accession": acc or f"#{s.id}",
             "time": a.study_datetime.isoformat(timespec="minutes") if a.study_datetime else None,
-            "value": a.message.split(" ≥ ")[0] if " ≥ " in a.message else a.message,
-            "limit": (f"≥ {_fmt(a.limit_value, a.unit)}" if a.limit_value is not None
-                      and r.kind != "drl_ratio" else r.name),
+            "value": value, "limit": limit,
             "message": a.message, "status": a.status, "ack_by": a.ack_by,
             "ack_at": a.ack_at.isoformat(timespec="minutes") if a.ack_at else None,
             "ack_note": a.ack_note,

@@ -13,7 +13,7 @@ import { devices, now, isSample, updateDevice, mergeDevices, splitDevice, dismis
 
 const page = document.getElementById('page');
 const ADMIN_TABS = ['Devices', 'DICOM nodes', 'Protocol mappings', 'DRLs', 'Data quality', 'Alert rules', 'Users', 'Audit log'];
-const ADMIN_LINKS = { 'Protocol mappings': 'review.html', DRLs: 'drl.html', 'Data quality': 'quality.html' };
+const ADMIN_LINKS = { 'Protocol mappings': 'review.html', DRLs: 'drl.html', 'Data quality': 'quality.html', 'Alert rules': 'rules.html' };
 
 let records = [];
 let suggestions = [];

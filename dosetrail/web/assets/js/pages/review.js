@@ -42,7 +42,8 @@ async function render() {
     h('a', { href: 'devices.html' }, 'Devices'),
     h('a', { href: 'review.html', 'aria-current': 'page' }, 'Protocol mappings'),
     h('a', { href: 'drl.html' }, 'DRLs'),
-    h('a', { href: 'quality.html' }, 'Data quality')));
+    h('a', { href: 'quality.html' }, 'Data quality'),
+    h('a', { href: 'rules.html' }, 'Alert rules')));
   let summary;
   try {
     summary = await classificationSummary();
