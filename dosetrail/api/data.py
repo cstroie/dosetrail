@@ -77,6 +77,22 @@ def overview(session: Session, now: dt.datetime) -> dict:
             "feeds": feeds(session, now)}
 
 
+def overrides(session: Session) -> dict[int, str]:
+    """device id -> modality override (few or none; applied at query time)."""
+    return dict(session.execute(select(Device.id, Device.modality_override)
+                                .where(Device.modality_override.is_not(None))).all())
+
+
+def device_names(session: Session) -> dict[int, str]:
+    """device id -> display name of its physical device (aliases show the merged name)."""
+    devs = {d.id: d for d in session.scalars(select(Device))}
+    out = {}
+    for i, d in devs.items():
+        p = devs.get(d.merged_into_id, d) if d.merged_into_id else d
+        out[i] = p.display_name or p.station_name or f"Device {p.id}"
+    return out
+
+
 def _physical_ids(session: Session) -> dict[int, int]:
     """device id -> physical (merge target) id."""
     return {i: (m or i) for i, m in session.execute(select(Device.id, Device.merged_into_id))}
@@ -138,7 +154,11 @@ def devices(session: Session) -> dict:
             "origin": "local" if d.is_local else "external", "studies": d.n_studies or 0,
             "last_study": iso_min(d.last_study_at),
         })
-    return {"records": records, "merge_suggestions": merge_suggestions(records)}
+    from .admin import dismissed
+
+    skip = dismissed(session)
+    sugg = [x for x in merge_suggestions(records) if tuple(sorted(x["record_ids"])) not in skip]
+    return {"records": records, "merge_suggestions": sugg}
 
 
 def merge_suggestions(records: list[dict]) -> list[dict]:
@@ -189,16 +209,17 @@ def _base():
 def studies(session: Session, q: str, sort: str, direction: str, page: int, size: int,
             now: dt.datetime) -> dict:
     tokens = parse(q)
-    conds = conditions(tokens, now)
+    conds = conditions(tokens, now, overrides(session))
     total = session.scalar(select(func.count(Study.id)).where(*conds))
     col = SORTS.get(sort, Study.study_datetime)
     order = desc if direction != "asc" else asc
     rows = session.execute(_base().where(*conds).order_by(order(col), order(Study.id))
                            .limit(size).offset((page - 1) * size)).all()
     protocols = _protocols(session, [s.id for s, _, _ in rows])
+    names = device_names(session)
     return {
         "total": total,
-        "rows": [_study_row(s, d, p, protocols.get(s.id)) for s, d, p in rows],
+        "rows": [_study_row(s, d, p, protocols.get(s.id), names) for s, d, p in rows],
         "errors": [{"token": t.key, "error": t.error} for t in tokens if t.error],
     }
 
@@ -224,12 +245,14 @@ def _patient_summary(s: Study, p: Patient | None) -> dict:
             "pseudo_id": p.pseudo_id if p else None}
 
 
-def _study_row(s: Study, d: Device | None, p: Patient | None, protocol: str | None) -> dict:
+def _study_row(s: Study, d: Device | None, p: Patient | None, protocol: str | None,
+               names: dict[int, str]) -> dict:
     return {
         "id": s.id, "accession": accession_display(s), "accession_hashed": s.accession_is_hashed,
         "modality": (d.modality_override if d and d.modality_override else s.modality),
+        "modality_original": s.modality,
         "date": iso_min(s.study_datetime), "device_id": (d.merged_into_id or d.id) if d else None,
-        "device_name": (d.display_name or d.station_name) if d else "—",
+        "device_name": names.get(d.id, "—") if d else "—",
         "description": s.study_description or "", "protocol": protocol,
         "patient": _patient_summary(s, p),
         "events": {"spiral": s.n_spiral, "axial": s.n_axial, "localizer": s.n_localizer,
@@ -257,7 +280,7 @@ def study(session: Session, study_id: int) -> dict | None:
         "start": iso_min(min(times) if times else s.study_datetime),
         "end": iso_min(max(times) if times else s.study_datetime),
         "device": {"id": (d.merged_into_id or d.id) if d else None,
-                   "name": (d.display_name or d.station_name) if d else None,
+                   "name": device_names(session).get(d.id) if d else None,
                    "manufacturer": d.manufacturer if d else None,
                    "model": d.model_name if d else None, "biplane": len(planes) > 1},
         "physician": s.performing_physician, "operator": s.operator_name,
@@ -321,10 +344,9 @@ def ct_acquisitions(session: Session, q: str, now: dt.datetime, limit: int = 500
     weight and the default test-patient exclusion), one row per acquisition."""
     allowed = {"date", "device", "proto", "origin", "weight", "age", "modality", "phantom"}
     tokens = [t for t in parse(q) if t.key in allowed]
-    conds = conditions(tokens, now)
+    conds = conditions(tokens, now, overrides(session))
     phys = _physical_ids(session)
-    names = {d.id: (d.display_name or d.station_name)
-             for d in session.scalars(select(Device))}
+    names = device_names(session)
     rows = session.execute(
         select(Event.protocol, Event.ctdivol, Event.dlp, Event.event_datetime,
                Study.device_id, Study.weight_kg, Study.age_days, Study.study_datetime)
@@ -365,12 +387,13 @@ def lookup(session: Session, text: str, limit: int) -> list[dict]:
         cond = Study.accession.startswith(t, autoescape=True)
     rows = session.execute(_base().where(cond).order_by(Study.study_datetime.desc())
                            .limit(limit)).all()
+    names = device_names(session)
     out = []
     for s, d, _p in rows:
         dose = (f"{s.total_dlp:.0f} mGy·cm" if s.total_dlp else
                 f"{s.total_dap:.3g} Gy·cm²" if s.total_dap else "")
         out.append({"id": s.id, "accession": accession_display(s), "modality": s.modality,
                     "description": s.study_description, "date": iso_min(s.study_datetime),
-                    "device_name": (d.display_name or d.station_name) if d else None,
+                    "device_name": names.get(d.id) if d else None,
                     "dose": dose})
     return out

@@ -171,7 +171,8 @@ def _test_patients():
     return select(Patient.id).where(Patient.is_test.is_(True))
 
 
-def conditions(tokens: list[Token], now: dt.datetime) -> list[ColumnElement]:
+def conditions(tokens: list[Token], now: dt.datetime,
+               overrides: dict[int, str] | None = None) -> list[ColumnElement]:
     """SQL conditions on Study only (device/patient criteria become IN-subqueries), so counts
     and pages need no joins and can use the study indexes."""
     conds: list[ColumnElement] = []
@@ -184,7 +185,13 @@ def conditions(tokens: list[Token], now: dt.datetime) -> list[ColumnElement]:
         if k in ("text", "desc"):
             c = _contains(func.coalesce(Study.study_description, ""), v)
         elif k == "modality":
-            c = Study.modality.in_([m.upper() for m in split_list(v)])
+            mods = [m.upper() for m in split_list(v)]
+            c = Study.modality.in_(mods)
+            if overrides:  # a device-level override replaces the stored modality
+                c = or_(and_(c, or_(Study.device_id.is_(None),
+                                    Study.device_id.not_in(list(overrides)))),
+                        Study.device_id.in_([d for d, m in overrides.items() if m in mods]
+                                            or [-1]))
         elif k == "date":
             lo, hi = date_cond(v, now)
             c = and_(Study.study_datetime >= dt.datetime.combine(lo, dt.time()),

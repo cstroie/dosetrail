@@ -477,3 +477,14 @@ class AuditLog(Base):
     detail: Mapped[dict | None] = mapped_column(JSONType)
     remote_addr: Mapped[str | None] = mapped_column(AsciiId(64))
 
+
+class AppSetting(Base):
+    """Small key/value store for administrative state (e.g. dismissed merge suggestions)."""
+
+    __tablename__ = "app_setting"
+    key: Mapped[str] = mapped_column(AsciiId(128), primary_key=True)
+    value: Mapped[dict | list | None] = mapped_column(JSONType)
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+

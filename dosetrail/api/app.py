@@ -27,7 +27,7 @@ from ..config import Settings, load_settings
 from ..db.models import AuditLog, User
 from ..db.session import make_engine, make_sessionmaker
 from ..security import load_or_create_secret, read_session, sign_session, verify_password
-from . import data
+from . import admin, data
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 LOGIN_HTML = Path(__file__).resolve().parent / "login.html"
@@ -40,6 +40,22 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
 class LoginIn(BaseModel):
     username: str
     password: str
+
+
+class DevicePatch(BaseModel):
+    display_name: str | None = None
+    modality_override: str | None = None
+    origin: str | None = None
+
+
+class MergeIn(BaseModel):
+    record_ids: list[int]
+    survivor_id: int
+    display_name: str | None = None
+
+
+class DismissIn(BaseModel):
+    record_ids: list[int]
 
 
 def create_app(settings: Settings | None = None, engine: Engine | None = None,
@@ -63,6 +79,22 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if user is None or not user.is_active:
             raise HTTPException(401, "login required")
         return user
+
+    def admin_user(user: User = Depends(current_user)) -> User:
+        if "admin" not in user.role_set():
+            raise HTTPException(403, "the admin role is required")
+        return user
+
+    def admin_write(session: Session, request: Request, user: User, action: str,
+                    target: str, fn):
+        try:
+            result = fn()
+        except admin.AdminError as e:
+            session.rollback()
+            raise HTTPException(400, str(e)) from e
+        _audit(session, request, user, action, target, result)
+        session.commit()
+        return result
 
     def clock() -> dt.datetime:
         return app.state.fixed_now or dt.datetime.now()
@@ -104,6 +136,34 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.get("/api/devices")
     def devices(user: User = Depends(current_user), session: Session = Depends(db)):
         return data.devices(session)
+
+    @app.patch("/api/devices/{device_id}")
+    def device_patch(device_id: int, body: DevicePatch, request: Request,
+                     user: User = Depends(admin_user), session: Session = Depends(db)):
+        patch = body.model_dump(exclude_unset=True)
+        return admin_write(session, request, user, "device.update", f"device:{device_id}",
+                           lambda: admin.update_device(session, device_id, patch))
+
+    @app.post("/api/devices/merge")
+    def device_merge(body: MergeIn, request: Request, user: User = Depends(admin_user),
+                     session: Session = Depends(db)):
+        return admin_write(session, request, user, "device.merge",
+                           f"device:{body.survivor_id}",
+                           lambda: admin.merge_devices(session, body.record_ids,
+                                                       body.survivor_id, body.display_name))
+
+    @app.post("/api/devices/{device_id}/split")
+    def device_split(device_id: int, request: Request, user: User = Depends(admin_user),
+                     session: Session = Depends(db)):
+        return admin_write(session, request, user, "device.split", f"device:{device_id}",
+                           lambda: admin.split_device(session, device_id))
+
+    @app.post("/api/devices/merge-suggestions/dismiss")
+    def device_dismiss(body: DismissIn, request: Request, user: User = Depends(admin_user),
+                       session: Session = Depends(db)):
+        return admin_write(session, request, user, "device.merge_dismissed",
+                           ",".join(map(str, body.record_ids)),
+                           lambda: admin.dismiss_suggestion(session, body.record_ids))
 
     @app.get("/api/drl")
     def drl(user: User = Depends(current_user)):

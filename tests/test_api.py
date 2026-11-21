@@ -26,6 +26,8 @@ def client(tmp_path_factory):
         s.add_all([
             User(username="viewer", password_hash=hash_password("viewer-pass-1"), roles="viewer"),
             User(username="phys", password_hash=hash_password("phys-pass-12"), roles="viewer,pid"),
+            User(username="boss", password_hash=hash_password("boss-pass-123"),
+                 roles="viewer,admin"),
         ])
         dev = Device(display_name="Angio Suite", model_name="Azurion", identity_key="k1",
                      is_local=True, n_studies=1, last_study_at=NOW - dt.timedelta(days=5))
@@ -118,3 +120,68 @@ def test_overview_and_pages(client):
     assert client.get("/api/lookup", params={"q": "A1"}).json() == []  # min 3 chars
     assert client.get("/api/lookup", params={"q": "P-ABC"}).json() == []  # too short
     assert client.get("/api/lookup", params={"q": "P-ABCDE"}).json()[0]["accession"] == "A1"
+
+
+def _add_device_with_study(client, name, serial, uid, modality="DX"):
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        d = Device(display_name=name, model_name="Ysio", manufacturer="SIEMENS",
+                   serial_number=serial, identity_key=f"k-{uid}", is_local=True, n_studies=1)
+        s.add(d)
+        s.flush()
+        s.add(Study(study_uid=uid, accession=f"ACC{uid}", modality=modality, device_id=d.id,
+                    study_datetime=NOW, source_kind="test", n_events=0))
+        s.commit()
+        return d.id
+
+
+def test_device_writes_need_admin(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.patch("/api/devices/1", json={"origin": "external"}).status_code == 403
+    assert client.post("/api/devices/merge", json={"record_ids": [1, 2], "survivor_id": 1}
+                       ).status_code == 403
+
+
+def test_merge_rename_split_dismiss_and_override(client):
+    a = _add_device_with_study(client, "Ysio UPU", "25", "7.7.1")
+    b = _add_device_with_study(client, "Ysio UPU", "25", "7.7.2")
+    login(client, "boss", "boss-pass-123")
+    sugg = client.get("/api/devices").json()["merge_suggestions"]
+    assert any(set(x["record_ids"]) == {a, b} for x in sugg)
+
+    r = client.post("/api/devices/merge", json={"record_ids": [a, b], "survivor_id": a,
+                                                "display_name": "Ysio – Emergency"})
+    assert r.status_code == 200 and r.json()["merged"] == [b]
+    recs = {x["id"]: x for x in client.get("/api/devices").json()["records"]}
+    assert recs[b]["physical_id"] == a
+    rows = client.get("/api/studies", params={"q": "acc:ACC7.7.2"}).json()["rows"]
+    assert rows[0]["device_name"] == "Ysio – Emergency" and rows[0]["device_id"] == a
+
+    assert client.patch(f"/api/devices/{b}", json={"display_name": "Renamed"}).status_code == 200
+    assert {x["id"]: x for x in client.get("/api/devices").json()["records"]}[a][
+        "display_name"] == "Renamed"  # alias edits go to the physical device
+
+    assert client.post(f"/api/devices/{b}/split").status_code == 200
+    recs = {x["id"]: x for x in client.get("/api/devices").json()["records"]}
+    assert recs[b]["physical_id"] == b
+    assert client.post(f"/api/devices/{b}/split").status_code == 400  # not merged now
+
+    client.post("/api/devices/merge-suggestions/dismiss", json={"record_ids": [b, a]})
+    sugg = client.get("/api/devices").json()["merge_suggestions"]
+    assert not any(set(x["record_ids"]) == {a, b} for x in sugg)
+
+    assert client.get("/api/studies", params={"q": "acc:ACC7.7.2 modality:RF"}
+                      ).json()["total"] == 0
+    client.patch(f"/api/devices/{b}", json={"modality_override": "RF"})
+    res = client.get("/api/studies", params={"q": "acc:ACC7.7.2 modality:RF"}).json()
+    assert res["total"] == 1 and res["rows"][0]["modality"] == "RF"
+    client.patch(f"/api/devices/{b}", json={"modality_override": "auto"})
+    assert client.get("/api/studies", params={"q": "acc:ACC7.7.2 modality:DX"}
+                      ).json()["total"] == 1
+
+    assert client.patch(f"/api/devices/{b}", json={"origin": "elsewhere"}).status_code == 400
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        actions = {x.action for x in s.scalars(select(AuditLog))}
+    assert {"device.merge", "device.update", "device.split",
+            "device.merge_dismissed"} <= actions
