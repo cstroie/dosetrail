@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import threading
 import time
 from collections import Counter
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from pydicom.dataset import Dataset
@@ -83,9 +85,11 @@ class StudyHit:
 @dataclass
 class QRStats:
     counts: Counter = field(default_factory=Counter)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def add(self, key: str, n: int = 1) -> None:
-        self.counts[key] += n
+        with self._lock:
+            self.counts[key] += n
 
 
 # --------------------------------------------------------------------------- C-FIND
@@ -263,7 +267,7 @@ def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], 
 def run_day(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
             session_factory, stats: QRStats, modalities: set[str] | None = None,
             dry_run: bool = False, pause: float = 0.2,
-            progress: Callable[[str], None] = print) -> None:
+            progress: Callable[[str], None] = print, workers: int = 1) -> None:
     hits = find_studies(node, day)
     wanted = modalities or (XRAY - {"SR"})
     todo = []
@@ -278,19 +282,28 @@ def run_day(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
                 continue
             todo.append(h)
     progress(f"{day}: {len(hits)} studies, {len(todo)} to retrieve")
-    for i, h in enumerate(todo, 1):
-        if dry_run:
-            stats.add("would_retrieve")
-            continue
+    if dry_run:
+        stats.add("would_retrieve", len(todo))
+        return
+    lock = threading.Lock()
+
+    def locked_drain() -> int:  # imports are serialised; retrievals run in parallel
+        with lock:
+            return drain()
+
+    def one(h: StudyHit) -> None:
         try:
-            retrieve_study(node, h, spool, drain, session_factory, stats)
+            retrieve_study(node, h, spool, locked_drain, session_factory, stats)
             stats.add("studies_done")
         except Exception as e:  # keep going; the day is retried next run
             stats.add("study_errors")
             log.warning("study %s failed: %s", h.uid, e)
-        if i % 25 == 0:
-            progress(f"{day}: {i}/{len(todo)}")
         time.sleep(pause)
+
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        for i, _ in enumerate(pool.map(one, todo), 1):
+            if i % 25 == 0:
+                progress(f"{day}: {i}/{len(todo)}")
 
 
 def done_days(session: Session) -> set[str]:

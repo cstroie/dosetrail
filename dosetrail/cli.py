@@ -263,12 +263,13 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     day = end
     while day >= start:  # newest first
         if day.isoformat() in done and day < today - dt.timedelta(days=1):
-            print(f"{day}: already done")
+            print(f"{day}: already done", flush=True)
         else:
             stats = qr.QRStats()
             qr.run_day(node, day, worker.spool, drain, maker, stats, mods, args.dry_run,
-                       args.pause)
-            print(f"{day}: {dict(stats.counts)}; imported {worker.stats}")
+                       args.pause, progress=lambda m: print(m, flush=True),
+                       workers=args.workers)
+            print(f"{day}: {dict(stats.counts)}; imported {worker.stats}", flush=True)
             # a day is finished only after a full run (no modality subset) without errors
             if not args.dry_run and mods is None and not stats.counts.get("study_errors"):
                 with maker() as session:
@@ -373,6 +374,8 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--dry-run", action="store_true", help="query only, retrieve nothing")
     q.add_argument("--redo", action="store_true", help="also re-run days already done")
     q.add_argument("--pause", type=float, default=0.2, help="seconds between studies")
+    q.add_argument("--workers", type=int, default=1,
+                   help="studies retrieved in parallel (mind the PACS load)")
     q.add_argument("--host")
     q.add_argument("--port", type=int)
     q.add_argument("--aec", help="PACS AE title")

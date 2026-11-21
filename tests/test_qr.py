@@ -128,7 +128,8 @@ def test_backfill_day(env):
     try:
         node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSETRAIL", timeout=10)
         stats = qr.QRStats()
-        qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None)
+        qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None,
+                   workers=3)
         c = stats.counts
         assert c["skipped_not_xray"] == 1 and c["studies_done"] == 3
         assert c["studies_by_dose_report"] == 2 and c["studies_by_headers"] == 1
@@ -168,7 +169,7 @@ def test_partial_modality_run_does_not_finish_the_day(tmp_path, monkeypatch):
     from dosetrail import cli
 
     calls = []
-    monkeypatch.setattr(qr, "run_day", lambda *a, **k: calls.append(a[6]))
+    monkeypatch.setattr(qr, "run_day", lambda *a, **k: calls.append(a[6]))  # mods
     url = f"sqlite:///{tmp_path / 'p.sqlite3'}"
     upgrade(url)
     monkeypatch.setenv("DOSETRAIL_SECRET_FILE", str(tmp_path / "secret"))
