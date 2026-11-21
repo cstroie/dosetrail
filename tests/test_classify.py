@@ -141,3 +141,17 @@ def test_ct_series_of_another_region_get_their_own_codes(session):
     assert _codes(session, s.id, head.id) == set()  # same region: follows the study
     assert _codes(session, s.id, unknown.id) == set()  # names no region: follows the study
     assert "ro-drl-ms838-2025:CT-CAP" in _codes(session, s.id, None)
+
+
+def test_chest_without_projection_is_frontal_and_pr_is_lateral(session):
+    load_all(session)
+    s = Study(study_uid="c.11", modality="DX", study_datetime=T, source_kind="test",
+              study_description="- - - - -")
+    front = Event(protocol="X035 Pulmonara 0-5 kg")
+    side = Event(protocol="X035 Pulmonara pr. 0-5 kg")
+    s.events = [front, side]
+    session.add(s)
+    session.flush()
+    classify.run(session, [s.id])
+    assert "ro-insp-1255-rx:T1" in _codes(session, s.id, front.id)
+    assert "ro-insp-1255-rx:T2" in _codes(session, s.id, side.id)

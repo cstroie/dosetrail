@@ -40,7 +40,8 @@ from .db.models import (
 )
 
 SEEDS = Path(__file__).parent / "seeds"
-NOMENCLATOR = {"rx": "ro-nom-rx", "rf": "ro-nom-rx", "ct": "ro-nom-ct"}
+NOMENCLATOR = {"rx": "ro-nom-rx", "rf": "ro-nom-rx", "ct": "ro-nom-ct",
+               "xa": "ro-insp-1255-xa"}
 FAMILY = {"DX": "rx", "CR": "rx", "MG": "rx", "PX": "rx", "RF": "rf", "XA": "rf", "CT": "ct"}
 STUDY_FIELDS = ("study_description", "procedure_name", "requested_procedure")
 DRL_SYSTEMS = ("ro-drl-ms838-2025", "ec-rp185")
@@ -71,9 +72,13 @@ _VIEW_FIELD = [
 _VIEW_TEXT = [
     (re.compile(r"\bp ?a\b|\bpa\b"), "PA"),
     (re.compile(r"\ba ?p\b|\bap\b|\bfata\b"), "AP"),
-    (re.compile(r"\blat\b|\blateral\b|profil|\bll\b"), "LL"),
+    (re.compile(r"\blat\b|\blateral\b|profil|\bll\b|\bpr\b"), "LL"),  # "pr." = profil
     (re.compile(r"oblic|\bobl\b"), "OBL"),
 ]
+# A chest exposure that says nothing about its projection is taken as frontal: laterals
+# are named ("lat", "pr.", "profil"), and bedside chest films (mobile units send no view)
+# are AP by practice. Other regions are left without a projection.
+FRONTAL_BY_DEFAULT = {"RG-TH", "RG-THPT"}
 
 
 def view_code(view: str | None, protocol: str | None) -> str | None:
@@ -100,7 +105,7 @@ class Rules:
         with path.open("rb") as fh:
             raw = tomllib.load(fh)
         fams = {f: [(r["code"], re.compile(r["match"])) for r in raw.get(f, [])]
-                for f in ("rx", "rf", "ct")}
+                for f in ("rx", "rf", "ct", "xa")}
         con = {k: re.compile(v) for k, v in raw.get("contrast", {}).items()}
         return cls(fams, con)
 
@@ -219,7 +224,10 @@ class Classifier:
                     continue
                 cid, mid = hit
                 row(cid, mid, e["id"])
-                for dst in self.drl_codes(cid, view_code(e.get("view"), e.get("protocol"))):
+                view = view_code(e.get("view"), e.get("protocol"))
+                if view is None and self.code_key.get(cid, ("", ""))[1] in FRONTAL_BY_DEFAULT:
+                    view = "AP"
+                for dst in self.drl_codes(cid, view):
                     row(dst, None, e["id"])
                 found.setdefault(cid, mid)
             if not found and not events:
@@ -252,6 +260,14 @@ class Classifier:
                 row(self.contrast_variant(dst, out.contrast), None)
         if family == "ct":
             self._ct_series(events, hit[0] if hit else None, row)
+        if family == "rf":  # interventional procedures: national code straight from text
+            xa = self.first("xa", study_pairs)
+            if xa is None:
+                votes = Counter(h for e in events
+                                if (h := self.match("xa", "protocol", e.get("protocol"))))
+                xa = votes.most_common(1)[0][0] if votes else None
+            if xa:
+                row(xa[0], xa[1])
         return out
 
     def _ct_series(self, events: list[dict], study_code: int | None, row) -> None:

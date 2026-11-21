@@ -65,7 +65,7 @@ async function load() {
     return;
   }
   const kpis = h('div', { class: 'kpis drl-kpis' },
-    r.sheets.map((s) => h('div', { class: 'kpi' }, h('span', { class: 'code' }, s.title),
+    r.sheets.filter((s) => s.rows.some((x) => x.total)).map((s) => h('div', { class: 'kpi' }, h('span', { class: 'code' }, s.title),
       h('span', { class: 'v' }, num(s.rows.reduce((a, x) => a + x.total, 0))),
       h('span', { class: 'm' }, `examinations in ${s.rows.filter((x) => x.total).length} codes`))),
     h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Not reported'), h('span', { class: 'v' }, num(r.notes.unclassified)),
@@ -75,19 +75,18 @@ async function load() {
   clear(host).append(h('p', { class: 'muted small' }, `${r.period.from} – ${r.period.to}`), kpis);
   for (const s of r.sheets) {
     const rows = s.rows.filter((x) => x.total);
-    const bands = Object.keys(rows[0]?.counts || {});
-    const mbands = Object.keys(rows[0]?.means || {});
+    const qs = s.quantities.filter((q) => q.key);
     const head = h('thead', {}, h('tr', {},
       h('th', {}, 'Cod'), h('th', {}, 'Examinare'), h('th', { class: 'r' }, 'Total'),
-      r.count_bands.map((b) => h('th', { class: 'r' }, `${b} M/F`)),
-      r.mean_bands.map((b) => h('th', { class: 'r' }, `${s.quantity} ${b}`))));
+      s.count_bands.map((b) => h('th', { class: 'r' }, `${b.label} M/F`)),
+      qs.map((q) => s.mean_bands.map((b) => h('th', { class: 'r' }, `${q.label} ${b.label}`)))));
     const body = h('tbody', {}, rows.map((x) => h('tr', {},
       h('td', { class: 'mono' }, x.code), h('td', {}, [x.exam, x.type].filter(Boolean).join(' — ')),
       h('td', { class: 'r' }, num(x.total)),
-      bands.map((b) => h('td', { class: 'r' }, `${x.counts[b].M || '·'} / ${x.counts[b].F || '·'}`)),
-      mbands.map((b) => h('td', { class: 'r' }, x.means[b] == null ? '' : smart(x.means[b]))))));
-    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 30, class: 'empty' }, 'No examination in this quarter.')));
-    append(host, [h('h2', { class: 'section-title' }, `${s.title} · ${s.quantity} (${s.unit})`),
+      s.count_bands.map((b) => h('td', { class: 'r' }, `${x.counts[b.key].M || '·'} / ${x.counts[b.key].F || '·'}`)),
+      qs.map((q) => s.mean_bands.map((b) => h('td', { class: 'r' }, x.means[q.key][b.key] == null ? '' : smart(x.means[q.key][b.key])))))));
+    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 40, class: 'empty' }, 'No examination in this quarter.')));
+    append(host, [h('h2', { class: 'section-title' }, `${s.title} · ${qs.map((q) => `${q.label} (${q.unit})`).join(' · ')}`),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, head, body)))]);
   }
 }

@@ -45,6 +45,13 @@ def report(session):
     # outside the quarter
     dx("r.3", girl, Y7, [Ev(protocol="W035 Torace p.a.", view="postero-anterior", dap=9.0)],
        when=dt.datetime(2026, 4, 1))
+    cath = Study(study_uid="r.5", modality="RF", study_datetime=t, patient_id=boy.id,
+                 age_days=Y2, source_kind="test", total_dap=2.0, total_rp_dose=0.05,
+                 study_description="Pediatric^Pediatric Cardiac Intervention")
+    opg = Study(study_uid="r.6", modality="DX", study_datetime=t, patient_id=girl.id,
+                age_days=Y7, source_kind="test", study_description="Ortopantomografie")
+    opg.events = [Ev(protocol="Ortopantomografie", dap=0.08)]
+    session.add_all([cath, opg])
     ct = Study(study_uid="r.4", modality="CT", study_datetime=t, patient_id=girl.id,
                age_days=Y7, source_kind="test", total_dlp=400.0,
                study_description="Head^CAP_SPIRAL_CONTRAST (Child)")
@@ -64,19 +71,22 @@ def test_counts_bands_and_means(report):
     t1 = _row(report, "radiologie", "T1")
     assert t1["total"] == 2
     assert t1["counts"]["1-4y"] == {"M": 1, "F": 0} and t1["counts"]["5-9y"] == {"M": 0, "F": 1}
-    assert t1["means"]["1-4y"] == pytest.approx(0.03)  # the retake counts in the dose
-    assert t1["means"]["5-9y"] == pytest.approx(0.04)  # the April study is outside Q1
+    assert t1["means"]["dap"]["1-4y"] == pytest.approx(0.03)  # the retake counts
+    assert t1["means"]["dap"]["5-9y"] == pytest.approx(0.04)  # April is outside Q1
     assert _row(report, "radiologie", "T2")["total"] == 1
     assert _row(report, "radiologie", "C1")["total"] == 0  # every code listed, even empty
     csc = _row(report, "ct", "CSC")  # contrast head CT
-    assert csc["total"] == 1 and csc["means"]["5-9y"] == 400.0
+    assert csc["total"] == 1 and csc["means"]["dlp"]["5-9y"] == 400.0
     assert _row(report, "ct", "C")["total"] == 0
 
 
 def test_json_and_xlsx(report):
     j = insp1255.as_json(report)
     assert j["period"] == {"from": "2026-01-01", "to": "2026-03-31"}
-    assert j["count_bands"][0].startswith("0") and len(j["mean_bands"]) == 5
+    rx = j["sheets"][0]
+    assert rx["count_bands"][0]["label"].startswith("0") and len(rx["mean_bands"]) == 5
+    assert [s["key"] for s in j["sheets"]] == ["radiologie", "ct", "interventionala_rx",
+                                               "interventionala_ct", "dentare"]
     buf = io.BytesIO()
     insp1255.write_xlsx(report, buf, {"Generat": "test"})
     import zipfile
@@ -85,4 +95,13 @@ def test_json_and_xlsx(report):
         book = z.read("xl/workbook.xml").decode()
         rx = z.read("xl/worksheets/sheet2.xml").decode()
     assert "Informatii" in book and "Radiologie" in book and ">CT<" not in rx
-    assert "<t>T1</t>" in rx and "ESAK/MGD" in rx
+    assert "<t>T1</t>" in rx and "ESAK sau MGD" in rx
+
+
+def test_interventional_and_dental_sheets(report):
+    altri = _row(report, "interventionala_rx", "ALTRI")
+    assert altri["total"] == 1 and altri["counts"]["0-4y"] == {"M": 1, "F": 0}
+    assert altri["means"]["dap"]["0-4y"] == 2.0
+    assert altri["means"]["kar"]["0-4y"] == pytest.approx(50.0)  # mGy
+    d2 = _row(report, "dentare", "D2")
+    assert d2["total"] == 1 and d2["means"]["dap"]["5-9y"] == pytest.approx(0.08)

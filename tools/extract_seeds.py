@@ -106,7 +106,9 @@ def insp_quarterly(xls: Path):
             code = raw_code.rstrip("*").strip()
             first = vals[exam_c]
             if first.upper().startswith("TOTAL"):
-                break
+                continue  # sections have subtotals; later sections follow
+            if first.startswith(("*", "Se vor", "INAPOI")) or raw_code.startswith("INAPOI"):
+                break  # footnotes after the last table
             if first and not code and first.isupper():
                 section = first
                 continue

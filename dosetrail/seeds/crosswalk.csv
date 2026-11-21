@@ -94,9 +94,11 @@ ro-nom-rx,RG-AB,*,ro-insp-1255-rx,A1
 ro-nom-rx,RG-ABPT,*,ro-insp-1255-rx,A1
 ro-nom-rx,RG-ABUV,*,ro-insp-1255-rx,U2
 ro-nom-rx,RG-ABRV,*,ro-insp-1255-rx,R1
-ro-nom-rx,RF-THFG,*,ro-insp-1255-rx,TG1
-ro-nom-rx,RF-ABGD,*,ro-insp-1255-rx,TG2
-ro-nom-rx,RF-ABIG,*,ro-insp-1255-rx,TG3
+ro-nom-rx,RF-THFG,*,ro-insp-1255-rx,TG4
+ro-nom-rx,RF-ABGD,*,ro-insp-1255-rx,TG4
+ro-nom-rx,RF-ABIG,*,ro-insp-1255-rx,TG5
+ro-nom-rx,RF-ABIS,*,ro-insp-1255-rx,TG6
+ro-nom-rx,RF-TH,*,ro-insp-1255-rx,T3
 ro-nom-rx,RF-PVHS,*,ro-insp-1255-rx,H1
 ro-nom-rx,RF-ABPG,*,ro-insp-1255-rx,PR1
 ro-nom-rx,RF-PVCR,*,ro-insp-1255-rx,UCR1
@@ -161,3 +163,4 @@ ro-nom-ct,AG-THAT,*,ro-insp-1255-ct,AAAT
 ro-nom-ct,AG-SCCA,*,ro-insp-1255-ct,SC
 ro-nom-ct,AG-TAVI,*,ro-insp-1255-ct,TAVI CT
 ro-nom-ct,PG-MLCV,*,ro-insp-1255-ct,MLO
+ro-nom-rx,RG-CROP,*,ro-insp-1255-dental,D2

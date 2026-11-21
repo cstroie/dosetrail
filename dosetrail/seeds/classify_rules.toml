@@ -14,6 +14,8 @@
 # win over these rules.
 #
 # Families: rx = DX/CR (and MG for now), rf = RF/XA, ct = CT.
+# xa = interventional procedures on RF/XA studies, mapped straight to the national codes
+# of OMS 1255/2016 (sheet "Interventionala RX"): no local nomenclator exists for them.
 
 [[rx]]
 code = "RG-CRSN"
@@ -201,6 +203,60 @@ match = 'artrogr'
 [[rf]]
 code = "RF-TH"
 match = 'torace|thorax|chest'
+
+# ---------------------------------------------------------------- interventional (national codes)
+
+[[xa]]
+code = "CAp1"
+match = 'coronar\w* .*(ptca|pci|stent|angioplast)'
+[[xa]]
+code = "Ap1"
+match = '\bptca\b|\bpci\b|angioplast\w* coronar'
+[[xa]]
+code = "C1"
+match = 'coronar'
+[[xa]]
+code = "DS"
+match = '\basd\b|\bvsd\b|septal|amplatz|occlud|ocluder|ocluzor'
+[[xa]]
+code = "CA"
+match = 'coarct'
+[[xa]]
+code = "AB"
+match = 'ablat'
+[[xa]]
+code = "BEM"
+match = 'biops\w* endomioc|endomyocard'
+[[xa]]
+code = "IS"
+match = 'pacemaker|stimulator|defibril|\bicd\b'
+[[xa]]
+code = "EC"
+match = 'emboliz\w* (cerebr|neuro)|neuro\w* emboliz'
+[[xa]]
+code = "EP"
+match = 'emboliz'
+[[xa]]
+code = "Vp"
+match = 'vertebropl|cifopl|kyphopl'
+[[xa]]
+code = "F"
+match = 'flebogr|phlebogr|venogr'
+[[xa]]
+code = "A1"
+match = 'dsa neuro|angiogr\w* cerebr|cerebral angio'
+[[xa]]
+code = "A2"
+match = 'carotid'
+[[xa]]
+code = "A3"
+match = 'dsa body|aortogr|angiogr\w* (abdom|renal|mezenter)'
+[[xa]]
+code = "A7"
+match = 'spinal'
+[[xa]]
+code = "ALTRI"
+match = 'cardiac intervention|interventi\w* cardi|valvulopl|ductus|\bpda\b|canal arterial'
 
 # ---------------------------------------------------------------- CT
 
