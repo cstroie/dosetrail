@@ -9,8 +9,8 @@ Rules (severity ``error`` = the value is almost certainly wrong, ``warn`` = chec
   DLP > 15,000 mGy·cm, an exposure DAP > 1,000 Gy·cm² (radiography 50), Ka,r > 20 Gy.
 * ``dose_far_above_drl`` (warn): a study value above 3 × the national DRL of its exam and
   age group. Probably an error, or a case worth reviewing.
-* ``weight_implausible`` (warn): weight ≤ 0.3 kg or > 250 kg, or far outside what the age
-  allows (simple bounds until WHO growth tables are installed).
+* ``weight_implausible`` (warn): below 0–10 years, outside WHO weight-for-age P1–P99 (when
+  the tables are installed: ``dosetrail growth install``); otherwise outside wide bounds.
 * ``age_missing`` / ``sex_missing`` (warn).
 * ``possible_duplicate`` (warn): another study of the same patient on the same device
   within 2 minutes, with a different Study UID.
@@ -103,6 +103,9 @@ def weight_bounds(age_days: int) -> tuple[float, float]:
 
 class Checker:
     def __init__(self, session: Session):
+        from . import growth
+
+        self.growth = growth.tables()
         self.band = BandLookup(session, "ro-drl-age", "age")
         # (national exam code, band key) -> reference value in local units
         self.drl: dict[tuple[str, str | None, str], float] = {}
@@ -127,10 +130,18 @@ class Checker:
         if p is None or not p.sex or p.sex.upper() not in ("M", "F"):
             out.append(Finding("sex_missing", ""))
         if s.weight_kg:
-            lo, hi = weight_bounds(s.age_days) if s.age_days is not None else (0.3, 250.0)
-            if not lo <= s.weight_kg <= hi:
-                out.append(Finding("weight_implausible",
-                                   f"{s.weight_kg:g} kg (expected {lo:g}–{hi:g} kg)"))
+            who = self.growth.assess(p.sex if p else None, s.age_days, s.weight_kg) \
+                if self.growth else None
+            if who is not None:  # WHO weight-for-age, 0-10 years: outside P1-P99
+                if who["implausible"]:
+                    out.append(Finding("weight_implausible",
+                                       f"{s.weight_kg:g} kg = P{who['percentile']:g} for age "
+                                       f"(WHO, z {who['z']:+.1f})"))
+            else:
+                lo, hi = weight_bounds(s.age_days) if s.age_days is not None else (0.3, 250.0)
+                if not lo <= s.weight_kg <= hi:
+                    out.append(Finding("weight_implausible",
+                                       f"{s.weight_kg:g} kg (expected {lo:g}–{hi:g} kg)"))
         band = self.band(s.age_days)
         rx = s.modality in ("DX", "CR", "MG")
         per_code: dict[str, float] = defaultdict(float)

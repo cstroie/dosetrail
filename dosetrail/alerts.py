@@ -89,6 +89,19 @@ class Evaluator:
         n, total = self.session.execute(q).one()
         return float(total or 0), int(n or 0)
 
+    def _raised_in_window(self, rule: AlertRule, s: Study) -> bool:
+        """Per-patient rules alert once per window: not again for every further study of
+        the same patient (the next alert comes after a new window has passed)."""
+        # either side of the study: studies may be evaluated out of date order (a backfill
+        # runs newest first)
+        w = dt.timedelta(days=rule.window_days or 0)
+        return self.session.scalar(
+            select(func.count()).select_from(Alert).join(Study, Study.id == Alert.study_id)
+            .where(Alert.rule_id == rule.id, Study.patient_id == s.patient_id,
+                   Alert.study_id != s.id,
+                   Alert.study_datetime > s.study_datetime - w,
+                   Alert.study_datetime < s.study_datetime + w)) > 0
+
     def check(self, s: Study, events: list[Event], national: dict) -> list[dict]:
         out = []
         for rule in self.rules:
@@ -108,7 +121,8 @@ class Evaluator:
                     ratio, v, ref, unit, code = r
                     hit = (v, ref * rule.threshold, unit,
                            f"{code}: {_fmt(v, unit)} = {ratio:.1f} × DRL {_fmt(ref, unit)}")
-            elif rule.kind in ("cumulative", "count") and s.patient_id and s.study_datetime:
+            elif (rule.kind in ("cumulative", "count") and s.patient_id and s.study_datetime
+                  and not self._raised_in_window(rule, s)):
                 total, n = self._window(rule, s)
                 if rule.kind == "cumulative" and total >= rule.threshold and n > 1:
                     hit = (total, rule.threshold, rule.unit,
@@ -138,7 +152,8 @@ def evaluate(session: Session, study_ids: Iterable[int],
     ids = sorted(set(study_ids))
     for i in range(0, len(ids), BATCH):
         chunk = ids[i:i + BATCH]
-        studies = list(session.scalars(select(Study).where(Study.id.in_(chunk))))
+        studies = list(session.scalars(select(Study).where(Study.id.in_(chunk))
+                                       .order_by(Study.study_datetime, Study.id)))
         events: dict[int, list[Event]] = defaultdict(list)
         for e in session.scalars(select(Event).where(Event.study_id.in_(chunk))):
             events[e.study_id].append(e)

@@ -5,6 +5,9 @@ collected from the studies the query selects, and summarised:
 * by **facility**, or by **device** (ICRP 135: the room median is the comparison unit);
 * as n, median, P25/P75, mean, and the ratio median / reference value.
 
+Studies with a DRL exclusion reason (``study.drl_exclusion``: e.g. weight below P5 or
+above P95 for age, prematurity) are left out unless ``include_excluded``.
+
 Status of a group:
 * ``insufficient``: fewer than ``min_n`` values (ICRP 135 suggests about 20; paediatric
   groups often have fewer, so the value is reported but marked);
@@ -65,7 +68,7 @@ def reference_sets(session: Session) -> list[dict]:
 
 def compare(session: Session, conds: list, set_key: str, *, by_device: bool = False,
             min_n: int = 20, physical: dict[int, int] | None = None,
-            names: dict[int, str] | None = None) -> dict:
+            names: dict[int, str] | None = None, include_excluded: bool = False) -> dict:
     rs = session.scalar(select(ReferenceSet).filter_by(key=set_key))
     if rs is None:
         raise DRLError(f"unknown reference set {set_key!r}")
@@ -98,7 +101,8 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
         q = (select(col, Event.id, Study.id, Study.device_id, Study.age_days, Study.weight_kg,
                     c.code_id)
              .select_from(Event).join(Study, Study.id == Event.study_id).join(c, link)
-             .where(col.is_not(None), Event.is_localizer.is_not(True), *conds))
+             .where(col.is_not(None), Event.is_localizer.is_not(True), *conds,
+                    *([] if include_excluded else [Study.drl_exclusion.is_(None)])))
         rows_by_q[quantity] = session.execute(q).all()
 
     bands: dict[str, BandLookup] = {}

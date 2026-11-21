@@ -63,6 +63,8 @@ DICTIONARY: list[tuple[str, str, str]] = [
     ("weight_kg", "kg", "Patient weight"),
     ("weight_source", "", "measured / chart_same_day / chart_72h / estimated_* / dicom_unknown"),
     ("weight_group", "", "RP 185 body group (with 80-110kg, 110kg+)"),
+    ("weight_percentile", "%", "WHO weight-for-age percentile (0-10 years)"),
+    ("drl_exclusion", "", "Reason to leave the study out of DRL statistics (e.g. weight < P5)"),
     ("height_m", "m", "Patient height"),
     ("indication", "", "Clinical indication code (not collected yet)"),
     ("exam_code", "", "Local nomenclator code"),
@@ -116,6 +118,9 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
     devices = {d.id: d for d in session.scalars(select(Device))}
     physical = {i: (d.merged_into_id or i) for i, d in devices.items()}
     inst = _code(secret, "institution", institution)
+    from .. import growth
+
+    growth_tables = growth.tables()
     for i in range(0, len(ids), BATCH):
         chunk = ids[i:i + BATCH]
         studies = session.execute(
@@ -138,6 +143,8 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
             hb = band_for_age(head_bands, days=s.age_days)
             wb = band_for_weight(weight_bands, s.weight_kg) if s.weight_kg else None
             sc = study_codes.get(s.id, {})
+            who = growth_tables.assess(p.sex if p else None, s.age_days, s.weight_kg) \
+                if growth_tables else None
             base = {
                 "survey_version": SURVEY_VERSION, "institution": inst,
                 "device": device_code(secret, d),
@@ -152,6 +159,8 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
                 "indication": None, "contrast": s.contrast_mode,
                 "reconstruction": None, "kae": None,
                 "weight_missing": not s.weight_kg,
+                "weight_percentile": (who or {}).get("percentile"),
+                "drl_exclusion": s.drl_exclusion,
             }
             evs = events.get(s.id, [])
             if s.modality == "CT":

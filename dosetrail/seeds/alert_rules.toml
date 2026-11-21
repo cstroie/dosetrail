@@ -100,3 +100,15 @@ max_age_days = 6574
 severity = "warn"
 notify = false
 note = "Repeated CT in a child: review the justification and alternatives."
+
+[[rule]]
+key = "rx-count-paed-12m"
+name = "Child with ≥ 10 radiography studies in 12 months"
+kind = "count"
+modality = "DX,CR"
+threshold = 10.0
+window_days = 365
+max_age_days = 6574
+severity = "warn"
+notify = false
+note = "About the top 0.14 % of children here (2025: 56 of 39,062). Studies, not exposures: review the justification and alternatives (ultrasound, MRI)."

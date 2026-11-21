@@ -122,3 +122,17 @@ def test_notification_failures_retry_then_give_up(session, world):
         a = _alerts(session, s)["fluoro-kar-5gy"]
         assert a.notify_error.startswith(f"failed (try {i + 1})")
     assert a.notified_at is not None  # given up after MAX_TRIES
+
+
+def test_per_patient_rules_alert_once_per_window(session, world):
+    dev, kid = world
+    ids = []
+    for i in range(14):  # 14 radiography studies in 14 weeks, evaluated newest first
+        s = _study(session, dev, kid, f"rc.{i}", NOW - dt.timedelta(weeks=i), modality="DX",
+                   age_days=3000)
+        ids.append(s.id)
+    for sid in ids:
+        alerts.evaluate(session, [sid])
+    rule = session.scalar(select(AlertRule).filter_by(key="rx-count-paed-12m"))
+    raised = list(session.scalars(select(Alert).filter_by(rule_id=rule.id)))
+    assert len(raised) == 1 and raised[0].value >= 10

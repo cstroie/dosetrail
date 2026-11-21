@@ -195,6 +195,29 @@ def _cmd_report_1255(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_growth(args: argparse.Namespace) -> int:
+    from . import growth
+
+    s = load_settings()
+    directory = s.data_dir / "growth"
+    if args.action == "install":
+        for line in growth.install(directory):
+            print(line)
+        print(f"installed in {directory} (see SOURCE.txt for origin and terms)")
+        return 0
+    if args.action == "status":
+        g = growth.tables(directory)
+        print(f"{directory}: " + ("installed" if g else "NOT installed: dosetrail growth install"))
+        return 0 if g else 1
+    from .db.session import make_engine, make_sessionmaker
+
+    with make_sessionmaker(make_engine(args.url or s.database_url))() as session:
+        stats = growth.apply_exclusions(session)
+        session.commit()
+    print(stats)
+    return 0 if "error" not in stats else 1
+
+
 def _cmd_alerts(args: argparse.Namespace) -> int:
     import datetime as dt
 
@@ -576,6 +599,12 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("-o", "--output", required=True)
     rp.add_argument("--url")
     rp.set_defaults(func=_cmd_report_1255)
+
+    gr = sub.add_parser("growth", help="WHO weight-for-age tables: install (setup) or check "
+                                         "studies (DRL exclusions P5/P95)")
+    gr.add_argument("action", choices=["install", "check", "status"])
+    gr.add_argument("--url")
+    gr.set_defaults(func=_cmd_growth)
 
     al = sub.add_parser("alerts", help="evaluate alert rules, send notifications, list")
     al.add_argument("action", choices=["evaluate", "notify", "list", "test-notify"])

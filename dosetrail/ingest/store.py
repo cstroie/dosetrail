@@ -214,11 +214,12 @@ class Store:
         """Exam codes and alerts for the touched study; never blocks an import."""
         import logging
 
-        from .. import alerts, classify
+        from .. import alerts, classify, growth
 
         try:
             with self.session.begin_nested():
                 classify.run(self.session, [study_id])
+                growth.apply_exclusions(self.session, [study_id])
                 alerts.evaluate(self.session, [study_id])
         except Exception as exc:  # noqa: BLE001 – classification is best effort here
             logging.getLogger(__name__).warning("classification of study %s failed: %s",

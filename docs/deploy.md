@@ -64,3 +64,10 @@ systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
 - New studies are evaluated as they are imported. To evaluate history, run `dosetrail alerts evaluate --since 2026-01-01`.
 - Notifications are sent by the receiver service when it is idle, at most every 30 s. They can also be sent with `dosetrail alerts notify`. Only alerts on studies from the last 48 h are sent.
 - Configure `[notify]` (see `dosetrail.toml.example`), then check it with `dosetrail alerts test-notify`.
+
+## WHO growth tables (setup step)
+- Run `dosetrail growth install` once; it downloads the WHO weight-for-age tables into `<data_dir>/growth`:
+  - the Child Growth Standards for 0–5 years;
+  - the 2007 Growth Reference for 5–10 years.
+- They are WHO data under WHO's terms (see `SOURCE.txt` there), so they are not shipped with DoseTrail. `dosetrail growth status` shows whether they are installed.
+- With the tables, data quality flags weights outside P1–P99 for age and sex. Studies below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Run `dosetrail growth check` after importing weights, e.g. from the RIS; new studies are checked as they arrive.
