@@ -227,6 +227,55 @@ def _cmd_receive(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_qr(args: argparse.Namespace) -> int:
+    import datetime as dt
+    import logging
+
+    from .db.session import make_engine, make_sessionmaker
+    from .net import qr
+    from .net.spool import Spool, SpoolWorker
+
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(message)s")
+    s = load_settings()
+    host, aet = args.host or s.pacs_host, args.aec or s.pacs_aet
+    if not host or not aet:
+        print("PACS not configured: set [pacs] host/aet in dosetrail.toml or use --host/--aec")
+        return 2
+    node = qr.Node(host, args.port or s.pacs_port, aet, args.aet or s.dicom_aet)
+    today = dt.date.today()
+    if args.date_from:
+        start = dt.date.fromisoformat(args.date_from)
+        end = dt.date.fromisoformat(args.date_to) if args.date_to else today
+    else:
+        start, end = today - dt.timedelta(days=args.days - 1), today
+    maker = make_sessionmaker(make_engine(args.url or s.database_url))
+    worker = SpoolWorker(Spool(s.spool_dir), maker, _secret(), keep=s.keep_received)
+
+    def drain() -> int:
+        n = total = 0
+        while (n := worker.drain()):
+            total += n
+        return total
+
+    mods = {m.strip().upper() for m in args.modalities.split(",")} if args.modalities else None
+    with maker() as session:
+        done = set() if args.redo else qr.done_days(session)
+    day = end
+    while day >= start:  # newest first
+        if day.isoformat() in done and day < today - dt.timedelta(days=1):
+            print(f"{day}: already done")
+        else:
+            stats = qr.QRStats()
+            qr.run_day(node, day, worker.spool, drain, maker, stats, mods, args.dry_run,
+                       args.pause)
+            print(f"{day}: {dict(stats.counts)}; imported {worker.stats}")
+            if not args.dry_run and not stats.counts.get("study_errors"):
+                with maker() as session:
+                    qr.mark_day_done(session, day)
+        day -= dt.timedelta(days=1)
+    return 0
+
+
 def _cmd_info(_args: argparse.Namespace) -> int:
     s = load_settings()
     print(f"DoseTrail {__version__}")
@@ -314,6 +363,21 @@ def build_parser() -> argparse.ArgumentParser:
     rv.add_argument("--bind", help="address to listen on (default 0.0.0.0)")
     rv.add_argument("--url")
     rv.set_defaults(func=_cmd_receive)
+
+    q = sub.add_parser("qr", help="query/retrieve dose objects from the PACS (C-FIND/C-GET)")
+    q.add_argument("--from", dest="date_from", help="first study date YYYY-MM-DD")
+    q.add_argument("--to", dest="date_to", help="last study date (default today)")
+    q.add_argument("--days", type=int, default=2, help="without --from: last N days")
+    q.add_argument("--modalities", help="comma list, default all X-ray modalities")
+    q.add_argument("--dry-run", action="store_true", help="query only, retrieve nothing")
+    q.add_argument("--redo", action="store_true", help="also re-run days already done")
+    q.add_argument("--pause", type=float, default=0.2, help="seconds between studies")
+    q.add_argument("--host")
+    q.add_argument("--port", type=int)
+    q.add_argument("--aec", help="PACS AE title")
+    q.add_argument("--aet", help="our AE title")
+    q.add_argument("--url")
+    q.set_defaults(func=_cmd_qr)
 
     i = sub.add_parser("info", help="show configuration")
     i.set_defaults(func=_cmd_info)

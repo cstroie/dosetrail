@@ -31,6 +31,10 @@ class Settings:
     dicom_allowed_aets: list[str] = field(default_factory=list)  # empty = accept any caller
     spool_dir: Path = field(default_factory=lambda: Path("var/spool"))
     keep_received: bool = False  # keep imported objects under spool/archive/YYYYMMDD
+    # PACS for query/retrieve (C-FIND + C-GET)
+    pacs_host: str | None = None
+    pacs_port: int = 104
+    pacs_aet: str | None = None
     source: Path | None = None
 
 
@@ -60,6 +64,10 @@ def load_settings() -> Settings:
             if "spool_dir" in dcm:
                 s.spool_dir = Path(dcm["spool_dir"]).expanduser()
             s.keep_received = bool(dcm.get("keep_received", s.keep_received))
+            pacs = raw.get("pacs", {})
+            s.pacs_host = pacs.get("host", s.pacs_host)
+            s.pacs_port = int(pacs.get("port", s.pacs_port))
+            s.pacs_aet = pacs.get("aet", s.pacs_aet)
             sec = raw.get("security", {})
             if "secret_file" in sec:
                 s.secret_file = Path(sec["secret_file"]).expanduser()
