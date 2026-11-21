@@ -169,3 +169,57 @@ export async function ctAcquisitions(q = '') {
       patient: { age: null, weight: r.weight }, events: { spiral: 1, axial: 0, localizer: 0 }, dlp_total: r.dlp, ctdivol_max: r.ctdivol,
     }, tokens, ctx));
 }
+
+/* ---------------- statistics, reference levels, exam classification (server only) ---------------- */
+
+function serverOnly(what) {
+  return Promise.reject(new Error(`${what} needs the DoseTrail server (sample mode has no data for it)`));
+}
+
+/**
+ * GET /api/stats?q=&metric=&by=&system=&exam=&age_scheme=&weight_scheme=&bins=&min_n=
+ * → { metric, unit, label, level, group_by, n, n_studies, overall, bins,
+ *     groups: [{ key, label, n, n_studies, mean, sd, min, p25, median, p75, max, hist? }] }
+ */
+export function stats(params = {}) {
+  return isSample ? serverOnly('Statistics') : remote('/api/stats', params);
+}
+
+/** GET /api/drl/sets → [{ key, name, source, notes, values }] */
+export function drlSets() {
+  return isSample ? serverOnly('Reference levels') : remote('/api/drl/sets');
+}
+
+/**
+ * GET /api/drl/compare?q=&set=&by=facility|device&min_n=
+ * → { set, name, source, notes, by, min_n, rows: [{ exam, exam_meaning, band, band_label,
+ *     quantity, applies_to, reference, unit, status, reason?, groups: [{ device, device_name,
+ *     n, median, p25, p75, mean, ratio, status }] }] }
+ */
+export function drlCompare(params = {}) {
+  return isSample ? serverOnly('Reference levels') : remote('/api/drl/compare', params);
+}
+
+/** GET /api/classification/summary → [{ family, modalities, studies, classified, share }] */
+export function classificationSummary() {
+  return isSample ? serverOnly('Exam mapping') : remote('/api/classification/summary');
+}
+
+/** GET /api/classification/unclassified?family=rx|rf|ct&limit= → [{ texts, exposures?, studies }] */
+export function unclassified(family, limit = 100) {
+  return isSample ? serverOnly('Exam mapping') : remote('/api/classification/unclassified', { family, limit });
+}
+
+/** GET /api/classification/mappings → [{ id, family, field, text, system, code, meaning }] */
+export function mappings() {
+  return isSample ? serverOnly('Exam mapping') : remote('/api/classification/mappings');
+}
+
+/** GET /api/codes/{system} → [{ code, meaning, chapter, modality }] */
+export function codes(system) {
+  return isSample ? serverOnly('Exam mapping') : remote(`/api/codes/${encodeURIComponent(system)}`);
+}
+
+/** PUT /api/classification/mappings {family, field, text, code|null} (admin) */
+export const decideMapping = (family, field, text, code) =>
+  send('PUT', '/api/classification/mappings', { family, field, text, code });

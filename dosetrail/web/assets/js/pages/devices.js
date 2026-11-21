@@ -13,6 +13,7 @@ import { devices, now, isSample, updateDevice, mergeDevices, splitDevice, dismis
 
 const page = document.getElementById('page');
 const ADMIN_TABS = ['Devices', 'DICOM nodes', 'Protocol mappings', 'DRLs', 'Alert rules', 'Users', 'Audit log'];
+const ADMIN_LINKS = { 'Protocol mappings': 'review.html', DRLs: 'drl.html' };
 
 let records = [];
 let suggestions = [];
@@ -240,7 +241,8 @@ function render() {
   const physical = new Set(records.map((r) => r.physical_id)).size;
   page.replaceChildren(
     h('nav', { class: 'tabs', 'aria-label': 'Administration' },
-      ADMIN_TABS.map((x, i) => h('button', { type: 'button', 'aria-current': i === 0 ? 'page' : false, onclick: () => { if (i) toast(`${x}: not built yet`); } }, x))),
+      ADMIN_TABS.map((x, i) => (ADMIN_LINKS[x] ? h('a', { href: ADMIN_LINKS[x] }, x)
+        : h('button', { type: 'button', 'aria-current': i === 0 ? 'page' : false, onclick: () => { if (i) toast(`${x}: not built yet`); } }, x)))),
     h('div', { class: 'detail' },
       h('section', { class: 'panel', style: { flex: '999 1 760px', 'min-width': '0' }, 'aria-labelledby': 'h-dev' },
         h('div', { class: 'panel-head' }, h('h1', { id: 'h-dev', style: { 'font-size': '15px' } }, t('admin.devices')),

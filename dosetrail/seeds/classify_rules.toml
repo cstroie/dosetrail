@@ -49,6 +49,9 @@ match = 'crani|craniu|skull|\bcap\b|\bhead\b|brain|occiput'
 code = "RG-CVOS"
 match = 'pasting|whole spine|full spine|long ?spine|orthospine|scolio'
 [[rx]]
+code = "RG-CVJC"
+match = '\bdens\b|odontoid|cranio ?cerv|jonctiun'
+[[rx]]
 code = "RG-CVCC"
 match = 'cervical|\bcspine\b|\bc spine\b|col cerv|\bcerv\b'
 [[rx]]
@@ -65,7 +68,7 @@ code = "RG-PVSI"
 match = 'sacro ?ilia|sacroiliac'
 [[rx]]
 code = "RG-CVLM"
-match = 'lomb|lumbar|\blspine\b|\bl spine\b'
+match = 'lomb|lumbar|\blspine\b|\bl spine\b|\bl ?sacra?t'
 [[rx]]
 code = "RG-THST"
 match = '\bstern'
@@ -83,7 +86,7 @@ code = "RG-TH"
 match = 'torace|thorax|chest|pulmon|\bcp\b|\blung'
 [[rx]]
 code = "RG-ABRV"
-match = 'renovezic|\bkub\b'
+match = 'renovezic|\bkub\b|kidney|rinichi'
 [[rx]]
 code = "RG-ABUV"
 match = 'urograf'

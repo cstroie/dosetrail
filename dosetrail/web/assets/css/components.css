@@ -189,3 +189,18 @@ dt-chart { display: block; min-width: 0; }
   .study-events .grid td, .study-events .grid th { padding: 2px 4px; }
   .grid-foot, .skin { display: none; }
 }
+
+/* ---------------- Reference levels and exam mapping (server pages) ---------------- */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.chk { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); color: var(--muted); }
+.num-input { width: 64px; }
+.small { font-size: var(--fs-xs); }
+.drl-kpis { margin: var(--sp-3) 0 var(--sp-2); }
+.drl-ratio { position: relative; display: inline-block; width: 120px; height: 14px; background: var(--panel-2); border-radius: 2px; vertical-align: middle; }
+.drl-ratio-fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; opacity: .55; }
+.drl-ratio-fill.ok { background: var(--ok); }
+.drl-ratio-fill.warn { background: var(--warn); }
+.drl-ratio-fill.alert { background: var(--alert); }
+.drl-ratio-mark { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text); }
+.drl-ratio-num { position: absolute; right: -44px; top: -1px; font-family: var(--font-mono); font-size: var(--fs-xs); width: 40px; }
+.map-row select { max-width: 320px; }

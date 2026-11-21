@@ -13,6 +13,7 @@ const NAV = [
   ['overview', 'index.html', 'overview'],
   ['studies', 'studies.html', 'studies'],
   ['charts', 'charts.html', 'charts'],
+  ['drl', 'drl.html', 'drl'],
   ['alerts', 'index.html#alerts', 'alerts'],
   ['admin', 'devices.html', 'admin'],
 ];

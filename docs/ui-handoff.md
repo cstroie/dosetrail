@@ -32,3 +32,39 @@ The UI now runs against the live API (`dosetrail serve`, then log in). The pages
 9. **Write actions.**
    - Device edits are persisted in API mode (admin role, audit-logged): display name, modality override (`auto` clears it), origin, merge, split (a "Split" button on alias rows) and dismissing a merge suggestion. The functions are in `core/api.js` (`updateDevice`, `mergeDevices`, `splitDevice`, `dismissMerge`); they clear the read cache after a write.
    - Still missing: alert acknowledgements, and a UI for the patient-identifier reveal (`POST /api/studies/{id}/identify`, pid role, audit-logged). The study page's "Reveal…" button is not wired yet.
+
+## Milestone 3: server statistics, standard exams, reference levels
+
+New server endpoints:
+- **Exam classification:** every study now has standard exam codes: the radiography and CT nomenclators, plus national and European DRL codes. Radiography is classified per exposure, so codes carry the projection.
+- **`GET /api/stats`:** one metric grouped by dimensions over the studies a query selects, with n, mean, SD, median, P25/P75, min/max and optional histograms. Parameters:
+  - `q`;
+  - `metric`: `dlp_total ctdivol_max dap_total dap_fluoro dap_acq kar_total fluoro_time exposures dlp ctdivol scan_length dap kar kvp mas ei di sid`;
+  - `by`: comma list of `exam device age_band weight_band month quarter year modality sex protocol view`;
+  - `system` (exam vocabulary): `ro-nom-ct`, `ro-nom-rx`, `ro-drl-ms838-2025`, `ec-rp185`;
+  - `exam`: comma list of codes;
+  - `age_scheme`, `weight_scheme`, `bins`, `min_n`.
+- **Reference levels:**
+  - `GET /api/drl/sets` lists the reference sets;
+  - `GET /api/drl/compare?q=&set=&by=facility|device&min_n=` returns each exam × group × quantity with local quartiles, median/DRL and a status: `below`, `above`, `well_above` (more than 1.5×), `insufficient`, `no_data` or `unavailable`.
+- **Exam mapping:**
+  - `GET /api/classification/summary`, `GET /api/classification/unclassified?family=rx|rf|ct`, `GET /api/classification/mappings` and `GET /api/codes/{system}`;
+  - `PUT /api/classification/mappings` (admin role, audit-logged) maps one text to a code and reclassifies the affected studies.
+- All of these are wrapped in `core/api.js`: `stats`, `drlSets`, `drlCompare`, `classificationSummary`, `unclassified`, `mappings`, `codes` and `decideMapping`. They are server-only; in sample mode they reject with a message.
+
+Two plain working pages were added in your style, and are yours to restyle or fold into other pages:
+- `drl.html`: "Reference levels", a new rail entry. It shows the comparison table with a median/DRL bar and status tags, a facility / per-device toggle, a minimum n, and the shared query bar.
+- `review.html`: "Protocol mappings", the admin tab of the same name. It shows coverage per family, the most frequent unclassified texts with a field and code picker, and the recorded decisions with "Remove".
+  - **Known limitation:** the page takes about 10 s to load on the full history, because the unclassified radiography list groups 1.2 million exposures.
+
+Requested for the charts workspace:
+1. **Charts on server aggregates.** Panels should call `stats()` instead of downloading acquisitions. Server mode returns the percentiles directly, so the panels draw them and stop computing in the browser.
+   - **Boxplot:** draw from `p25/median/p75/min/max`.
+   - **Histograms:** pass `bins=N` and use the returned `bins` edges with each group's `hist` counts.
+   - **Trend:** use `by=month` (or `quarter`/`year`).
+2. **Group-by selector** per panel, from the dimensions above. The usual paediatric audit view is `by=exam,age_band` (national groups) or `exam,weight_band` (RP 185).
+3. **Exam vocabulary selector:** "local nomenclator" (`ro-nom-ct` / `ro-nom-rx`) or a DRL vocabulary. Use the vocabulary's labels on axes, not raw protocol names.
+4. **"Dots vs DRL":** take the reference value from `drlCompare()` rows. Hide the DRL line when the selected exam or group has none.
+5. **Modalities beyond CT:**
+   - radiography: `metric=dap` per exposure, with exam codes that include the projection;
+   - fluoroscopy: `dap_total`, `kar_total` and `fluoro_time` per study.
