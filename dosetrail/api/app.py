@@ -11,6 +11,7 @@ Privacy rules:
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -353,6 +354,99 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 yield buf.getvalue().encode("utf-8")
 
         return StreamingResponse(csv_stream(), headers=headers, media_type="text/csv")
+
+    def _exporter(user: User) -> None:
+        if not user.role_set() & {"exporter", "admin"}:
+            raise HTTPException(403, "the exporter role is required")
+
+    def _file(write, fmt: str, stem: str, now: dt.datetime):
+        """Run ``write(fh)`` into a temporary file, then stream it as a download."""
+        import tempfile
+
+        media = {"csv": "text/csv", "json": "application/json",
+                 "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+        # closed by the streaming generator once the file has been sent
+        tmp = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)  # noqa: SIM115
+        write(tmp)
+        tmp.seek(0)
+
+        def chunks():
+            with tmp:
+                while block := tmp.read(1 << 16):
+                    yield block
+
+        fname = f"{stem}-{now:%Y%m%d-%H%M}.{fmt}"
+        return StreamingResponse(chunks(), media_type=media[fmt], headers={
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "Cache-Control": "no-store"})
+
+    @app.get("/api/drl/dataset")
+    def drl_dataset(request: Request, q: str = "origin:local", format: str = "xlsx",
+                    user: User = Depends(current_user), session: Session = Depends(db)):
+        from ..export import drl_dataset as ds
+
+        _exporter(user)
+        if format not in ("csv", "xlsx", "json"):
+            raise HTTPException(400, "format is csv|xlsx|json")
+        now = clock()
+        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        _audit(session, request, user, "export", f"drl-dataset:{format}", {"q": q})
+        session.commit()
+
+        def write(fh):
+            with maker() as s:
+                ds.write(format, fh, ds.dataset_rows(s, conds, secret), ds.metadata(q, now))
+
+        return _file(write, format, "dosetrail-drl-dataset", now)
+
+    @app.get("/api/drl/summary")
+    def drl_summary(request: Request, q: str = "origin:local", set: str = "ro-ms838-2025",
+                    min_n: int = 20, format: str = "xlsx", user: User = Depends(current_user),
+                    session: Session = Depends(db)):
+        from .. import drl as drl_mod
+        from ..export import drl_dataset as ds
+        from ..export.xlsx import XlsxWriter
+
+        _exporter(user)
+        if format not in ("csv", "xlsx", "json"):
+            raise HTTPException(400, "format is csv|xlsx|json")
+        now = clock()
+        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        try:
+            rows = ds.summary_rows(session, conds, set, max(min_n, 1))
+        except drl_mod.DRLError as e:
+            raise HTTPException(400, str(e)) from e
+        _audit(session, request, user, "export", f"drl-summary:{format}",
+               {"q": q, "set": set, "min_n": min_n})
+        session.commit()
+        meta = {**ds.metadata(q, now, len(rows)), "dataset": "dosetrail-icrp135-summary",
+                "reference_set": set, "min_n": min_n}
+
+        def write(fh):
+            if format == "json":
+                fh.write(json.dumps({**meta, "rows": rows}, ensure_ascii=False,
+                                    indent=1).encode("utf-8"))
+            elif format == "csv":
+                import csv
+                import io
+
+                text = io.TextIOWrapper(fh, encoding="utf-8-sig", newline="")
+                w = csv.DictWriter(text, ds.SUMMARY_FIELDS, lineterminator="\r\n")
+                w.writeheader()
+                w.writerows({k: ("" if v is None else v) for k, v in r.items()} for r in rows)
+                text.flush()
+                text.detach()
+            else:
+                with XlsxWriter(fh) as wb:
+                    ws = wb.sheet("ICRP 135 summary", ds.SUMMARY_FIELDS,
+                                  [9, 18, 18, 30, 10, 9, 10] + [9] * 13)
+                    for r in rows:
+                        ws.row([r[f] for f in ds.SUMMARY_FIELDS])
+                    about = wb.sheet("About", ["Item", "Value"], [16, 90])
+                    for k, v in meta.items():
+                        about.row([k, v])
+
+        return _file(write, format, "dosetrail-icrp135-summary", now)
 
     @app.get("/api/lookup")
     def lookup(q: str = "", limit: int = 6, user: User = Depends(current_user),

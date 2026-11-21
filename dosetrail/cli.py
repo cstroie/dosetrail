@@ -108,6 +108,33 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_drl_dataset(args: argparse.Namespace) -> int:
+    import datetime as dt
+    import getpass
+
+    from .api.data import conditions, overrides, parse
+    from .db.models import AuditLog
+    from .db.session import make_engine, make_sessionmaker
+    from .export import drl_dataset as ds
+
+    fmt = args.output.rsplit(".", 1)[-1].lower()
+    if fmt not in ("csv", "xlsx", "json"):
+        print("the output must end in .csv, .xlsx or .json")
+        return 2
+    now = dt.datetime.now()
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session, open(args.output, "wb") as fh:
+        conds = conditions(parse(args.query), now, overrides(session))
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="export",
+                             target=f"drl-dataset:{fmt}",
+                             detail={"q": args.query, "file": args.output}))
+        session.commit()
+        n = ds.write(fmt, fh, ds.dataset_rows(session, conds, _secret()),
+                     ds.metadata(args.query, now))
+    print(f"{n} rows -> {args.output}")
+    return 0
+
+
 def _cmd_classify(args: argparse.Namespace) -> int:
     from . import classify
     from .db.session import make_engine, make_sessionmaker
@@ -427,6 +454,12 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("-o", "--output", required=True)
     ex.add_argument("--url")
     ex.set_defaults(func=_cmd_export)
+
+    dd = sub.add_parser("drl-dataset", help="export the DRL dataset (csv / xlsx / json)")
+    dd.add_argument("-q", "--query", default="origin:local")
+    dd.add_argument("-o", "--output", required=True, help="the extension sets the format")
+    dd.add_argument("--url")
+    dd.set_defaults(func=_cmd_drl_dataset)
 
     cl = sub.add_parser("classify", help="assign standard exam codes and DRL codes to studies")
     cl.add_argument("--study", type=int, action="append", help="only this study id (repeatable)")

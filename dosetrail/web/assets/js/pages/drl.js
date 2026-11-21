@@ -6,7 +6,7 @@ import '../components/dt-shell.js';
 import '../components/dt-query-bar.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
-import { drlSets, drlCompare } from '../core/api.js';
+import { drlSets, drlCompare, drlDownloadUrl } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
 const page = document.getElementById('page');
@@ -67,8 +67,17 @@ async function render() {
   const qb = h('dt-query-bar', { value: state.q });
   qb.addEventListener('query-change', (e) => { state.q = e.detail; prefs.set('drl.q', state.q); load(); });
 
+  const download = (kind) => () => {
+    const href = drlDownloadUrl(kind, { q: state.q, set: state.set, min_n: state.minN });
+    if (!href) { toast('Downloads need the server'); return; }
+    h('a', { href, download: '' }).click();
+    toast('Export started: the file downloads when the server has written it');
+  };
   page.append(
-    h('div', { class: 'toolbar' }, setSel, h('span', { class: 'seg' }, byBtns), h('label', { class: 'chk' }, 'min n ', minN), empty),
+    h('div', { class: 'toolbar' }, setSel, h('span', { class: 'seg' }, byBtns), h('label', { class: 'chk' }, 'min n ', minN), empty,
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn', type: 'button', title: 'Per room and facility: n, median, quartiles, DRL ratio (XLSX)', onclick: download('summary') }, 'ICRP 135 summary'),
+      h('button', { class: 'btn', type: 'button', title: 'One row per study and DRL exam, pseudonymous, with a data dictionary (XLSX)', onclick: download('dataset') }, 'DRL dataset')),
     qb,
     h('div', { id: 'drl-kpis', class: 'kpis drl-kpis' }),
     h('p', { id: 'drl-source', class: 'muted small' }),

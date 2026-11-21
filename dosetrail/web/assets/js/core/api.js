@@ -237,3 +237,13 @@ export function exportUrl({ q = '', level = 'study', format = 'csv', pid = false
   if (pid) u.searchParams.set('pid', '1');
   return u.href;
 }
+
+/** Download links: GET /api/drl/summary (ICRP 135) and /api/drl/dataset (exporter role, audited). */
+export function drlDownloadUrl(kind, { q = '', set = '', min_n = 20, format = 'xlsx' } = {}) {
+  if (isSample) return null;
+  const u = new URL(kind === 'dataset' ? '/api/drl/dataset' : '/api/drl/summary', MODE);
+  u.searchParams.set('q', q);
+  u.searchParams.set('format', format);
+  if (kind !== 'dataset') { u.searchParams.set('set', set); u.searchParams.set('min_n', String(min_n)); }
+  return u.href;
+}

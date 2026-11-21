@@ -98,3 +98,45 @@ def test_event_rows_carry_projection_drl_codes(session, data):
     buf = io.StringIO()
     assert lists.write_csv(buf, "event", False, iter([])) == 0
     assert buf.getvalue().startswith("Study ID,Date,")
+
+
+def test_drl_dataset_rows_and_formats(session, data):
+    import json
+
+    from dosetrail.export import drl_dataset as ds
+
+    rows = list(ds.dataset_rows(session, [], b"k" * 32))
+    assert [(r["drl_exam_national"], r["projection"], r["dap"]) for r in rows] == [
+        ("RX-TORACE-PA-AP", "AP", 0.01), ("RX-TORACE-LAT", "LL", 0.02)]
+    r = rows[0]
+    assert r["period"] == "2026-03" and r["age_group"] == "5-9y" and r["exam_code"] == "RG-TH"
+    assert r["patient"].startswith("P-") and r["patient"] != "P-AAAAA-BBBBB"  # survey code
+    assert r["device"].startswith("D-") and r["facility"].startswith("F-")
+    assert set(r) == set(ds.FIELDS)
+    assert rows[0]["patient"] == list(ds.dataset_rows(session, [], b"k" * 32))[0]["patient"]
+    assert rows[0]["patient"] != list(ds.dataset_rows(session, [], b"z" * 32))[0]["patient"]
+
+    meta = ds.metadata("q", dt.datetime(2026, 4, 1))
+    buf = io.BytesIO()
+    assert ds.write("json", buf, iter(rows), meta) == 2
+    doc = json.loads(buf.getvalue())
+    assert doc["dataset"] == "dosetrail-drl" and doc["rows_total"] == 2
+    assert {d["name"] for d in doc["dictionary"]} == set(ds.FIELDS)
+    buf = io.BytesIO()
+    ds.write("csv", buf, iter(rows), meta)
+    assert buf.getvalue().decode("utf-8-sig").splitlines()[0].startswith("dataset_version,")
+    buf = io.BytesIO()
+    ds.write("xlsx", buf, iter(rows), meta)
+    with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as z:
+        assert "xl/worksheets/sheet3.xml" in z.namelist()  # Data, Dictionary, About
+
+
+def test_icrp135_summary_rows(session, data):
+    from dosetrail.export import drl_dataset as ds
+
+    rows = ds.summary_rows(session, [], "ro-ms838-2025", min_n=1)
+    ap = [r for r in rows if r["exam"] == "RX-TORACE-PA-AP"]
+    assert {r["unit"] for r in ap} == {"device", "facility"}
+    fac = next(r for r in ap if r["unit"] == "facility")
+    assert fac["n"] == 1 and fac["median"] == 0.01 and fac["sample_ok"] is True
+    assert fac["drl"] == 0.11 and fac["status"] == "below"  # 5-9 y chest PA/AP

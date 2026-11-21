@@ -267,3 +267,14 @@ def test_export_roles_and_formats(client):
     with make_sessionmaker(make_engine(str(client.app.state.settings.database_url)))() as s:
         acts = [a.target for a in s.scalars(select(AuditLog).filter_by(action="export"))]
     assert "study:csv" in acts and "event:xlsx" in acts
+
+
+def test_drl_dataset_and_summary_downloads(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/drl/dataset").status_code == 403
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/drl/dataset", params={"q": "", "format": "json"})
+    assert r.status_code == 200 and r.json()["dataset"] == "dosetrail-drl"
+    s = client.get("/api/drl/summary", params={"q": "", "format": "csv", "min_n": 1})
+    assert s.status_code == 200 and s.content.decode("utf-8-sig").startswith("unit,device,")
+    assert client.get("/api/drl/summary", params={"set": "x"}).status_code == 400
