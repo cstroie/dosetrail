@@ -79,6 +79,27 @@ def _cmd_openrem_reconcile(args: argparse.Namespace) -> int:
     return 0 if ok else 2
 
 
+def _cmd_openrem_fix(args: argparse.Namespace) -> int:
+    import getpass
+
+    from .db.session import make_engine, make_sessionmaker
+    from .legacy.openrem.fixes import apply_known_fixes, pending
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        if args.dry_run:
+            todo = pending(session)
+            for name, n in todo.items():
+                print(f"{name}: {n} event(s) to correct")
+            if not todo:
+                print("nothing to correct")
+            return 0
+        for line in apply_known_fixes(session, username=f"cli:{getpass.getuser()}"):
+            print(line)
+        session.commit()
+    return 0
+
+
 def _cmd_recompute(args: argparse.Namespace) -> int:
     from .db.session import make_engine, make_sessionmaker
     from .maintenance import recompute_all
@@ -353,6 +374,11 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("dump", nargs="?", default="var/openrem-dump")
     rc.add_argument("--url")
     rc.set_defaults(func=_cmd_openrem_reconcile)
+
+    fx = sub.add_parser("openrem-fix", help="correct known OpenREM value errors (idempotent)")
+    fx.add_argument("--url")
+    fx.add_argument("--dry-run", action="store_true")
+    fx.set_defaults(func=_cmd_openrem_fix)
 
     r = sub.add_parser("recompute", help="recompute derived study and device columns")
     r.add_argument("--url")

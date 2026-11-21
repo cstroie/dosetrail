@@ -10,6 +10,8 @@
 * Exact duplicate exposures inside a study (same time to the second, same DAP, kVp, mAs and
   protocol – e.g. one exposure stored both as a CR and a DX object) are removed, keeping
   the non-CR copy. Every removal is written to an audit file (dedup-report.csv.gz).
+* Known OpenREM value errors (fixes.py, e.g. Canon Ultimax Ka,r stored 1000x too high) are
+  corrected after import, audited and marked on each corrected event.
 """
 
 from __future__ import annotations
@@ -616,12 +618,19 @@ class OpenREMImporter:
         if batch:
             self.conn.execute(stmt, batch)
 
+    def apply_fixes(self) -> None:
+        from .fixes import apply_known_fixes
+
+        self.session.expire_all()  # rows were written through the core connection
+        self.stats.notes.extend(apply_known_fixes(self.session))
+
     def run(self, progress=print) -> Stats:
         steps = [("studies", self.import_studies), ("ct events", self.import_ct_events),
                  ("projection events", self.import_proj_events),
                  ("processed objects", self.import_objects),
                  ("duplicate exposures", self.deduplicate_exposures),
                  ("totals", self.update_totals),
+                 ("known OpenREM errors", self.apply_fixes),
                  ("derived columns", lambda: recompute_all(self.session, self.secret))]
         for label, fn in steps:
             started = dt.datetime.now()

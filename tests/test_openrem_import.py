@@ -4,9 +4,10 @@ import csv
 import gzip
 import hashlib
 
+import pytest
 from sqlalchemy import func, select
 
-from dosetrail.db.models import Device, Event, Patient, Study
+from dosetrail.db.models import AuditLog, Device, Event, Patient, Study
 from dosetrail.legacy.openrem.importer import OpenREMImporter
 from dosetrail.legacy.openrem.reconcile import reconcile, reconcile_by_year
 
@@ -150,3 +151,41 @@ def test_import(session, tmp_path):
     # is also dropped -> reported as DIFF, never hidden
     assert not ok and any(line.strip().startswith("2025") and "DIFF" in line for line in lines)
     assert any(line.strip().startswith("2019") and "OK" in line for line in lines)
+
+
+def test_known_openrem_errors_are_corrected_once(session, tmp_path):
+    from dosetrail.legacy.openrem.fixes import apply_known_fixes, pending
+
+    make_dump(tmp_path)
+    _write(tmp_path / "studies.csv.gz", STUDY_COLS, [
+        _study(1, "4.1", modality_type="RF", manufacturer="CANON_MEC",
+               manufacturer_model_name="Platinum43", device_serial_number="C1", patient_id="P1"),
+        _study(2, "4.2", modality_type="RF", patient_id="P2"),  # another vendor: untouched
+    ])
+    _write(tmp_path / "proj_events.csv.gz",
+           ["orem_study_id", "irradiation_event_uid", "dose_area_product", "dose_rp",
+            "event_type"], [
+               dict(orem_study_id=1, irradiation_event_uid="u1", dose_area_product="5e-06",
+                    dose_rp="0.012", event_type="Fluoroscopy"),
+               dict(orem_study_id=1, irradiation_event_uid="u2", dose_area_product="5e-06",
+                    dose_rp="0.008", event_type="Stationary Acquisition"),
+               dict(orem_study_id=2, irradiation_event_uid="s1", dose_area_product="5e-06",
+                    dose_rp="0.0003"),
+           ])
+    OpenREMImporter(session, tmp_path).run(progress=lambda _m: None)
+    session.flush()
+
+    canon = session.scalar(select(Study).filter_by(study_uid="4.1"))
+    assert canon.total_rp_dose == pytest.approx(2e-5)  # mGy values stored as Gy -> / 1000
+    e = session.scalar(select(Event).filter_by(event_uid="u1"))
+    assert e.rp_dose == pytest.approx(1.2e-5) and e.extra_json["fixes"] == ["canon-ultimax-rp-mgy"]
+    assert e.dap == pytest.approx(0.05)  # DAP was right and stays as is
+    other = session.scalar(select(Study).filter_by(study_uid="4.2"))
+    assert other.total_rp_dose == pytest.approx(3e-4)
+    assert session.scalar(select(func.count()).select_from(AuditLog)
+                          .filter_by(action="openrem.fix")) == 1
+
+    # idempotent: a second run (or the CLI after an import) changes nothing
+    assert not pending(session)
+    assert apply_known_fixes(session) == ["canon-ultimax-rp-mgy: nothing to correct"]
+    assert session.scalar(select(Event).filter_by(event_uid="u1")).rp_dose == pytest.approx(1.2e-5)
