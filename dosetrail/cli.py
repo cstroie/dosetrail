@@ -50,7 +50,8 @@ def _cmd_openrem_import(args: argparse.Namespace) -> int:
 
     engine = make_engine(args.url or load_settings().database_url)
     with make_sessionmaker(engine)() as session:
-        stats = OpenREMImporter(session, Path(args.dump), args.institution).run()
+        secret = _secret()
+        stats = OpenREMImporter(session, Path(args.dump), args.institution, secret).run()
         session.commit()
         for line in stats.lines():
             print(line)
@@ -75,6 +76,107 @@ def _cmd_openrem_reconcile(args: argparse.Namespace) -> int:
         lines, ok = reconcile_by_year(session, Path(args.dump))
     print("\n".join(lines))
     return 0 if ok else 2
+
+
+def _cmd_recompute(args: argparse.Namespace) -> int:
+    from .db.session import make_engine, make_sessionmaker
+    from .maintenance import recompute_all
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        for line in recompute_all(session, _secret()):
+            print(line)
+        session.commit()
+    return 0
+
+
+def _secret() -> bytes:
+    from .security import load_or_create_secret
+
+    return load_or_create_secret(load_settings().secret_file)
+
+
+ROLES = ("viewer", "exporter", "pid", "importer", "admin")
+
+
+def _cmd_user(args: argparse.Namespace) -> int:
+    import getpass
+
+    from sqlalchemy import select
+
+    from .db.models import User
+    from .db.session import make_engine, make_sessionmaker
+    from .security import hash_password
+
+    roles = [r.strip() for r in (args.roles or "viewer").split(",") if r.strip()]
+    bad = [r for r in roles if r not in ROLES]
+    if bad:
+        print(f"unknown role(s): {', '.join(bad)}; valid: {', '.join(ROLES)}")
+        return 2
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        user = session.scalar(select(User).filter_by(username=args.username))
+        if args.action == "list":
+            for u in session.scalars(select(User).order_by(User.username)):
+                print(f"{u.username:20} {u.roles:30} {'active' if u.is_active else 'disabled'}")
+            return 0
+        if args.action == "disable":
+            if user:
+                user.is_active = False
+                session.commit()
+            return 0
+        password = args.password or getpass.getpass(f"password for {args.username}: ")
+        if len(password) < 10:
+            print("password must have at least 10 characters")
+            return 2
+        if user is None:
+            user = User(username=args.username)
+            session.add(user)
+        user.password_hash = hash_password(password)
+        user.roles = ",".join(roles)
+        user.display_name = args.name or user.display_name or args.username
+        user.is_active = True
+        session.commit()
+        print(f"user {args.username}: roles {user.roles}")
+    return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from .api.app import create_app
+
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"warning: listening on {args.host}; put DoseTrail behind an HTTPS reverse proxy")
+    # access_log off: query strings may contain search terms with identifiers
+    uvicorn.run(create_app(), host=args.host, port=args.port, access_log=False,
+                proxy_headers=True, forwarded_allow_ips="127.0.0.1")
+    return 0
+
+
+def _cmd_devices_origin(args: argparse.Namespace) -> int:
+    from sqlalchemy import select
+
+    from .db.models import Device
+    from .db.session import make_engine, make_sessionmaker
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        devs = list(session.scalars(select(Device).order_by(Device.n_studies.desc())))
+        local = [d for d in devs if (d.n_studies or 0) >= args.min_studies]
+        for d in local:
+            print(f"local    {d.id:5} {d.n_studies:8} {d.manufacturer} | {d.model_name} | "
+                  f"{d.station_name} | {d.display_name}")
+        print(f"{len(local)} local, {len(devs) - len(local)} external "
+              f"(threshold {args.min_studies} studies)")
+        if args.apply:
+            for d in devs:
+                d.is_local = d in local
+            session.commit()
+            print("applied")
+        else:
+            print("dry run; add --apply to save")
+    return 0
 
 
 def _cmd_info(_args: argparse.Namespace) -> int:
@@ -126,6 +228,31 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("dump", nargs="?", default="var/openrem-dump")
     rc.add_argument("--url")
     rc.set_defaults(func=_cmd_openrem_reconcile)
+
+    r = sub.add_parser("recompute", help="recompute derived study and device columns")
+    r.add_argument("--url")
+    r.set_defaults(func=_cmd_recompute)
+
+    u = sub.add_parser("user", help="manage users")
+    u.add_argument("action", choices=["set", "disable", "list"])
+    u.add_argument("username", nargs="?", default="")
+    u.add_argument("--roles", help=f"comma-separated: {', '.join(ROLES)}")
+    u.add_argument("--name", help="display name")
+    u.add_argument("--password", help="(insecure: visible in process list) prompt if omitted")
+    u.add_argument("--url")
+    u.set_defaults(func=_cmd_user)
+
+    sv = sub.add_parser("serve", help="run the web UI and API")
+    sv.add_argument("--host", default="127.0.0.1")
+    sv.add_argument("--port", type=int, default=8000)
+    sv.set_defaults(func=_cmd_serve)
+
+    do = sub.add_parser("devices-origin",
+                        help="suggest local vs external devices by study volume")
+    do.add_argument("--min-studies", type=int, default=100)
+    do.add_argument("--apply", action="store_true")
+    do.add_argument("--url")
+    do.set_defaults(func=_cmd_devices_origin)
 
     i = sub.add_parser("info", help="show configuration")
     i.set_defaults(func=_cmd_info)

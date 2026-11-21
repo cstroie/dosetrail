@@ -106,6 +106,7 @@ class Device(TimestampMixin, Base):
     merged_into_id: Mapped[int | None] = mapped_column(ForeignKey("device.id"))
     first_study_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
     last_study_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    n_studies: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     __table_args__ = (
         Index("ix_device_observer", "device_observer_uid"),
@@ -126,10 +127,14 @@ class Patient(TimestampMixin, Base):
     sex: Mapped[str | None] = mapped_column(AsciiId(1))  # M / F / O
     # OpenREM-compatible sha256(utf8(id)) – links hashed legacy records to clear IDs
     legacy_sha256: Mapped[str | None] = mapped_column(AsciiId(64), index=True)
+    # keyed pseudonym shown instead of identifiers (HMAC with the site secret, see security.py)
+    pseudo_id: Mapped[str | None] = mapped_column(AsciiId(16))
     is_test: Mapped[bool] = mapped_column(Boolean, default=False)
     test_reason: Mapped[str | None] = mapped_column(Text(255))
 
     studies: Mapped[list[Study]] = relationship(back_populates="patient")
+
+    __table_args__ = (UniqueConstraint("pseudo_id", name="uq_patient_pseudo_id"),)
 
 
 # ---------------------------------------------------------------------------- study
@@ -167,8 +172,12 @@ class Study(TimestampMixin, Base):
     contrast_mode: Mapped[str | None] = mapped_column(AsciiId(4))  # N / C / NC / MF
     drl_exclusion: Mapped[str | None] = mapped_column(Text(64))  # reason, NULL = eligible
 
-    # precomputed totals (storage units)
+    # precomputed totals (storage units) – maintained by ingest and `dosetrail recompute`
     n_events: Mapped[int] = mapped_column(Integer, default=0)
+    n_spiral: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    n_axial: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    n_localizer: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    ctdivol_max: Mapped[float | None] = mapped_column(Float)
     total_dlp: Mapped[float | None] = mapped_column(Float)
     total_dap: Mapped[float | None] = mapped_column(Float)
     total_rp_dose: Mapped[float | None] = mapped_column(Float)
@@ -188,7 +197,11 @@ class Study(TimestampMixin, Base):
         back_populates="study", cascade="all, delete-orphan", order_by="Event.event_datetime"
     )
 
-    __table_args__ = (Index("ix_study_mod_dt", "modality", "study_datetime"),)
+    __table_args__ = (
+        Index("ix_study_mod_dt", "modality", "study_datetime"),
+        Index("ix_study_dt", "study_datetime"),
+        Index("ix_study_device_dt", "device_id", "study_datetime"),
+    )
 
 
 class Event(Base):
@@ -433,4 +446,34 @@ class UnitConversion(Base):
 
     __table_args__ = (UniqueConstraint("quantity", "from_unit", name="uq_unit_conv"),)
 
+
+# ------------------------------------------------------------------- users & audit
+
+
+class User(TimestampMixin, Base):
+    __tablename__ = "app_user"  # "user" is reserved in several SQL dialects
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(AsciiId(64), unique=True)
+    display_name: Mapped[str | None] = mapped_column(Text(128))
+    password_hash: Mapped[str] = mapped_column(AsciiId(255))
+    roles: Mapped[str] = mapped_column(AsciiId(255), default="viewer")  # comma-separated
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_login_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+
+    def role_set(self) -> set[str]:
+        return {r.strip() for r in (self.roles or "").split(",") if r.strip()}
+
+
+class AuditLog(Base):
+    """Append-only record of sensitive actions (identifier reveal, exports, admin changes)."""
+
+    __tablename__ = "audit_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
+    username: Mapped[str | None] = mapped_column(AsciiId(64))
+    action: Mapped[str] = mapped_column(AsciiId(64))
+    target: Mapped[str | None] = mapped_column(Text(255))
+    detail: Mapped[dict | None] = mapped_column(JSONType)
+    remote_addr: Mapped[str | None] = mapped_column(AsciiId(64))
 

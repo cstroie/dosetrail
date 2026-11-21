@@ -20,6 +20,10 @@ class Settings:
     database_url: str = DEFAULT_DB_URL
     echo_sql: bool = False
     data_dir: Path = field(default_factory=lambda: Path("var"))
+    secret_file: Path = field(
+        default_factory=lambda: Path.home() / ".config" / "dosetrail" / "secret")
+    session_hours: float = 12.0
+    secure_cookies: bool = False  # set true behind HTTPS
     source: Path | None = None
 
 
@@ -41,7 +45,14 @@ def load_settings() -> Settings:
             s.echo_sql = bool(db.get("echo", s.echo_sql))
             if "data_dir" in raw.get("paths", {}):
                 s.data_dir = Path(raw["paths"]["data_dir"])
+            sec = raw.get("security", {})
+            if "secret_file" in sec:
+                s.secret_file = Path(sec["secret_file"]).expanduser()
+            s.session_hours = float(sec.get("session_hours", s.session_hours))
+            s.secure_cookies = bool(sec.get("secure_cookies", s.secure_cookies))
             s.source = path
             break
     s.database_url = os.environ.get("DOSETRAIL_DATABASE_URL", s.database_url)
+    if os.environ.get("DOSETRAIL_SECRET_FILE"):
+        s.secret_file = Path(os.environ["DOSETRAIL_SECRET_FILE"])
     return s

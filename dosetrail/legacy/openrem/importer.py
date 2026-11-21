@@ -37,6 +37,7 @@ from ...db.models import (
     SizeSource,
     Study,
 )
+from ...maintenance import recompute_all
 from ...patient_age import parse_dicom_age
 
 BATCH = 5000
@@ -185,8 +186,10 @@ class Stats:
 
 
 class OpenREMImporter:
-    def __init__(self, session: Session, dump_dir: Path, institution_name: str = "Default"):
+    def __init__(self, session: Session, dump_dir: Path, institution_name: str = "Default",
+                 secret: bytes | None = None):
         self.session = session
+        self.secret = secret
         self.conn = session.connection()
         self.dir = dump_dir
         self.stats = Stats()
@@ -624,7 +627,8 @@ class OpenREMImporter:
                  ("projection events", self.import_proj_events),
                  ("processed objects", self.import_objects),
                  ("duplicate exposures", self.deduplicate_exposures),
-                 ("totals", self.update_totals)]
+                 ("totals", self.update_totals),
+                 ("derived columns", lambda: recompute_all(self.session, self.secret))]
         for label, fn in steps:
             started = dt.datetime.now()
             fn()
