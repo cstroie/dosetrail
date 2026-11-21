@@ -79,6 +79,18 @@ def _cmd_openrem_reconcile(args: argparse.Namespace) -> int:
     return 0 if ok else 2
 
 
+def _cmd_classify(args: argparse.Namespace) -> int:
+    from . import classify
+    from .db.session import make_engine, make_sessionmaker
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        stats = classify.run(session, args.study, progress=print)
+        session.commit()
+    print(", ".join(f"{k}: {v}" for k, v in sorted(stats.items())))
+    return 0
+
+
 def _cmd_openrem_fix(args: argparse.Namespace) -> int:
     import getpass
 
@@ -377,6 +389,11 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("dump", nargs="?", default="var/openrem-dump")
     rc.add_argument("--url")
     rc.set_defaults(func=_cmd_openrem_reconcile)
+
+    cl = sub.add_parser("classify", help="assign standard exam codes and DRL codes to studies")
+    cl.add_argument("--study", type=int, action="append", help="only this study id (repeatable)")
+    cl.add_argument("--url")
+    cl.set_defaults(func=_cmd_classify)
 
     fx = sub.add_parser("openrem-fix", help="correct known OpenREM value errors (idempotent)")
     fx.add_argument("--url")

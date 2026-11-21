@@ -1,0 +1,320 @@
+# Exam classification rules: local text (protocol, anatomy, study description…) -> exam code.
+#
+# Text is normalised before matching: lower case, accents removed, every non-alphanumeric
+# character replaced by a space, spaces collapsed, one space added at both ends. So
+# "W035 Torace a.p. 10kg" becomes " w035 torace a p 10kg ". Patterns are Python regular
+# expressions searched in that text.
+#
+# Within a family the FIRST matching rule wins: specific rules come before general ones.
+# A text that matches no rule stays unclassified (shown in the review list). Bare generic
+# words such as "spine" / "coloana" deliberately match nothing, so the next text in the
+# chain (e.g. the study description) is tried.
+#
+# Human decisions are stored in the database (code_mapping, status "confirmed") and always
+# win over these rules.
+#
+# Families: rx = DX/CR (and MG for now), rf = RF/XA, ct = CT.
+
+[[rx]]
+code = "RG-CRSN"
+match = 'sinus'
+[[rx]]
+code = "RG-CRPN"
+match = 'piramid|nasal bone|nasal|\bnaz'
+[[rx]]
+code = "RG-CROP"
+match = 'ortopantom|\bopg\b|panoram'
+[[rx]]
+code = "RG-CRTM"
+match = 'temporo ?mandib|\batm\b|\btmj\b'
+[[rx]]
+code = "RG-CRMN"
+match = 'mandib'
+[[rx]]
+code = "RG-CRMF"
+match = 'masiv facial|facial'
+[[rx]]
+code = "RG-CROR"
+match = '\borbit'
+[[rx]]
+code = "RG-CRMS"
+match = 'mastoid'
+[[rx]]
+code = "RG-CRST"
+match = 'sel+a turc'
+[[rx]]
+code = "RG-CR"
+match = 'crani|craniu|skull|\bcap\b|\bhead\b|brain|occiput'
+[[rx]]
+code = "RG-CVOS"
+match = 'pasting|whole spine|full spine|long ?spine|orthospine|scolio'
+[[rx]]
+code = "RG-CVCC"
+match = 'cervical|\bcspine\b|\bc spine\b|col cerv|\bcerv\b'
+[[rx]]
+code = "RG-CVTL"
+match = 'toraco ?lomb|thoraco ?lumb'
+[[rx]]
+code = "RG-CVTH"
+match = 'toracal|dorsal|thoracic spine|\btspine\b|\bt spine\b'
+[[rx]]
+code = "RG-CVSC"
+match = 'sacr[oau]? ?cocc|\bsacrum\b|\bsacru\b|coccy|cocc'
+[[rx]]
+code = "RG-PVSI"
+match = 'sacro ?ilia|sacroiliac'
+[[rx]]
+code = "RG-CVLM"
+match = 'lomb|lumbar|\blspine\b|\bl spine\b'
+[[rx]]
+code = "RG-THST"
+match = '\bstern'
+[[rx]]
+code = "RG-THCS"
+match = 'coaste|\bcoasta|\bribs?\b|grilaj'
+[[rx]]
+code = "RG-THCL"
+match = 'clavic'
+[[rx]]
+code = "RG-THPT"
+match = '(torace|thorax|chest|pulmon).*\b(pat|bed|mobil)\b'
+[[rx]]
+code = "RG-TH"
+match = 'torace|thorax|chest|pulmon|\bcp\b|\blung'
+[[rx]]
+code = "RG-ABRV"
+match = 'renovezic|\bkub\b'
+[[rx]]
+code = "RG-ABUV"
+match = 'urograf'
+[[rx]]
+code = "RG-AB"
+match = 'abdom'
+[[rx]]
+code = "RG-PVCF"
+match = '\bhip\b|\bsold|coxo|coxofem|hip joint'
+[[rx]]
+code = "RG-PV"
+match = 'pelvi|bazin'
+[[rx]]
+code = "RG-MSOP"
+match = 'scapul|omoplat'
+[[rx]]
+code = "RG-MSUB"
+match = '\bumar|shoulder'
+[[rx]]
+code = "RG-MSAB"
+match = 'antebrat|forearm'
+[[rx]]
+code = "RG-MSHM"
+match = 'humer|\bbrat\b|\barm\b'
+[[rx]]
+code = "RG-MSCT"
+match = '\bcot\b|elbow'
+[[rx]]
+code = "RG-MSPL"
+match = 'police|thumb'
+[[rx]]
+code = "RG-MSDG"
+match = 'deget[e]? mana|finger|\bdeget(?!\w* picior)'
+[[rx]]
+code = "RG-CVGT"
+match = '\bneck|\bgat\b|parti moi cerv'
+[[rx]]
+code = "RG-MSCP"
+match = 'carp|scaphoid|scafoid'
+[[rx]]
+code = "RG-MSPN"
+match = 'pumn|wrist'
+[[rx]]
+code = "RG-MSMN"
+match = '\bmana\b|\bmaini\b|\bhand|\bmano\b'
+[[rx]]
+code = "RG-MIOL"
+match = 'whole leg|ortholeg|membr\w* inf\w* integral'
+[[rx]]
+code = "RG-MIRT"
+match = 'rotul|patell'
+[[rx]]
+code = "RG-MIGN"
+match = 'genunch|\bknee'
+[[rx]]
+code = "RG-MIFM"
+match = 'femur|coaps'
+[[rx]]
+code = "RG-MICL"
+match = 'calcan'
+[[rx]]
+code = "RG-MIDG"
+match = 'deget[e]? picior|\btoes?\b|haluce'
+[[rx]]
+code = "RG-MITR"
+match = '\btars'
+[[rx]]
+code = "RG-MIGL"
+match = 'glezn|ankle'
+[[rx]]
+code = "RG-MIGM"
+match = 'gamba|\blower leg\b|\bleg\b|tibi'
+[[rx]]
+code = "RG-MIPC"
+match = 'picior|\bfoot\b|\bfeet\b'
+
+# ---------------------------------------------------------------- fluoroscopy
+
+[[rf]]
+code = "RF-PVCM"
+match = 'cistograf|mictional|\bmcu\b|\bvcug\b|cystour'
+[[rf]]
+code = "RF-PVCR"
+match = 'uretrocist|retrograd'
+[[rf]]
+code = "RF-ABIG"
+match = 'irigo|clism|colon|dezinvagin'
+[[rf]]
+code = "RF-ABIS"
+match = 'intestin subt|small bowel|enterocliz'
+[[rf]]
+code = "RF-THFG"
+match = 'faring|esofag|deglut|swallow'
+[[rf]]
+code = "RF-ABGD"
+match = 'gastro|duoden|tranzit|gastrointestinal|\begd\b|\bugi\b'
+[[rf]]
+code = "RF-PVHS"
+match = 'histero'
+[[rf]]
+code = "RF-ABCG"
+match = 'colangio'
+[[rf]]
+code = "RF-ABPG"
+match = 'pielog'
+[[rf]]
+code = "RF-SPFS"
+match = 'fistulo'
+[[rf]]
+code = "RF-SPAR"
+match = 'artrogr'
+[[rf]]
+code = "RF-TH"
+match = 'torace|thorax|chest'
+
+# ---------------------------------------------------------------- CT
+
+[[ct]]
+code = "CT-CRPF"
+match = 'perfuz|perfusion'
+[[ct]]
+code = "AG-SCCA"
+match = 'calcium|calciu|ca score'
+[[ct]]
+code = "AG-CORD"
+match = 'coronar|cardiac'
+[[ct]]
+code = "AG-CTPA"
+match = '\bctpa\b|embol\w* pulm|pulm\w* angio|angio\w* pulm'
+[[ct]]
+code = "AG-CRCC"
+match = 'angio\w* (cerebr|head|cap)\w* (cerv|neck|gat)'
+[[ct]]
+code = "AG-CR"
+match = 'angio\w* (cerebr|head|cap|willis)|(cerebr|head|cap)\w* angio'
+[[ct]]
+code = "AG-CERV"
+match = 'angio\w* (cerv|neck|gat|carot)|carot'
+[[ct]]
+code = "CT-POLI"
+match = 'politrauma|polytrauma|whole body|wholebody'
+[[ct]]
+code = "CT-SN"
+match = 'sinus'
+[[ct]]
+code = "CT-CROR"
+match = '\borbit'
+[[ct]]
+code = "CT-CRMS"
+match = 'mastoid|stanc|temporal bone|\biac\b|\bear\b'
+[[ct]]
+code = "CT-CRMF"
+match = 'masiv facial|facial|maxilo|dental|dentascan'
+[[ct]]
+code = "CT-CTAP"
+match = '(cap|head)\w* (gat|neck|cerv)\w* (tap|torace abdomen pelvis)'
+[[ct]]
+code = "CT-TAP"
+match = '\btap\b|tor\w* abd\w* pelv|thor\w* abd\w* pelv|trunchi'
+[[ct]]
+code = "CT-THAB"
+match = 'tor\w* abd|thor\w* abd'
+[[ct]]
+code = "CT-ABPV"
+match = 'abd\w* pelv|abdomenpelvis'
+[[ct]]
+code = "CT-CRCC"
+match = '(cap|head|cerebr)\w* (gat|neck|cerv)'
+[[ct]]
+code = "CT-CVCC"
+match = 'c ?spine|cervical spine|col\w* cerv'
+[[ct]]
+code = "CT-CVLM"
+match = 'l ?spine|lomb|lumbar'
+[[ct]]
+code = "CT-CVTH"
+match = 't ?spine|toracal|thoracic spine'
+[[ct]]
+code = "CT-CERV"
+match = '\bneck|\bgat\b|cervical|\bcerv\b'
+[[ct]]
+code = "CT-THLD"
+match = '(torace|thorax|chest|lung)\w* (low ?dose|ld)\b'
+[[ct]]
+code = "CT-TH"
+match = 'torace|thorax|chest|pulmon|\blung'
+[[ct]]
+code = "CT-AB"
+match = 'abdom'
+[[ct]]
+code = "CT-PV"
+match = 'pelvi|bazin|\bhip\b|\bsold'
+[[ct]]
+code = "CT-CRLD"
+match = '(cap|head|cerebr)\w* (low ?dose|ld)\b'
+[[ct]]
+code = "CT-CR"
+match = '\bhead|\bcap\b|cerebr|crani|brain'
+[[ct]]
+code = "CT-MSUB"
+match = 'shoulder|\bumar'
+[[ct]]
+code = "CT-MSCT"
+match = 'elbow|\bcot\b'
+[[ct]]
+code = "CT-MSPN"
+match = 'wrist|pumn'
+[[ct]]
+code = "CT-MSMN"
+match = '\bhand|\bmana\b'
+[[ct]]
+code = "CT-MSHM"
+match = 'humer'
+[[ct]]
+code = "CT-MIGN"
+match = '\bknee|genunch'
+[[ct]]
+code = "CT-MIFM"
+match = 'femur'
+[[ct]]
+code = "CT-MIGL"
+match = 'ankle|glezn'
+[[ct]]
+code = "CT-MIPC"
+match = '\bfoot|picior'
+[[ct]]
+code = "CT-MIGM"
+match = 'gamba|tibi'
+
+# CT contrast mode (ro-nom-ct-contrast) from the description and series protocols.
+[contrast]
+multiphase = 'multifaz|multiphas|trifaz|bifaz|triphas|biphas|arterial\w* (venos|venous|portal)'
+contrast = 'contrast|bolus|\bangio|\bcu sdc\b|\bc\b'
+native = 'nativ|native|non ?contrast|without|fara|simplu|\bn\b'

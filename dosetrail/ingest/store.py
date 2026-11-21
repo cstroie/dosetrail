@@ -171,6 +171,7 @@ class Store:
             added += 1
         self.session.flush()
         update_study_totals(self.session, study)
+        self._classify(study.id)
         if device is not None:
             _touch_device(device, study.study_datetime, new_study)
         self._record(obj, study.id, "imported", f"{added} event(s)", seen)
@@ -208,6 +209,20 @@ class Store:
             study.modality = s.get("modality") or study.modality
         self.session.flush()
         return study, new
+
+    def _classify(self, study_id: int) -> None:
+        """Exam codes for the touched study; never blocks an import."""
+        import logging
+
+        from .. import classify
+
+        try:
+            with self.session.begin_nested():
+                classify.run(self.session, [study_id])
+        except Exception as exc:  # noqa: BLE001 – classification is best effort here
+            logging.getLogger(__name__).warning("classification of study %s failed: %s",
+                                                study_id, exc)
+            self.stats["classify_failed"] += 1
 
     def _record(self, obj, study_id, status, message, seen) -> None:
         row = seen or IngestedObject(sop_instance_uid=obj.sop_instance_uid[:64],
