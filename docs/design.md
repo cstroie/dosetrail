@@ -267,7 +267,41 @@ OpenREM may have stored patient ID and name in clear, as unsalted SHA-256, or no
 
 ---
 
-## 9. Security and privacy
+## 9. Exports, DRL surveys and reference levels
+
+DoseTrail does not adopt any single national template. It stores one **standards-based core dataset**, and every survey format is a thin converter on top of it.
+
+### 9.1 Standards
+| Layer | Standard |
+|---|---|
+| DRL methodology | **ICRP Publication 135**: a per room or facility median per exam; a minimum sample of about 20 patients (more for MG); a standard-size adult window of about 70 kg; the national DRL is the P75 of the facility medians. This is the basis of Euratom 2013/59 Art. 56. |
+| Exam taxonomies | EC **RP 180** (European DRLs), **RP 185** (paediatric DRLs: weight bands for body exams, age bands for head), **RP 195 / EUCLID** (clinical-indication DRLs for CT) |
+| Procedure codes | **RadLex Playbook / LOINC radiology** codes attached to standard names. SNOMED CT codes for clinical indications are optional. |
+| Quantities and units | DICOM dose definitions (CTDIvol, DLP, DAP, Ka,r, AGD) with **UCUM** unit codes (`mGy`, `mGy.cm`, `Gy.m2`) |
+| Registry exchange | **IHE REM**: de-identified RDSR export for dose registries |
+
+### 9.2 Export products
+1. **DoseTrail DRL Dataset (versioned)**
+   - One row per exam, as CSV, XLSX (own writer) or JSON, with a published data dictionary.
+   - Each row holds:
+     - pseudonymised facility and device codes, modality, manufacturer and model;
+     - local exam name, standard code and indication;
+     - age, sex, weight, height and the derived adult or paediatric band;
+     - dose metrics with UCUM units, event counts and key technique factors.
+   - A metadata header records the period, filters, software version and method.
+2. **ICRP 135 summary**
+   - Per room or facility × exam: n, median, mean, P25, P75, min and max.
+   - Applies minimum-n and weight-window rules, and flags groups that are not compliant.
+3. **De-identified RDSR export** (IHE REM), for future national or EU registries.
+4. **Plain CSV and XLSX list exports** per modality, matching OpenREM's.
+5. **Converters (later):** future Romanian template, UK UKHSA formats, IAEA forms. Each reshapes product 1 or 2.
+
+### 9.3 Reference levels as data
+DRL tables are stored as **versioned reference sets** (local, national, European RP 180/185/195, others). Each entry holds an exam code, metric, value, unit, patient group, source and validity date. Charts, study flags and alerts compare against a selected set. A new national table is a data import, not a code change.
+
+---
+
+## 10. Security and privacy
 
 - Patient identifiers are stored in clear and visible only to roles that have `view_pid`. Pseudonymised display and exports are available per role or setting.
 - **Roles:** `viewer`, `exporter`, `pid` (view patient identifiers), `importer`, `admin`. They can be combined.
@@ -277,7 +311,7 @@ OpenREM may have stored patient ID and name in clear, as unsalted SHA-256, or no
 
 ---
 
-## 10. Testing
+## 11. Testing
 
 - Unit tests per adapter, using anonymised fixture files per vendor and modality.
 - Upsert scenarios: cumulative, continued and duplicate RDSRs, and header followed by RDSR.
@@ -288,7 +322,7 @@ OpenREM may have stored patient ID and name in clear, as unsalted SHA-256, or no
 
 ---
 
-## 11. Roadmap
+## 12. Roadmap
 
 | Milestone | Content |
 |---|---|
@@ -296,12 +330,12 @@ OpenREM may have stored patient ID and name in clear, as unsalted SHA-256, or no
 | **M2 — Browse** | Auth and roles, API, study lists and detail pages for CT/DX/RF/MG, device admin (display names, merge, local/external) |
 | **M3 — Charts** | Stats layer, the full chart inventory, standard names |
 | **M4 — DICOM networking** | Store SCP, scheduled QR with series selection, back-fill, ingest monitoring |
-| **M5 — Exports and alerts** | CSV and own-XLSX exports, pluggable survey formats, fluoroscopy high-dose and cumulative alerts, notifications |
+| **M5 — Exports and alerts** | CSV and own-XLSX exports, DRL dataset and ICRP 135 summary, reference sets, RDSR export, fluoroscopy high-dose and cumulative alerts, notifications |
 | **M6 — Advanced** | MG header adapter polish, Philips Dose Info, NM/RRDSR, SSDE, skin dose maps, Docker |
 
 ---
 
-## 12. Decisions and open questions
+## 13. Decisions and open questions
 
 **Decided (2026-11-21):**
 - **Frontend:** HTML, CSS and vanilla JavaScript only; no npm and no build step. Three design variants are requested (`frontend-brief.md`).
@@ -310,5 +344,6 @@ OpenREM may have stored patient ID and name in clear, as unsalted SHA-256, or no
 - **Legacy import:** CSV dumps are made on the OpenREM server and copied to the DoseTrail host.
 - **Notifications:** pluggable channels: e-mail over SMTP (stdlib `smtplib`) and **ntfy** (plain HTTP POST with stdlib `urllib`), with more to come.
 
-**Open:**
-1. National survey and DRL export formats are still to be identified.
+- **Survey and DRL exports:** a standards-based core dataset (ICRP 135 method, RP 180/185/195 taxonomies, RadLex/LOINC codes, UCUM units, IHE REM RDSR export). National formats will be converters (§9).
+
+**Open:** none at the moment.
