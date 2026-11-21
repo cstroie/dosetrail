@@ -162,3 +162,21 @@ def test_dry_run_and_done_days(env):
         qr.mark_day_done(s, DAY)
         qr.mark_day_done(s, DAY)
         assert qr.done_days(s) == {"2025-11-06"}
+
+
+def test_partial_modality_run_does_not_finish_the_day(tmp_path, monkeypatch):
+    from dosetrail import cli
+
+    calls = []
+    monkeypatch.setattr(qr, "run_day", lambda *a, **k: calls.append(a[6]))
+    url = f"sqlite:///{tmp_path / 'p.sqlite3'}"
+    upgrade(url)
+    monkeypatch.setenv("DOSETRAIL_SECRET_FILE", str(tmp_path / "secret"))
+    monkeypatch.setenv("DOSETRAIL_CONFIG", str(tmp_path / "none.toml"))
+    base = ["qr", "--url", url, "--host", "h", "--aec", "P", "--from", "2025-11-06",
+            "--to", "2025-11-06"]
+    assert cli.main(base + ["--modalities", "CT"]) == 0
+    assert cli.main(base) == 0  # still runs: the CT-only run did not finish the day
+    assert calls == [{"CT"}, None]
+    with make_sessionmaker(make_engine(url))() as s:
+        assert qr.done_days(s) == {"2025-11-06"}

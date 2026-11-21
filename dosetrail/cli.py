@@ -269,7 +269,8 @@ def _cmd_qr(args: argparse.Namespace) -> int:
             qr.run_day(node, day, worker.spool, drain, maker, stats, mods, args.dry_run,
                        args.pause)
             print(f"{day}: {dict(stats.counts)}; imported {worker.stats}")
-            if not args.dry_run and not stats.counts.get("study_errors"):
+            # a day is finished only after a full run (no modality subset) without errors
+            if not args.dry_run and mods is None and not stats.counts.get("study_errors"):
                 with maker() as session:
                     qr.mark_day_done(session, day)
         day -= dt.timedelta(days=1)
