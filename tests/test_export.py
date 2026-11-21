@@ -185,3 +185,25 @@ def test_survey_rows_paediatric_series_and_checks(session):
     assert dx["projection"] == "AP" and dx["kvp"] == 62.0 and dx["ndrl_exam"] == "RX-TORACE-PA-AP"
     assert set(ct[0]) == set(survey.FIELDS)
     assert survey.month_range("2026-12") == (dt.datetime(2026, 12, 1), dt.datetime(2027, 1, 1))
+
+
+def test_ages_are_coarsened_and_codes_are_stable():
+    from types import SimpleNamespace
+
+    from dosetrail.export import drl_dataset as ds
+
+    assert ds.coarse_age(200) == {"age_days": 200, "age_months": 6, "age_years": 0}
+    assert ds.coarse_age(500) == {"age_days": None, "age_months": 16, "age_years": 1}
+    assert ds.coarse_age(3000) == {"age_days": None, "age_months": None, "age_years": 8}
+    assert ds.coarse_age(None)["age_years"] is None
+    a = SimpleNamespace(id=1, legacy_sha256="abc")
+    b = SimpleNamespace(id=99, legacy_sha256="abc")  # the same patient after a re-import
+    assert ds.patient_code(b"k" * 32, a) == ds.patient_code(b"k" * 32, b)
+    assert ds.patient_code(b"k" * 32, None) is None
+
+
+def test_csv_cells_are_spreadsheet_safe():
+    assert lists.safe_text("- - - - -") == "'- - - - -"
+    assert lists.safe_text("=HYPERLINK(1)") == "'=HYPERLINK(1)"
+    assert lists.safe_text("Chest") == "Chest" and lists.safe_text(-30.0) == -30.0
+    assert lists._csv_value("@x") == "'@x"

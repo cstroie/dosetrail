@@ -516,7 +516,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 text = io.TextIOWrapper(fh, encoding="utf-8-sig", newline="")
                 w = csv.DictWriter(text, ds.SUMMARY_FIELDS, lineterminator="\r\n")
                 w.writeheader()
-                w.writerows({k: ("" if v is None else v) for k, v in r.items()} for r in rows)
+                from ..export.lists import safe_text
+
+                w.writerows({k: ("" if v is None else safe_text(v)) for k, v in r.items()}
+                            for r in rows)
                 text.flush()
                 text.detach()
             else:

@@ -51,8 +51,9 @@ DICTIONARY: list[tuple[str, str, str]] = [
     ("period", "", "Month of the examination, YYYY-MM"),
     ("patient", "", "Patient code (keyed pseudonym; equal codes = same patient)"),
     ("sex", "", "M / F / O"),
-    ("age_days", "d", "Age at the examination in completed days"),
-    ("age_years", "a", "Age in years, 2 decimals"),
+    ("age_days", "d", "Age in completed days, below 1 year only"),
+    ("age_months", "mo", "Age in completed months, below 24 months only"),
+    ("age_years", "a", "Age in completed years"),
     ("age_group", "", "National DRL age group (OMS 838/2025): 1-4y, 5-9y, 10-14y, 15y+"),
     ("weight_kg", "kg", "Patient weight"),
     ("weight_source", "", "measured / chart_same_day / chart_72h / estimated_* / dicom_unknown"),
@@ -80,6 +81,29 @@ FIELDS = [d[0] for d in DICTIONARY]
 def _code(secret: bytes, kind: str, value) -> str:
     mac = hmac.new(secret, f"{kind}:{value}".encode(), hashlib.sha256).hexdigest()
     return f"{kind[0].upper()}-{mac[:8].upper()}"
+
+
+def coarse_age(days: int | None) -> dict:
+    """Age as the survey plan asks: days below 1 year, months up to 24 months, completed
+    years from 2 years on. Finer values are left out (with month, sex and device they would
+    narrow down the birth date)."""
+    if days is None:
+        return {"age_days": None, "age_months": None, "age_years": None}
+    months = int(days / 30.4375)
+    return {"age_days": days if days < 365 else None,
+            "age_months": months if months < 24 else None,
+            "age_years": int(days / 365.25)}
+
+
+def patient_code(secret: bytes, p) -> str | None:
+    """Stable across re-imports: keyed on the patient hash, not the database id."""
+    if p is None:
+        return None
+    return _code(secret, "patient", p.legacy_sha256 or f"id:{p.id}")
+
+
+def device_code(secret: bytes, d) -> str | None:
+    return _code(secret, "device", d.identity_key or f"id:{d.id}") if d is not None else None
 
 
 def _r(x, nd=6):
@@ -146,13 +170,12 @@ def _row(s, p, devices, physical, secret, fac, nat_bands: list[Band], nat, eu, n
     phantoms = {e.ct_phantom_cm for e in evs if e.ct_phantom_cm}
     return {
         "dataset_version": DATASET_VERSION, "facility": fac,
-        "device": _code(secret, "device", d.id) if d else None,
+        "device": device_code(secret, d),
         "modality": s.modality, "manufacturer": d.manufacturer if d else None,
         "model": d.model_name if d else None,
         "period": s.study_datetime.strftime("%Y-%m") if s.study_datetime else None,
-        "patient": _code(secret, "patient", p.id) if p else None,
-        "sex": p.sex if p else None, "age_days": s.age_days,
-        "age_years": round(s.age_days / 365.25, 2) if s.age_days is not None else None,
+        "patient": patient_code(secret, p),
+        "sex": p.sex if p else None, **coarse_age(s.age_days),
         "age_group": band.key if band else None,
         "weight_kg": s.weight_kg,
         "weight_source": s.weight_source.value if s.weight_source else None,
@@ -198,8 +221,10 @@ def write(fmt: str, target: IO, data: Iterator[dict], meta: dict,
         text = io.TextIOWrapper(target, encoding="utf-8-sig", newline="")
         w = csv.DictWriter(text, fields, lineterminator="\r\n")
         w.writeheader()
+        from .lists import safe_text
+
         for r in data:
-            w.writerow({k: ("" if v is None else v) for k, v in r.items()})
+            w.writerow({k: ("" if v is None else safe_text(v)) for k, v in r.items()})
             n += 1
         text.flush()
         text.detach()

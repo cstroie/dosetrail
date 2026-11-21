@@ -36,7 +36,7 @@ function alertHref(a) {
   return studyHref(a.study_id != null ? { id: a.study_id } : { accession: a.accession });
 }
 
-function alertQueue(alerts, now) {
+function alertQueue(alerts, now, total) {
   const list = h('ul', { class: 'queue' });
   for (const a of alerts) {
     const li = h('li', {},
@@ -66,7 +66,7 @@ function alertQueue(alerts, now) {
         } }, t('overview.ack'))));
     list.append(li);
   }
-  const open = alerts.length;
+  const open = total ?? alerts.length;  // the API lists the newest 20 and sends the total
   return h('section', { class: 'panel', id: 'alerts', 'aria-labelledby': 'h-q' },
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-q' }, t('overview.alerts')), h('span', { class: 'tag alert' }, `${open} open`)),
     list);
@@ -122,7 +122,7 @@ async function render() {
       h('div', { class: 'row', style: { 'align-items': 'baseline', gap: '12px' } }, h('h1', {}, t('overview.title')),
         h('span', { class: 'muted mono' }, dateTime(data.generated))),
       kpis(data.modalities),
-      h('div', { class: 'cols', style: { 'margin-top': '12px' } }, alertQueue(data.alerts, data.generated), feedHealth(data.feeds, data.generated), lookupPanel()));
+      h('div', { class: 'cols', style: { 'margin-top': '12px' } }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), lookupPanel()));
   } catch (err) {
     page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'),
       h('span', { class: 'muted mono' }, err.message), h('button', { class: 'btn', type: 'button', onclick: render }, t('state.retry'))));

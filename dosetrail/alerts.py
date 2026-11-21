@@ -189,6 +189,11 @@ def evaluate_range(session: Session, start: dt.datetime | None = None,
     return total
 
 
+def open_count(session: Session) -> int:
+    return session.scalar(select(func.count()).select_from(Alert)
+                          .where(Alert.status == "open")) or 0
+
+
 def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
     """Short value and limit texts for the alert queue."""
     v = a.value or 0.0

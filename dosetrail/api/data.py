@@ -77,6 +77,7 @@ def overview(session: Session, now: dt.datetime) -> dict:
 
     return {"generated": iso_min(now), "modalities": modalities,
             "alerts": alerts.listing(session, "open", 20, names=device_names(session)),
+            "alerts_open": alerts.open_count(session),
             "feeds": feeds(session, now)}
 
 

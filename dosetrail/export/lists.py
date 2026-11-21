@@ -183,6 +183,15 @@ def rows(session: Session, conds: list, level: str = "study", include_pid: bool 
         session.expunge_all()
 
 
+def safe_text(v):
+    """Spreadsheet-safe text: a cell starting with = + - @ (e.g. "- - - - -" descriptions
+    or a crafted DICOM field) is read as a formula by Excel; prefix it with an apostrophe.
+    Numbers are left alone."""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + v
+    return v
+
+
 def _csv_value(v):
     if isinstance(v, dt.datetime):
         return v.isoformat(sep=" ", timespec="seconds")
@@ -190,7 +199,7 @@ def _csv_value(v):
         return v.isoformat()
     if isinstance(v, bool):
         return "1" if v else "0"
-    return "" if v is None else v
+    return "" if v is None else safe_text(v)
 
 
 def write_csv(fh: IO[str], level: str, include_pid: bool, data: Iterator[list]) -> int:

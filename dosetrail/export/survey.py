@@ -6,9 +6,10 @@ MS-CNCAN-SDNP-2026-001, v1.0, March 2026). The layout is versioned so the plan c
 * **Patients:** paediatric only by default (age < 18 years).
 * **Groups:** the RP 185 head age group and the body weight group (with 80–110 kg) are
   both given, so the analysis can pick by exam.
-* **Anonymisation:** no name, national ID or birth date; the month of the exam only; keyed
-  pseudonymous codes for patient, device and institution (HMAC with the site secret), so
-  repeats can be counted centrally.
+* **Anonymisation:** no name, national ID or birth date; the month of the exam only; age
+  in days below 1 year, months up to 24 months, completed years after; keyed pseudonymous
+  codes for patient, device and institution (HMAC with the site secret, keyed on stable
+  identities so codes survive a re-import), so repeats can be counted centrally.
 * **Validation flags** (from the plan):
   * ``check_dlp``: CTDIvol × scan length vs DLP within ±10 %;
   * ``check_phantom``: a head exam measured with the 32 cm phantom;
@@ -28,9 +29,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import Classification, Code, CodeSystem, Device, Event, Patient, Study
-from ..patient_age import band_for_age, band_for_weight, format_age
+from ..patient_age import band_for_age, band_for_weight
 from ..stats import load_bands
-from .drl_dataset import EUROPEAN, NATIONAL, _code, _r
+from .drl_dataset import (
+    EUROPEAN,
+    NATIONAL,
+    _code,
+    _r,
+    coarse_age,
+    device_code,
+    patient_code,
+)
 
 SURVEY_VERSION = "2026.1"
 EXPOSURE_EXAM = ("DX", "CR", "MG", "PX")
@@ -47,9 +56,9 @@ DICTIONARY: list[tuple[str, str, str]] = [
     ("period", "", "Month of the examination, YYYY-MM"),
     ("patient", "", "Patient code (keyed pseudonym; equal codes = same patient)"),
     ("sex", "", "M / F / O"),
-    ("age_days", "d", "Age in completed days"),
-    ("age_months", "mo", "Age in completed months (approximate from days)"),
-    ("age", "", "Display age: days < 1 month, months < 24 months, then years"),
+    ("age_days", "d", "Age in completed days, below 1 year only"),
+    ("age_months", "mo", "Age in completed months, below 24 months only"),
+    ("age_years", "a", "Age in completed years"),
     ("head_age_group", "", "RP 185 head group: 0-3mo, 3mo-1y, 1-6y, 6y+"),
     ("weight_kg", "kg", "Patient weight"),
     ("weight_source", "", "measured / chart_same_day / chart_72h / estimated_* / dicom_unknown"),
@@ -131,13 +140,12 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
             sc = study_codes.get(s.id, {})
             base = {
                 "survey_version": SURVEY_VERSION, "institution": inst,
-                "device": _code(secret, "device", d.id) if d else None,
+                "device": device_code(secret, d),
                 "manufacturer": d.manufacturer if d else None,
                 "model": d.model_name if d else None, "modality": s.modality,
                 "period": s.study_datetime.strftime("%Y-%m") if s.study_datetime else None,
-                "patient": _code(secret, "patient", p.id) if p else None,
-                "sex": p.sex if p else None, "age_days": s.age_days,
-                "age_months": int(s.age_days / 30.4375), "age": format_age(s.age_days),
+                "patient": patient_code(secret, p),
+                "sex": p.sex if p else None, **coarse_age(s.age_days),
                 "head_age_group": hb.key if hb else None, "weight_kg": s.weight_kg,
                 "weight_source": s.weight_source.value if s.weight_source else None,
                 "weight_group": wb.key if wb else None, "height_m": s.height_m,
