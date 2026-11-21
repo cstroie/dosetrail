@@ -547,3 +547,32 @@ class Alert(Base):
         UniqueConstraint("rule_id", "study_id", name="uq_alert_rule_study"),
         Index("ix_alert_status", "status", "study_datetime"),
     )
+
+
+# ---------------------------------------------------------------- DICOM nodes
+
+
+class DicomNode(TimestampMixin, Base):
+    """A remote DICOM application entity: a PACS we query/retrieve from, and/or a modality
+    or PACS allowed to send to our receiver."""
+
+    __tablename__ = "dicom_node"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text(64), unique=True)
+    aet: Mapped[str] = mapped_column(AsciiId(16))
+    host: Mapped[str | None] = mapped_column(AsciiId(255))  # not needed for senders
+    port: Mapped[int | None] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    query_retrieve: Mapped[bool] = mapped_column(Boolean, default=False)  # we pull from it
+    sends: Mapped[bool] = mapped_column(Boolean, default=False)  # may send to our receiver
+    retrieve: Mapped[str] = mapped_column(AsciiId(8), default="get")  # get | move
+    move_destination: Mapped[str | None] = mapped_column(AsciiId(16))
+    modalities: Mapped[str | None] = mapped_column(AsciiId(64))  # comma list for C-FIND
+    max_results: Mapped[int | None] = mapped_column(Integer)  # its C-FIND cap
+    timeout: Mapped[int] = mapped_column(Integer, default=60)
+    sync_days: Mapped[int | None] = mapped_column(Integer)  # scheduled sync window
+    notes: Mapped[str | None] = mapped_column(Text(1024))
+    last_echo_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    last_echo_ok: Mapped[bool | None] = mapped_column(Boolean)
+    last_echo_ms: Mapped[int | None] = mapped_column(Integer)
+    last_echo_error: Mapped[str | None] = mapped_column(Text(255))

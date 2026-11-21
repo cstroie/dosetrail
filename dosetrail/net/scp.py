@@ -38,9 +38,19 @@ class Receiver:
         self.ae = build_ae(aet, allowed_aets)
         self.server = None
         self.received = 0
+        self.by_aet: dict[str, dict] = {}  # calling AE -> {"n": count, "last": iso time}
+
+    def set_allowed(self, aets: list[str]) -> None:
+        """Change the accepted calling AE titles while running (empty: accept any)."""
+        self.ae.require_calling_aet = list(aets)
 
     def _on_store(self, event) -> int:
         uid = str(event.request.AffectedSOPInstanceUID)
+        try:
+            caller = event.assoc.requestor.ae_title
+            caller = (caller.decode() if isinstance(caller, bytes) else str(caller)).strip()
+        except Exception:  # noqa: BLE001 – statistics only
+            caller = "?"
         try:
             data = event.encoded_dataset()
             self.spool.write(uid, lambda p: p.write_bytes(data))
@@ -48,6 +58,11 @@ class Receiver:
             log.exception("cannot spool %s", uid)
             return 0xA700  # Out of resources
         self.received += 1
+        import datetime as dt
+
+        s = self.by_aet.setdefault(caller, {"n": 0, "last": None})
+        s["n"] += 1
+        s["last"] = dt.datetime.now().isoformat(timespec="seconds")
         return 0x0000
 
     def _on_echo(self, event) -> int:

@@ -39,7 +39,7 @@ function codeSelect(list) {
 async function render() {
   clear(page);
   page.append(h('nav', { class: 'tabs', 'aria-label': 'Administration', style: { 'margin-bottom': 'var(--sp-3)' } },
-    h('a', { href: 'devices.html' }, 'Devices'),
+    h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'dicom.html' }, 'DICOM nodes'),
     h('a', { href: 'review.html', 'aria-current': 'page' }, 'Protocol mappings'),
     h('a', { href: 'drl.html' }, 'DRLs'),
     h('a', { href: 'quality.html' }, 'Data quality'),

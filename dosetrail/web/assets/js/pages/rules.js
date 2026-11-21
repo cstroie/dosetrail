@@ -10,7 +10,7 @@ const KIND = { threshold: 'Threshold', drl_ratio: '× national DRL', cumulative:
 
 async function render() {
   clear(page).append(h('nav', { class: 'tabs', 'aria-label': 'Administration', style: { 'margin-bottom': 'var(--sp-3)' } },
-    h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'review.html' }, 'Protocol mappings'),
+    h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'dicom.html' }, 'DICOM nodes'), h('a', { href: 'review.html' }, 'Protocol mappings'),
     h('a', { href: 'drl.html' }, 'DRLs'), h('a', { href: 'quality.html' }, 'Data quality'),
     h('a', { href: 'rules.html', 'aria-current': 'page' }, 'Alert rules')));
   let rules;

@@ -31,7 +31,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from ..config import Settings, load_settings
-from ..db.models import AuditLog, Study, User
+from ..db.models import AuditLog, DicomNode, Study, User
 from ..db.session import make_engine, make_sessionmaker
 from ..security import load_or_create_secret, read_session, sign_session, verify_password
 from . import admin, data, review
@@ -43,7 +43,7 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "study.html": "study.html", "charts.html": "charts.html",
          "devices.html": "devices.html", "drl.html": "drl.html", "review.html": "review.html",
          "reports.html": "reports.html", "quality.html": "quality.html",
-         "rules.html": "rules.html"}
+         "rules.html": "rules.html", "dicom.html": "dicom.html"}
 
 
 class LoginIn(BaseModel):
@@ -65,6 +65,23 @@ class MergeIn(BaseModel):
 
 class DismissIn(BaseModel):
     record_ids: list[int]
+
+
+class NodeIn(BaseModel):
+    name: str | None = None
+    aet: str | None = None
+    host: str | None = None
+    port: int | None = None
+    enabled: bool | None = None
+    query_retrieve: bool | None = None
+    sends: bool | None = None
+    retrieve: str | None = None
+    move_destination: str | None = None
+    modalities: str | None = None
+    max_results: int | None = None
+    timeout: int | None = None
+    sync_days: int | None = None
+    notes: str | None = None
 
 
 class AckIn(BaseModel):
@@ -316,6 +333,74 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def code_list(system: str, user: User = Depends(current_user),
                   session: Session = Depends(db)):
         return _review(lambda: review.codes(session, system))
+
+    # ------------------------------------------------------------------ DICOM nodes
+
+    def _nodes(fn):
+        from ..net import nodes
+
+        try:
+            return fn(nodes)
+        except nodes.NodeError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/dicom/status")
+    def dicom_status(user: User = Depends(current_user), session: Session = Depends(db)):
+        import datetime as _dt
+
+        from ..net import nodes, qr
+
+        nodes.import_config(session, settings)
+        session.commit()
+        today = clock().date()
+        done = qr.done_days(session)
+        days = [(today - _dt.timedelta(days=i)).isoformat() for i in range(119, -1, -1)]
+        return {
+            "local": {"aet": settings.dicom_aet, "port": settings.dicom_port,
+                      "bind": settings.dicom_bind,
+                      "allowed": nodes.allowed_senders(session, settings.dicom_allowed_aets)},
+            "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
+            "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=300),
+            "coverage": [{"date": d, "done": d in done} for d in days],
+            "nodes": [nodes.as_dict(n) for n in session.scalars(
+                select(DicomNode).order_by(DicomNode.name))],
+        }
+
+    @app.post("/api/dicom/nodes")
+    def dicom_create(body: NodeIn, request: Request, user: User = Depends(admin_user),
+                     session: Session = Depends(db)):
+        n = _nodes(lambda nodes: nodes.create(session, body.model_dump(exclude_unset=True)))
+        from ..net.nodes import as_dict
+
+        out = as_dict(n)
+        _audit(session, request, user, "dicom_node.create", f"node:{n.name}",
+               {k: v for k, v in out.items() if k != "last_echo"})
+        session.commit()
+        return out
+
+    @app.patch("/api/dicom/nodes/{node_id}")
+    def dicom_update(node_id: int, body: NodeIn, request: Request,
+                     user: User = Depends(admin_user), session: Session = Depends(db)):
+        n, changes = _nodes(lambda nodes: nodes.update(
+            session, node_id, body.model_dump(exclude_unset=True)))
+        _audit(session, request, user, "dicom_node.update", f"node:{n.name}", changes)
+        session.commit()
+        return {"id": n.id, "changes": changes}
+
+    @app.delete("/api/dicom/nodes/{node_id}")
+    def dicom_delete(node_id: int, request: Request, user: User = Depends(admin_user),
+                     session: Session = Depends(db)):
+        d = _nodes(lambda nodes: nodes.delete(session, node_id))
+        _audit(session, request, user, "dicom_node.delete", f"node:{d['name']}", d)
+        session.commit()
+        return {"deleted": d["name"]}
+
+    @app.post("/api/dicom/nodes/{node_id}/echo")
+    def dicom_echo(node_id: int, request: Request, user: User = Depends(admin_user),
+                   session: Session = Depends(db)):
+        res = _nodes(lambda nodes: nodes.echo(session, node_id, settings.dicom_aet))
+        session.commit()
+        return res
 
     # ------------------------------------------------------------------ alerts
 

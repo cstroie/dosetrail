@@ -22,7 +22,7 @@ function render() {
   qb.addEventListener('query-change', (e) => { q = e.detail; prefs.set('quality.q', q); load(); });
   clear(page).append(
     h('nav', { class: 'tabs', 'aria-label': 'Administration', style: { 'margin-bottom': 'var(--sp-3)' } },
-      h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'review.html' }, 'Protocol mappings'),
+      h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'dicom.html' }, 'DICOM nodes'), h('a', { href: 'review.html' }, 'Protocol mappings'),
       h('a', { href: 'drl.html' }, 'DRLs'), h('a', { href: 'quality.html', 'aria-current': 'page' }, 'Data quality'),
       h('a', { href: 'rules.html' }, 'Alert rules')),
     qb, h('div', { id: 'qa' }));

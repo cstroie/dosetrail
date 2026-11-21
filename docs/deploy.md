@@ -71,3 +71,12 @@ systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
   - the 2007 Growth Reference for 5–10 years.
 - They are WHO data under WHO's terms (see `SOURCE.txt` there), so they are not shipped with DoseTrail. `dosetrail growth status` shows whether they are installed.
 - With the tables, data quality flags weights outside P1–P99 for age and sex. Studies below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Run `dosetrail growth check` after importing weights, e.g. from the RIS; new studies are checked as they arrive.
+
+## DICOM nodes
+- Remote AEs are managed in Admin → DICOM nodes:
+  - **query/retrieve** nodes are the PACS that `dosetrail qr` pulls from;
+  - **sends** nodes are modalities or PACS allowed to send to the receiver.
+  The receiver re-reads the allowed list every minute. Changes are audit-logged, and each node has a C-ECHO test.
+- `[pacs]` in `dosetrail.toml` is imported once as a node named "PACS". After that, the database is used. `dosetrail qr --node NAME` picks a node. `--host/--aec` still overrides for one run.
+- The receiver and `qr` write a heartbeat that the page shows (running/stopped, objects per sending AE, sync progress). It also shows a 120-day coverage strip of fully retrieved days.
+- Stop the receiver with SIGTERM (systemd does), not Ctrl-C.

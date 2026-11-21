@@ -335,3 +335,20 @@ def test_alert_endpoints(client):
     r = client.patch(f"/api/alert-rules/{rid}", json={"threshold": 3, "severity": "alert"})
     assert r.json()["changes"]["threshold"] == {"from": 2.0, "to": 3.0}
     assert client.patch(f"/api/alert-rules/{rid}", json={"severity": "x"}).status_code == 400
+
+
+def test_dicom_node_endpoints(client):
+    login(client, "viewer", "viewer-pass-1")
+    st = client.get("/api/dicom/status").json()
+    assert st["local"]["aet"] and len(st["coverage"]) == 120
+    assert client.post("/api/dicom/nodes", json={"name": "CT 1", "aet": "CT1"}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    n = client.post("/api/dicom/nodes", json={"name": "CT 1", "aet": "CT1", "sends": True})
+    assert n.status_code == 200, n.text
+    nid = n.json()["id"]
+    assert client.post("/api/dicom/nodes", json={"name": "X", "aet": "Y" * 20}).status_code == 400
+    r = client.patch(f"/api/dicom/nodes/{nid}", json={"notes": "room 3"}).json()
+    assert r["changes"]["notes"]["to"] == "room 3"
+    assert "CT1" in client.get("/api/dicom/status").json()["local"]["allowed"]
+    assert client.post(f"/api/dicom/nodes/{nid}/echo").status_code == 400  # no host
+    assert client.delete(f"/api/dicom/nodes/{nid}").json() == {"deleted": "CT 1"}

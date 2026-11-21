@@ -296,3 +296,13 @@ export function drlTrendUrl(params = {}) {
   for (const [k, v] of Object.entries({ ...params, format: 'xlsx' })) if (v != null) u.searchParams.set(k, String(v));
   return u.href;
 }
+
+/* ---------------- DICOM nodes (admin) ---------------- */
+/** GET /api/dicom/status → { local, receiver, qr, coverage: [{date, done}], nodes } */
+export function dicomStatus() {
+  return isSample ? serverOnly('DICOM nodes') : remote('/api/dicom/status');
+}
+export const createNode = (node) => send('POST', '/api/dicom/nodes', node);
+export const updateNode = (id, patch) => send('PATCH', `/api/dicom/nodes/${id}`, patch);
+export const deleteNode = (id) => send('DELETE', `/api/dicom/nodes/${id}`);
+export const echoNode = (id) => send('POST', `/api/dicom/nodes/${id}/echo`);

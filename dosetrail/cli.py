@@ -428,12 +428,36 @@ def _cmd_receive(args: argparse.Namespace) -> int:
 
     worker = SpoolWorker(spool, maker, _secret(), keep=s.keep_received,
                          notify=NotifySettings.from_dict(s.notify))
+    from .net import nodes
+
+    with maker() as session:
+        nodes.import_config(session, s)
+        allowed = nodes.allowed_senders(session, s.dicom_allowed_aets)
+        session.commit()
     rx = Receiver(spool, args.aet or s.dicom_aet, args.port or s.dicom_port,
-                  args.bind or s.dicom_bind, s.dicom_allowed_aets)
+                  args.bind or s.dicom_bind, allowed)
     worker.start()
     rx.start()
     done = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: done.set())
+
+    def status_loop():
+        """Every 30 s: heartbeat for the UI, and the accepted senders from the database."""
+        while not done.wait(30 if status_loop.ran else 0):
+            status_loop.ran = True
+            try:
+                with maker() as session:
+                    rx.set_allowed(nodes.allowed_senders(session, s.dicom_allowed_aets))
+                    nodes.write_status(session, nodes.RECEIVER_KEY, {
+                        "aet": rx.aet, "port": rx.port, "bind": rx.bind,
+                        "received": rx.received, "by_aet": rx.by_aet,
+                        "allowed": list(rx.ae.require_calling_aet), "spool": worker.stats})
+                    session.commit()
+            except Exception:  # noqa: BLE001 – status must never stop the receiver
+                logging.getLogger("dosetrail.receive").exception("status update failed")
+
+    status_loop.ran = False
+    threading.Thread(target=status_loop, name="dosetrail-status", daemon=True).start()
     with contextlib.suppress(KeyboardInterrupt):
         done.wait()
     rx.stop()
@@ -453,24 +477,41 @@ def _cmd_qr(args: argparse.Namespace) -> int:
 
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(message)s")
     s = load_settings()
-    host, aet = args.host or s.pacs_host, args.aec or s.pacs_aet
-    if not host or not aet:
-        print("PACS not configured: set [pacs] host/aet in dosetrail.toml or use --host/--aec")
-        return 2
-    mode = args.retrieve or s.pacs_retrieve
+    maker = make_sessionmaker(make_engine(args.url or s.database_url))
+    if args.host:  # explicit command-line node
+        if not args.aec:
+            print("--host needs --aec (the PACS AE title)")
+            return 2
+        node = qr.Node(args.host, args.port or s.pacs_port, args.aec, args.aet or s.dicom_aet,
+                       retrieve=args.retrieve or s.pacs_retrieve,
+                       move_destination=s.pacs_move_destination,
+                       max_results=s.pacs_max_results)
+        node_mods = list(s.pacs_modalities)
+    else:
+        from .net import nodes
+
+        with maker() as session:
+            nodes.import_config(session, s)
+            node, node_mods = nodes.qr_node(session, s, args.node)
+            session.commit()
+        if node is None:
+            print(f"no query/retrieve node {args.node!r}" if args.node else
+                  "no PACS configured: add a DICOM node (Admin > DICOM nodes) or [pacs]")
+            return 2
+        if args.aet:
+            node.calling_aet = args.aet
+        if args.retrieve:
+            node.retrieve = args.retrieve
+    mode = node.retrieve
     if mode not in ("get", "move"):
         print("retrieve mode must be 'get' or 'move'")
         return 2
-    node = qr.Node(host, args.port or s.pacs_port, aet, args.aet or s.dicom_aet,
-                   retrieve=mode, move_destination=s.pacs_move_destination,
-                   max_results=s.pacs_max_results)
     today = dt.date.today()
     if args.date_from:
         start = dt.date.fromisoformat(args.date_from)
         end = dt.date.fromisoformat(args.date_to) if args.date_to else today
     else:
         start, end = today - dt.timedelta(days=args.days - 1), today
-    maker = make_sessionmaker(make_engine(args.url or s.database_url))
     worker = SpoolWorker(Spool(s.spool_dir), maker, _secret(), keep=s.keep_received)
 
     def drain() -> int:
@@ -480,7 +521,26 @@ def _cmd_qr(args: argparse.Namespace) -> int:
         return total
 
     mods = {m.strip().upper() for m in args.modalities.split(",")} if args.modalities else None
-    configured = {m.upper() for m in s.pacs_modalities}
+    configured = {m.upper() for m in node_mods}
+    from .net.nodes import QR_KEY, write_status
+
+    last = [0.0]
+
+    def report(message: str, force: bool = False) -> None:
+        """Print, and every 15 s store the progress for the UI (DICOM nodes page)."""
+        import time
+
+        print(message, flush=True)
+        if force or time.monotonic() - last[0] > 15:
+            last[0] = time.monotonic()
+            try:
+                with maker() as session:
+                    write_status(session, QR_KEY, {
+                        "node": f"{node.aet}@{node.host}", "from": str(start), "to": str(end),
+                        "message": message, "dry_run": bool(args.dry_run)})
+                    session.commit()
+            except Exception:  # noqa: BLE001 – status only
+                pass
     receiver = None
     if mode == "move" and not args.dry_run and not _listening(s.dicom_port):
         from .net.scp import Receiver
@@ -494,14 +554,14 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     day = end
     while day >= start:  # newest first
         if day.isoformat() in done and day < today - dt.timedelta(days=1):
-            print(f"{day}: already done", flush=True)
+            report(f"{day}: already done")
         else:
             stats = qr.QRStats()
             qr.run_day(node, day, worker.spool, drain, maker, stats, mods or configured,
                        args.dry_run,
-                       args.pause, progress=lambda m: print(m, flush=True),
+                       args.pause, progress=report,
                        workers=args.workers)
-            print(f"{day}: {dict(stats.counts)}; imported {worker.stats}", flush=True)
+            report(f"{day}: {dict(stats.counts)}; imported {worker.stats}", force=True)
             # a day is finished only after a full run (no modality subset) without errors
             if not args.dry_run and mods is None and not stats.counts.get("study_errors"):
                 with maker() as session:
@@ -509,6 +569,7 @@ def _cmd_qr(args: argparse.Namespace) -> int:
         day -= dt.timedelta(days=1)
     if receiver is not None:
         receiver.stop()
+    report(f"finished {start}..{end}", force=True)
     return 0
 
 
@@ -662,6 +723,7 @@ def build_parser() -> argparse.ArgumentParser:
     rv.set_defaults(func=_cmd_receive)
 
     q = sub.add_parser("qr", help="query/retrieve dose objects from the PACS (C-FIND/C-GET)")
+    q.add_argument("--node", help="DICOM node name (default: the first query/retrieve node)")
     q.add_argument("--from", dest="date_from", help="first study date YYYY-MM-DD")
     q.add_argument("--to", dest="date_to", help="last study date (default today)")
     q.add_argument("--days", type=int, default=2, help="without --from: last N days")
