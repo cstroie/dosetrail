@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 
 from . import __version__
@@ -197,6 +198,35 @@ def _cmd_import(args: argparse.Namespace) -> int:
     return 1 if store.stats.get("failed") else 0
 
 
+def _cmd_receive(args: argparse.Namespace) -> int:
+    import logging
+    import signal
+    import threading
+
+    from .db.session import make_engine, make_sessionmaker
+    from .net.scp import Receiver
+    from .net.spool import Spool, SpoolWorker
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    s = load_settings()
+    spool = Spool(s.spool_dir)
+    maker = make_sessionmaker(make_engine(args.url or s.database_url))
+    worker = SpoolWorker(spool, maker, _secret(), keep=s.keep_received)
+    rx = Receiver(spool, args.aet or s.dicom_aet, args.port or s.dicom_port,
+                  args.bind or s.dicom_bind, s.dicom_allowed_aets)
+    worker.start()
+    rx.start()
+    done = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: done.set())
+    with contextlib.suppress(KeyboardInterrupt):
+        done.wait()
+    rx.stop()
+    worker.stop()
+    worker.join(timeout=10)
+    print(f"received {rx.received}; imported {worker.stats}")
+    return 0
+
+
 def _cmd_info(_args: argparse.Namespace) -> int:
     s = load_settings()
     print(f"DoseTrail {__version__}")
@@ -277,6 +307,13 @@ def build_parser() -> argparse.ArgumentParser:
     ip.add_argument("-v", "--verbose", action="store_true")
     ip.add_argument("--url")
     ip.set_defaults(func=_cmd_import)
+
+    rv = sub.add_parser("receive", help="run the DICOM receiver (C-STORE/C-ECHO SCP)")
+    rv.add_argument("--aet", help="AE title (default from settings: DOSETRAIL)")
+    rv.add_argument("--port", type=int, help="port (default 11112)")
+    rv.add_argument("--bind", help="address to listen on (default 0.0.0.0)")
+    rv.add_argument("--url")
+    rv.set_defaults(func=_cmd_receive)
 
     i = sub.add_parser("info", help="show configuration")
     i.set_defaults(func=_cmd_info)

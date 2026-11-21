@@ -24,6 +24,13 @@ class Settings:
         default_factory=lambda: Path.home() / ".config" / "dosetrail" / "secret")
     session_hours: float = 12.0
     secure_cookies: bool = False  # set true behind HTTPS
+    # DICOM networking
+    dicom_aet: str = "DOSETRAIL"
+    dicom_port: int = 11112
+    dicom_bind: str = "0.0.0.0"
+    dicom_allowed_aets: list[str] = field(default_factory=list)  # empty = accept any caller
+    spool_dir: Path = field(default_factory=lambda: Path("var/spool"))
+    keep_received: bool = False  # keep imported objects under spool/archive/YYYYMMDD
     source: Path | None = None
 
 
@@ -45,6 +52,14 @@ def load_settings() -> Settings:
             s.echo_sql = bool(db.get("echo", s.echo_sql))
             if "data_dir" in raw.get("paths", {}):
                 s.data_dir = Path(raw["paths"]["data_dir"])
+            dcm = raw.get("dicom", {})
+            s.dicom_aet = dcm.get("aet", s.dicom_aet)
+            s.dicom_port = int(dcm.get("port", s.dicom_port))
+            s.dicom_bind = dcm.get("bind", s.dicom_bind)
+            s.dicom_allowed_aets = list(dcm.get("allowed_aets", s.dicom_allowed_aets))
+            if "spool_dir" in dcm:
+                s.spool_dir = Path(dcm["spool_dir"]).expanduser()
+            s.keep_received = bool(dcm.get("keep_received", s.keep_received))
             sec = raw.get("security", {})
             if "secret_file" in sec:
                 s.secret_file = Path(sec["secret_file"]).expanduser()
