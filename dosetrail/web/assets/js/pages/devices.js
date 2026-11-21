@@ -12,8 +12,8 @@ import { num, ago, dateTime } from '../core/format.js';
 import { devices, now, isSample, updateDevice, mergeDevices, splitDevice, dismissMerge } from '../core/api.js';
 
 const page = document.getElementById('page');
-const ADMIN_TABS = ['Devices', 'DICOM nodes', 'Protocol mappings', 'DRLs', 'Alert rules', 'Users', 'Audit log'];
-const ADMIN_LINKS = { 'Protocol mappings': 'review.html', DRLs: 'drl.html' };
+const ADMIN_TABS = ['Devices', 'DICOM nodes', 'Protocol mappings', 'DRLs', 'Data quality', 'Alert rules', 'Users', 'Audit log'];
+const ADMIN_LINKS = { 'Protocol mappings': 'review.html', DRLs: 'drl.html', 'Data quality': 'quality.html' };
 
 let records = [];
 let suggestions = [];

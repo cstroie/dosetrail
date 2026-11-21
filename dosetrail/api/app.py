@@ -42,7 +42,7 @@ COOKIE = "dt_session"
 PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.html",
          "study.html": "study.html", "charts.html": "charts.html",
          "devices.html": "devices.html", "drl.html": "drl.html", "review.html": "review.html",
-         "reports.html": "reports.html"}
+         "reports.html": "reports.html", "quality.html": "quality.html"}
 
 
 class LoginIn(BaseModel):
@@ -212,9 +212,23 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.get("/api/studies/{study_id}")
     def study(study_id: int, user: User = Depends(current_user),
               session: Session = Depends(db)):
+        from .. import quality
+
         out = data.study(session, study_id)
         if out is None:
             raise HTTPException(404, "study not found")
+        out["quality"] = quality.study_findings(session, study_id)
+        return out
+
+    @app.get("/api/quality")
+    def quality_report(q: str = "origin:local date:90d", limit: int = 200,
+                       user: User = Depends(current_user), session: Session = Depends(db)):
+        from .. import quality
+
+        conds = data.conditions(data.parse(q), clock(), data.overrides(session))
+        out = quality.run(session, conds, min(max(limit, 1), 1000),
+                          names=data.device_names(session), physical=data._physical_ids(session))
+        out["q"] = q
         return out
 
     @app.post("/api/studies/{study_id}/identify")

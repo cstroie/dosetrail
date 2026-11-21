@@ -301,3 +301,11 @@ def test_survey_export_endpoint(client):
     r = client.get("/api/survey/export", params={"month": "2026-11", "q": "", "format": "json"})
     assert r.status_code == 200 and r.json()["dataset"] == "dosetrail-paediatric-survey"
     assert client.get("/api/survey/export", params={"month": "nov"}).status_code == 400
+
+
+def test_quality_endpoint_and_study_findings(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/quality", params={"q": ""}).json()
+    assert r["studies"] >= 1 and "ct_dlp_mismatch" in r["rules"]
+    sid = client.get("/api/studies", params={"q": "modality:XA"}).json()["rows"][0]["id"]
+    assert isinstance(client.get(f"/api/studies/{sid}").json()["quality"], list)

@@ -268,3 +268,8 @@ export function surveyUrl({ month, format = 'csv', q = 'origin:local' }) {
   for (const [k, v] of Object.entries({ month, format, q })) u.searchParams.set(k, v);
   return u.href;
 }
+
+/** GET /api/quality?q=&limit= → { studies, rules: {rule: {severity, title, count}}, devices, flagged } */
+export function quality(params = {}) {
+  return isSample ? serverOnly('Data quality') : remote('/api/quality', params);
+}
