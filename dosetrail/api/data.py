@@ -397,3 +397,24 @@ def lookup(session: Session, text: str, limit: int) -> list[dict]:
                     "device_name": names.get(d.id) if d else None,
                     "dose": dose})
     return out
+
+
+def stats(session: Session, q: str, now: dt.datetime, metric: str, by: str, system: str | None,
+          exam: str | None, age_scheme: str, weight_scheme: str, bins: int,
+          min_n: int) -> dict:
+    """GET /api/stats – one metric grouped by dimensions over the studies q selects."""
+    from .. import stats as st
+
+    tokens = parse(q)
+    conds = conditions(tokens, now, overrides(session))
+    if system is None:
+        mods = {m.upper() for t in tokens if t.key == "modality" and not t.neg
+                for m in t.value.split(",")}
+        system = "ro-nom-ct" if mods == {"CT"} else "ro-nom-rx"
+    group_by = [g.strip() for g in (by or "").split(",") if g.strip()]
+    exams = [e.strip() for e in (exam or "").split(",") if e.strip()] or None
+    out = st.compute(session, conds, metric, group_by, system=system, exams=exams,
+                     age_scheme=age_scheme, weight_scheme=weight_scheme, bins=bins,
+                     min_n=min_n, physical=_physical_ids(session), names=device_names(session))
+    out["q"] = q
+    return out

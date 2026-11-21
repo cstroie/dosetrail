@@ -204,6 +204,20 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         session.commit()
         return out
 
+    @app.get("/api/stats")
+    def stats(q: str = "", metric: str = "dlp_total", by: str = "exam",
+              system: str | None = None, exam: str | None = None,
+              age_scheme: str = "ro-drl-age", weight_scheme: str = "ext-body-weight",
+              bins: int = 0, min_n: int = 1, user: User = Depends(current_user),
+              session: Session = Depends(db)):
+        from .. import stats as st
+
+        try:
+            return data.stats(session, q, clock(), metric, by, system, exam, age_scheme,
+                              weight_scheme, min(max(bins, 0), 100), max(min_n, 1))
+        except st.StatsError as e:
+            raise HTTPException(400, str(e)) from e
+
     @app.get("/api/stats/ct/acquisitions")
     def ct_acquisitions(q: str = "", user: User = Depends(current_user),
                         session: Session = Depends(db)):

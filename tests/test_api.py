@@ -226,3 +226,16 @@ def test_classification_review(client):
     assert not [x for x in left if x["texts"]["protocol"] == "COLOANA"]
     m = client.get("/api/classification/mappings").json()
     assert [(x["text"], x["code"]) for x in m] == [("coloana", "RG-CVLM")]
+
+
+def test_stats_endpoint(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/stats", params={"q": "modality:DX", "metric": "dap",
+                                         "by": "exam", "system": "ro-drl-ms838-2025"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["unit"] == "Gy.cm2" and body["level"] == "event"
+    g = {x["key"]["exam"]: x for x in body["groups"]}
+    assert g["RX-TORACE-PA-AP"]["median"] == 0.05
+    bad = client.get("/api/stats", params={"metric": "nope"})
+    assert bad.status_code == 400 and "unknown metric" in bad.json()["error"]
