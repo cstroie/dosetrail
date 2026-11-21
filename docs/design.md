@@ -175,6 +175,64 @@ The station name alone is never the identity, because names such as "ct99" are s
 - `route`
 - `organ_doses_json`
 
+### 5.1 Paediatric-first patient data
+Paediatric dosimetry is a primary use case. Doses are compared per **age group** for head exams and per **weight group** for body exams (ICRP 135, RP 185), so the patient fields need to be richer than in OpenREM:
+- **Exact age**, computed from the birth date and the study date. It is shown in days below 1 year, in months between 1 and 24 months, and in years after that.
+- **Weight and height, with provenance:** `weight_source` takes one of these values:
+  - `measured`;
+  - `chart_same_day`;
+  - `chart_72h`;
+  - `estimated_reference` (from a growth-reference table);
+  - `estimated_visual`;
+  - `dicom_unknown`.
+
+  Weight is often missing from DICOM, so it can be entered manually in the UI, imported from CSV, and later come from RIS/HIS.
+- **Pregnancy flag and gestational weeks**, when they are recorded.
+- **Pluggable national-ID parsers** derive birth date and sex when DICOM lacks them. Example: the Romanian CNP encodes both.
+- **Flags for exclusion from DRL statistics**, with a reason:
+  - weight below P5 or above P95 for age, against a growth-reference table;
+  - premature newborn;
+  - incubator;
+  - explicitly modified protocol.
+
+  Excluded studies are still kept and monitored.
+
+### 5.2 Classification as data
+- **`code_system`** (name, version, source, licence) and **`code`** (system, code, meaning, parent, attributes) hold any number of exam and indication vocabularies. Examples:
+  - national procedure codes;
+  - a national investigation nomenclature;
+  - local or proposed nomenclators for CT, radiography and fluoroscopy;
+  - an indications nomenclator;
+  - RadLex/LOINC;
+  - ICD-like disease groups.
+- **`code_mapping`** links local protocol names and study descriptions to exam codes, and exam codes to codes in other systems. Mappings can be suggested automatically, but a person must confirm them.
+- **Study-level classification:**
+  - `exam_code`;
+  - `indication_code`;
+  - `contrast_mode` (native / contrast / native+contrast / multiphase);
+  - `projection` codes for radiography;
+  - a bilateral flag.
+- **Patient-group schemes** (`group_scheme`, `group_band`): half-open bands `[lower, upper)` on age or weight, so a patient exactly at a limit falls into the upper group. Seeded with:
+  - the ICRP 135 / RP 185 bands;
+  - an extended scheme with extra bands for >18 years and for 80–110 kg and >110 kg;
+  - national schemes as they are published.
+
+  Exams declare which parameter (age or weight) and which scheme apply.
+
+### 5.3 CT series semantics
+DRLs for CT refer to **one scan series**, not the whole study (RP 185, and national rules). Each CT event therefore stores:
+- `is_localizer`;
+- `is_principal`: the main diagnostic series, picked by a rule and overridable;
+- the CTDIvol **phantom (16 or 32 cm)**.
+
+Statistics can use the principal series, the per-series values or the study total.
+
+### 5.4 Institutions
+`institution` is a first-class dimension from the start: every device belongs to an institution. A single site uses one institution. An aggregating instance (§9.4) holds many.
+
+### 5.5 Units
+Units are configurable per device and source. A conversion table is editable by the admin (for example cGy·cm², dGy·cm², mGy·cm², µGy·m² → Gy·cm²), because devices report DAP in many units.
+
 **Supporting tables**
 - **Mapping:** `standard_name`, `not_patient_rule`
 - **Ingest bookkeeping:** `ingested_object` (sop_uid, study_id, source, status, error)
@@ -301,6 +359,32 @@ DRL tables are stored as **versioned reference sets** (local, national, European
 
 ---
 
+### 9.4 Regulatory reporting, national surveys and data quality
+- **Periodic means per procedure type:** quarterly and semestrial reports of the mean, median and P75 per exam code and per patient group, compared with the selected reference set, as required by national rules. The output can be filled into the official per-exam or summary forms through converters.
+- **Survey (anonymised) export:**
+  - name, national ID and exact birth date are removed;
+  - age is kept in days, months or years;
+  - the exam date is reduced to month and year;
+  - a **keyed pseudonymous patient code** (HMAC with a site secret) allows repeat examinations to be counted without re-identification;
+  - formats: versioned CSV/JSON with a data dictionary;
+  - a monthly scheduled export is possible.
+- **Survey statistics (ICRP 135 / RP 185):**
+  - the median per institution, procedure and group;
+  - **the P75 of institutional medians** (the national DRL);
+  - the national median;
+  - the interquartile factor Q3/Q1;
+  - checks of minimum sample size per group;
+  - a comparison with EDRLs and national DRLs, with threshold bands (below the EDRL, from the EDRL to 1.5×, above 1.5×);
+  - DRLs per clinical indication.
+- **Data-quality rules engine,** whose results are shown per study and per device:
+  - CTDIvol × scan length ≈ DLP (±10 %);
+  - DLP, CTDIvol and DAP plausible for the exam and age group;
+  - age and weight within physiological growth-reference ranges;
+  - phantom consistent with the exam (a 32 cm phantom on a paediatric head scan is flagged);
+  - duplicates;
+  - **completeness KPIs**, for example the share of studies with a measured weight.
+- **Aggregator mode (later):** one DoseTrail instance can receive anonymised survey exports from many institutions, by upload or API, validate them and compute national statistics. The same code serves local sites and the central collection.
+
 ## 10. Security and privacy
 
 - Patient identifiers are stored in clear and visible only to roles that have `view_pid`. Pseudonymised display and exports are available per role or setting.
@@ -326,12 +410,12 @@ DRL tables are stored as **versioned reference sets** (local, national, European
 
 | Milestone | Content |
 |---|---|
-| **M1 — Core data** | Project skeleton, config, schema and migrations (SQLite and MariaDB), SR walker, adapters for CT RDSR, projection RDSR and DX/CR headers, upsert, CLI file import, OpenREM legacy import (CSV mode) |
+| **M1 — Core data** | Project skeleton, config, schema and migrations (SQLite and MariaDB) including institutions, code systems, group schemes, weight provenance and series semantics, SR walker, adapters for CT RDSR, projection RDSR and DX/CR headers, upsert, CLI file import, OpenREM legacy import (CSV mode) |
 | **M2 — Browse** | Auth and roles, API, study lists and detail pages for CT/DX/RF/MG, device admin (display names, merge, local/external) |
 | **M3 — Charts** | Stats layer, the full chart inventory, standard names |
 | **M4 — DICOM networking** | Store SCP, scheduled QR with series selection, back-fill, ingest monitoring |
-| **M5 — Exports and alerts** | CSV and own-XLSX exports, DRL dataset and ICRP 135 summary, reference sets, RDSR export, fluoroscopy high-dose and cumulative alerts, notifications |
-| **M6 — Advanced** | MG header adapter polish, Philips Dose Info, NM/RRDSR, SSDE, skin dose maps, Docker |
+| **M5 — Exports and alerts** | CSV and own-XLSX exports, DRL dataset and ICRP 135 summary, periodic regulatory reports, anonymised survey export, data-quality rules, reference sets, RDSR export, fluoroscopy high-dose and cumulative alerts, notifications |
+| **M6 — Advanced** | Aggregator mode for multi-institution surveys, MG header adapter polish, Philips Dose Info, NM/RRDSR, SSDE, skin dose maps, Docker |
 
 ---
 
