@@ -13,6 +13,9 @@ from pynetdicom.sop_class import (
 from pynetdicom.sop_class import (
     StudyRootQueryRetrieveInformationModelGet as GET,
 )
+from pynetdicom.sop_class import (
+    StudyRootQueryRetrieveInformationModelMove as MOVE,
+)
 from sqlalchemy import select
 
 from dosetrail.db.migrate import upgrade
@@ -42,29 +45,43 @@ def _with_meta(ds):
 class FakePACS:
     """Holds objects grouped as study -> series -> instances."""
 
-    def __init__(self, objects):
+    def __init__(self, objects, cap=None, move_to=None):
         self.objects = [_with_meta(o) for o in objects]
         self.gets: list[str] = []
+        self.finds: list[tuple] = []
+        self.cap, self.move_to = cap, move_to  # move_to: {aet: (host, port)}
         self.ae = AE(ae_title="FAKEPACS")
         self.ae.add_supported_context(FIND)
         self.ae.add_supported_context(GET)
+        self.ae.add_supported_context(MOVE)
+        for uid in qr.SR_CLASSES + qr.IMAGE_CLASSES:
+            self.ae.add_requested_context(uid, ExplicitVRLittleEndian)
         for uid in qr.SR_CLASSES + qr.IMAGE_CLASSES:
             self.ae.add_supported_context(uid, ExplicitVRLittleEndian, scu_role=True,
                                           scp_role=True)
         self.port = _free_port()
         self.server = self.ae.start_server(
             ("127.0.0.1", self.port), block=False,
-            evt_handlers=[(evt.EVT_C_FIND, self.on_find), (evt.EVT_C_GET, self.on_get)])
+            evt_handlers=[(evt.EVT_C_FIND, self.on_find), (evt.EVT_C_GET, self.on_get),
+                          (evt.EVT_C_MOVE, self.on_move)])
 
     def on_find(self, event):
         q = event.identifier
         if q.QueryRetrieveLevel == "STUDY":
+            want = str(q.get("ModalitiesInStudy", "") or "")
+            t = str(q.get("StudyTime", "") or "")
+            lo, hi = (t.split("-") + ["235959"])[:2] if t else ("000000", "235959")
+            self.finds.append((want, t))
             studies = {}
             for o in self.objects:
-                if o.StudyDate != q.StudyDate:
+                if o.StudyDate != q.StudyDate or not (lo <= o.StudyTime <= hi):
                     continue
                 studies.setdefault(o.StudyInstanceUID, set()).add(o.Modality)
-            for uid, mods in studies.items():
+            if want:
+                studies = {u: m for u, m in studies.items() if want in m}
+            for n, (uid, mods) in enumerate(studies.items()):
+                if self.cap and n >= self.cap:
+                    break
                 r = Dataset()
                 r.QueryRetrieveLevel = "STUDY"
                 r.StudyInstanceUID = uid
@@ -86,6 +103,16 @@ class FakePACS:
         q = event.identifier
         hits = [o for o in self.objects if o.SeriesInstanceUID == q.SeriesInstanceUID]
         self.gets.append(q.SeriesInstanceUID)
+        yield len(hits)
+        for o in hits:
+            yield 0xFF00, o
+
+    def on_move(self, event):
+        q = event.identifier
+        hits = [o for o in self.objects if o.SeriesInstanceUID == q.SeriesInstanceUID]
+        dest = event.move_destination
+        dest = dest.decode() if isinstance(dest, bytes) else str(dest)
+        yield self.move_to[dest.strip()]
         yield len(hits)
         for o in hits:
             yield 0xFF00, o
@@ -131,7 +158,7 @@ def test_backfill_day(env):
         qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None,
                    workers=3)
         c = stats.counts
-        assert c["skipped_not_xray"] == 1 and c["studies_done"] == 3
+        assert c["studies_done"] == 3  # the US study is never returned (per-modality query)
         assert c["studies_by_dose_report"] == 2 and c["studies_by_headers"] == 1
         assert "5.3.2.9" not in pacs.gets  # images of an RDSR-covered study not fetched
         with maker() as s:
@@ -178,6 +205,51 @@ def test_partial_modality_run_does_not_finish_the_day(tmp_path, monkeypatch):
             "--to", "2025-11-06"]
     assert cli.main(base + ["--modalities", "CT"]) == 0
     assert cli.main(base) == 0  # still runs: the CT-only run did not finish the day
-    assert calls == [{"CT"}, None]
+    assert calls == [{"CT"}, {"CT", "DX", "CR", "RF", "XA", "MG", "SR"}]
     with make_sessionmaker(make_engine(url))() as s:
         assert qr.done_days(s) == {"2025-11-06"}
+
+
+def test_queries_one_modality_at_a_time_and_splits_capped_days(env):
+    maker, spool, worker, drain = env
+    objs = []
+    for i, hh in enumerate(["08", "09", "10", "13", "15", "17"]):
+        o = _date(f.dx_image(study_uid=f"7.{i}", sop_uid=f"7.{i}.1"))
+        o.StudyTime = f"{hh}0000"
+        objs.append(o)
+    pacs = FakePACS(objs, cap=2)
+    try:
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", timeout=10, max_results=2)
+        hits = qr.find_studies(node, DAY, "DX")
+        assert sorted(h.uid for h in hits) == [f"7.{i}" for i in range(6)]
+        assert all(m == "DX" for m, _ in pacs.finds) and len(pacs.finds) > 1
+        stats = qr.QRStats()
+        qr.run_day(node, DAY, spool, drain, maker, stats, {"CT", "DX"}, pause=0,
+                   progress=lambda _m: None)
+        assert {m for m, _ in pacs.finds} == {"DX", "CT"}  # one query per modality
+        assert stats.counts["studies_done"] == 6
+    finally:
+        pacs.stop()
+
+
+def test_retrieve_with_c_move(env):
+    from dosetrail.net.scp import Receiver
+
+    maker, spool, worker, drain = env
+    rx_port = _free_port()
+    receiver = Receiver(spool, "DOSETRAIL", rx_port, "127.0.0.1")
+    receiver.start()
+    pacs = FakePACS([_date(f.ct_rdsr(study_uid="8.1", sop_uid="8.1.1"))],
+                    move_to={"DOSETRAIL": ("127.0.0.1", rx_port)})
+    try:
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSETRAIL", timeout=10,
+                       retrieve="move")
+        stats = qr.QRStats()
+        qr.run_day(node, DAY, spool, drain, maker, stats, {"SR"}, pause=0,
+                   progress=lambda _m: None)
+        assert stats.counts["studies_by_dose_report"] == 1 and receiver.received == 1
+        with maker() as s:
+            assert s.scalar(select(Study).filter_by(study_uid="8.1")).n_events == 2
+    finally:
+        pacs.stop()
+        receiver.stop()

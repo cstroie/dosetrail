@@ -241,7 +241,13 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     if not host or not aet:
         print("PACS not configured: set [pacs] host/aet in dosetrail.toml or use --host/--aec")
         return 2
-    node = qr.Node(host, args.port or s.pacs_port, aet, args.aet or s.dicom_aet)
+    mode = args.retrieve or s.pacs_retrieve
+    if mode not in ("get", "move"):
+        print("retrieve mode must be 'get' or 'move'")
+        return 2
+    node = qr.Node(host, args.port or s.pacs_port, aet, args.aet or s.dicom_aet,
+                   retrieve=mode, move_destination=s.pacs_move_destination,
+                   max_results=s.pacs_max_results)
     today = dt.date.today()
     if args.date_from:
         start = dt.date.fromisoformat(args.date_from)
@@ -258,6 +264,15 @@ def _cmd_qr(args: argparse.Namespace) -> int:
         return total
 
     mods = {m.strip().upper() for m in args.modalities.split(",")} if args.modalities else None
+    configured = {m.upper() for m in s.pacs_modalities}
+    receiver = None
+    if mode == "move" and not args.dry_run and not _listening(s.dicom_port):
+        from .net.scp import Receiver
+
+        receiver = Receiver(worker.spool, s.dicom_aet, s.dicom_port, s.dicom_bind,
+                            s.dicom_allowed_aets)
+        receiver.start()
+        print(f"C-MOVE: started a receiver on port {s.dicom_port} for this run")
     with maker() as session:
         done = set() if args.redo else qr.done_days(session)
     day = end
@@ -266,7 +281,8 @@ def _cmd_qr(args: argparse.Namespace) -> int:
             print(f"{day}: already done", flush=True)
         else:
             stats = qr.QRStats()
-            qr.run_day(node, day, worker.spool, drain, maker, stats, mods, args.dry_run,
+            qr.run_day(node, day, worker.spool, drain, maker, stats, mods or configured,
+                       args.dry_run,
                        args.pause, progress=lambda m: print(m, flush=True),
                        workers=args.workers)
             print(f"{day}: {dict(stats.counts)}; imported {worker.stats}", flush=True)
@@ -275,7 +291,17 @@ def _cmd_qr(args: argparse.Namespace) -> int:
                 with maker() as session:
                     qr.mark_day_done(session, day)
         day -= dt.timedelta(days=1)
+    if receiver is not None:
+        receiver.stop()
     return 0
+
+
+def _listening(port: int) -> bool:
+    import socket
+
+    with socket.socket() as sock:
+        sock.settimeout(1)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
 def _cmd_info(_args: argparse.Namespace) -> int:
@@ -370,7 +396,10 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--from", dest="date_from", help="first study date YYYY-MM-DD")
     q.add_argument("--to", dest="date_to", help="last study date (default today)")
     q.add_argument("--days", type=int, default=2, help="without --from: last N days")
-    q.add_argument("--modalities", help="comma list, default all X-ray modalities")
+    q.add_argument("--modalities", help="comma list (default [pacs] modalities: "
+                   "CT,DX,CR,RF,XA,MG,SR); queried one at a time")
+    q.add_argument("--retrieve", choices=["get", "move"],
+                   help="C-GET (default) or C-MOVE to our AE title")
     q.add_argument("--dry-run", action="store_true", help="query only, retrieve nothing")
     q.add_argument("--redo", action="store_true", help="also re-run days already done")
     q.add_argument("--pause", type=float, default=0.2, help="seconds between studies")

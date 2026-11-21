@@ -6,6 +6,14 @@ Selection per study (OpenREM's proven order, adapted):
 3. for projection radiography (DX/CR/MG/RF/XA) retrieve the image series only if no dose
    report covered the study – their headers carry the dose; CT images are never fetched.
 
+Queries go one day and one modality at a time: some PACS cap the number of studies a
+C-FIND returns. When a query hits the configured cap (max_results), the day is split into
+time windows and queried again.
+
+Retrieval: C-GET (default, needs no PACS configuration) or C-MOVE to our AE title (the
+PACS must know it; objects arrive at the receiver and are imported from the shared spool).
+Push needs nothing here: modalities and the PACS simply send to the receiver.
+
 Lessons from the field built in:
 * every C-FIND response is consumed (breaking out early leaves the association waiting);
 * the PACS may report a sub-operation "completed" although it could not deliver the object
@@ -37,6 +45,9 @@ from pynetdicom.sop_class import (
 from pynetdicom.sop_class import (
     StudyRootQueryRetrieveInformationModelGet as GET,
 )
+from pynetdicom.sop_class import (
+    StudyRootQueryRetrieveInformationModelMove as MOVE,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -46,6 +57,8 @@ from .spool import Spool
 log = logging.getLogger("dosetrail.qr")
 
 XRAY = {"CT", "DX", "CR", "MG", "RF", "XA", "SR", "NM", "PT", "IO", "PX"}
+# SR finds studies that hold only a dose report
+DEFAULT_MODALITIES = ["CT", "DX", "CR", "RF", "XA", "MG", "SR"]
 PROJECTION_IMAGES = {"DX", "CR", "MG", "RF", "XA"}
 SR_CLASSES = [
     "1.2.840.10008.5.1.4.1.1.88.11", "1.2.840.10008.5.1.4.1.1.88.22",
@@ -71,6 +84,9 @@ class Node:
     aet: str  # the PACS
     calling_aet: str = "DOSETRAIL"
     timeout: float = 60
+    retrieve: str = "get"  # get | move
+    move_destination: str | None = None  # default: calling_aet
+    max_results: int | None = None  # the PACS's C-FIND cap, if known
 
 
 @dataclass
@@ -123,28 +139,63 @@ def _find(assoc, query: Dataset) -> list[Dataset]:
     return out
 
 
-def find_studies(node: Node, day: dt.date) -> list[StudyHit]:
+def _study_query(day: dt.date, modality: str | None, window: tuple[str, str] | None):
     q = Dataset()
     q.QueryRetrieveLevel = "STUDY"
     q.StudyDate = day.strftime("%Y%m%d")
+    q.StudyTime = f"{window[0]}-{window[1]}" if window else ""
     q.StudyInstanceUID = ""
-    q.ModalitiesInStudy = ""
+    q.ModalitiesInStudy = modality or ""
     q.StudyDescription = ""
     q.NumberOfStudyRelatedInstances = ""
+    return q
+
+
+def _split(window: tuple[str, str]) -> list[tuple[str, str]] | None:
+    """Halve a HHMMSS window; None when it is already one hour or less."""
+    def secs(t):
+        return int(t[:2]) * 3600 + int(t[2:4]) * 60 + int(t[4:6])
+
+    def fmt(x):
+        return f"{x // 3600:02d}{x % 3600 // 60:02d}{x % 60:02d}"
+
+    a, b = secs(window[0]), secs(window[1])
+    if b - a <= 3600:
+        return None
+    mid = (a + b) // 2
+    return [(fmt(a), fmt(mid)), (fmt(mid + 1), fmt(b))]
+
+
+def find_studies(node: Node, day: dt.date, modality: str | None = None,
+                 warn: Callable[[str], None] = log.warning) -> list[StudyHit]:
+    """Studies of one day (and one modality); splits the day if the PACS cap is reached."""
     assoc = _assoc_find(node)
+    rows: dict[str, Dataset] = {}
     try:
-        rows = _find(assoc, q)
+        pending: list[tuple[str, str] | None] = [None]
+        while pending:
+            window = pending.pop()
+            found = _find(assoc, _study_query(day, modality, window))
+            if node.max_results and len(found) >= node.max_results:
+                parts = _split(window or ("000000", "235959"))
+                if parts:
+                    pending.extend(parts)
+                    continue
+                warn(f"{day} {modality or ''} {window}: {len(found)} results, the PACS "
+                     f"limit may hide studies")
+            for r in found:
+                uid = str(r.get("StudyInstanceUID", "")).strip()
+                if uid:
+                    rows[uid] = r
     finally:
         assoc.release()
-    hits = {}
-    for r in rows:
-        uid = str(r.get("StudyInstanceUID", "")).strip()
-        if uid:
-            n = r.get("NumberOfStudyRelatedInstances")
-            hits[uid] = StudyHit(uid, q.StudyDate, _modalities(r.get("ModalitiesInStudy")),
-                                 str(r.get("StudyDescription", "") or ""),
-                                 int(n) if n not in (None, "") else None)
-    return list(hits.values())
+    hits = []
+    for uid, r in rows.items():
+        n = r.get("NumberOfStudyRelatedInstances")
+        hits.append(StudyHit(uid, day.strftime("%Y%m%d"), _modalities(r.get("ModalitiesInStudy")),
+                             str(r.get("StudyDescription", "") or ""),
+                             int(n) if n not in (None, "") else None))
+    return hits
 
 
 def find_series(node: Node, study_uid: str) -> list[dict]:
@@ -188,6 +239,54 @@ def _get_ae(node: Node) -> tuple[AE, list]:
     return ae, roles
 
 
+def move_series(node: Node, study_uid: str, series_uids: list[str]) -> dict:
+    """C-MOVE the series to our AE; the receiver writes them to the spool."""
+    ae = AE(ae_title=node.calling_aet)
+    ae.acse_timeout = ae.dimse_timeout = ae.network_timeout = node.timeout
+    ae.add_requested_context(MOVE)
+    assoc = ae.associate(node.host, node.port, ae_title=node.aet)
+    if not assoc.is_established:
+        raise ConnectionError("C-MOVE association refused")
+    claimed = failed = 0
+    try:
+        for uid in series_uids:
+            q = Dataset()
+            q.QueryRetrieveLevel = "SERIES"
+            q.StudyInstanceUID = study_uid
+            q.SeriesInstanceUID = uid
+            last = None
+            for status, _ident in assoc.send_c_move(q, node.move_destination
+                                                    or node.calling_aet, MOVE):
+                if status:
+                    last = status
+            if last is None:
+                raise TimeoutError("no answer to C-MOVE")
+            if last.Status not in (0x0000, 0xB000):
+                raise RuntimeError(f"C-MOVE failed with status 0x{last.Status:04X}")
+            claimed += int(last.get("NumberOfCompletedSubOperations", 0) or 0)
+            failed += int(last.get("NumberOfFailedSubOperations", 0) or 0)
+    finally:
+        assoc.release()
+    # the final C-MOVE response comes after every sub-operation; the receiver acknowledges
+    # only once an object is in the spool, so everything is there now
+    return {"delivered": claimed, "claimed": claimed, "failed": failed}
+
+
+def retrieve(node: Node, study_uid: str, series_uids: list[str], spool: Spool) -> dict:
+    """C-GET or C-MOVE, with one retry after a timeout or a dropped association."""
+    fn = (lambda: move_series(node, study_uid, series_uids)) if node.retrieve == "move" \
+        else (lambda: get_series(node, study_uid, series_uids, spool))
+    try:
+        return fn()
+    except (TimeoutError, ConnectionError, RuntimeError) as first:
+        log.info("retrying %s after %s", study_uid, first)
+        time.sleep(5)
+        try:
+            return fn()
+        except (TimeoutError, ConnectionError, RuntimeError) as second:
+            raise RuntimeError(f"retrieve failed twice ({first}; {second})") from second
+
+
 def get_series(node: Node, study_uid: str, series_uids: list[str], spool: Spool) -> dict:
     """C-GET the series into the spool; returns delivered/claimed counts."""
     delivered = 0
@@ -211,13 +310,16 @@ def get_series(node: Node, study_uid: str, series_uids: list[str], spool: Spool)
             q.QueryRetrieveLevel = "SERIES"
             q.StudyInstanceUID = study_uid
             q.SeriesInstanceUID = uid
+            if not assoc.is_established:
+                raise ConnectionError("the PACS dropped the association (timeout)")
             last = None
             for status, _ident in assoc.send_c_get(q, GET):
                 if status:
                     last = status
-            if last is not None:
-                claimed += int(last.get("NumberOfCompletedSubOperations", 0) or 0)
-                failed += int(last.get("NumberOfFailedSubOperations", 0) or 0)
+            if last is None:
+                raise TimeoutError("no answer to C-GET within the timeout")
+            claimed += int(last.get("NumberOfCompletedSubOperations", 0) or 0)
+            failed += int(last.get("NumberOfFailedSubOperations", 0) or 0)
     finally:
         assoc.release()
     return {"delivered": delivered, "claimed": claimed, "failed": failed}
@@ -241,7 +343,7 @@ def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], 
     series = find_series(node, hit.uid)
     sr = [s["uid"] for s in series if s["modality"] == "SR"]
     if sr:
-        r = get_series(node, hit.uid, sr, spool)
+        r = retrieve(node, hit.uid, sr, spool)
         stats.add("sr_objects", r["delivered"])
         if r["claimed"] > r["delivered"]:
             stats.add("not_delivered", r["claimed"] - r["delivered"])
@@ -254,7 +356,7 @@ def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], 
     images = [s for s in series if s["modality"] in PROJECTION_IMAGES
               and (s["instances"] is None or s["instances"] <= max_images)]
     if images:
-        r = get_series(node, hit.uid, [s["uid"] for s in images], spool)
+        r = retrieve(node, hit.uid, [s["uid"] for s in images], spool)
         stats.add("image_objects", r["delivered"])
         if r["claimed"] > r["delivered"]:
             stats.add("not_delivered", r["claimed"] - r["delivered"])
@@ -268,13 +370,21 @@ def run_day(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
             session_factory, stats: QRStats, modalities: set[str] | None = None,
             dry_run: bool = False, pause: float = 0.2,
             progress: Callable[[str], None] = print, workers: int = 1) -> None:
-    hits = find_studies(node, day)
-    wanted = modalities or (XRAY - {"SR"})
+    wanted = set(modalities) if modalities else set(DEFAULT_MODALITIES)
+    by_uid: dict[str, StudyHit] = {}
+    for mod in sorted(wanted):  # one modality at a time: the PACS caps result sizes
+        for h in find_studies(node, day, mod):
+            if h.uid in by_uid:
+                by_uid[h.uid].modalities |= h.modalities
+            else:
+                by_uid[h.uid] = h
+    hits = list(by_uid.values())
     todo = []
     with session_factory() as session:
         for h in hits:
             mods = h.modalities - {"SR", "PR", "KO", "OT", "DOC"}
-            if not (mods & wanted) and not (h.modalities == {"SR"} and "SR" in XRAY):
+            sr_only = bool(h.modalities) and h.modalities <= {"SR", "KO", "PR"}
+            if not (mods & (wanted - {"SR"})) and not (sr_only and "SR" in wanted):
                 stats.add("skipped_not_xray")
                 continue
             if in_database(session, h.uid):

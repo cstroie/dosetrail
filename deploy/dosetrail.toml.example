@@ -20,3 +20,7 @@ keep_received = false
 host = "pacs.example.org"
 port = 104
 aet = "PACS_AET"
+retrieve = "get"                             # get (C-GET, no PACS setup) | move (C-MOVE)
+# move_destination = "DOSETRAIL"             # C-MOVE target AE; the PACS must know it
+modalities = ["CT", "DX", "CR", "RF", "XA", "MG", "SR"]   # queried one at a time
+# max_results = 500                          # the PACS's C-FIND cap; days are split if hit

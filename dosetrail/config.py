@@ -35,6 +35,11 @@ class Settings:
     pacs_host: str | None = None
     pacs_port: int = 104
     pacs_aet: str | None = None
+    pacs_retrieve: str = "get"  # get | move
+    pacs_move_destination: str | None = None  # AE the PACS moves to (default: dicom_aet)
+    pacs_modalities: list[str] = field(
+        default_factory=lambda: ["CT", "DX", "CR", "RF", "XA", "MG", "SR"])
+    pacs_max_results: int | None = None  # the PACS C-FIND cap, if any
     source: Path | None = None
 
 
@@ -68,6 +73,10 @@ def load_settings() -> Settings:
             s.pacs_host = pacs.get("host", s.pacs_host)
             s.pacs_port = int(pacs.get("port", s.pacs_port))
             s.pacs_aet = pacs.get("aet", s.pacs_aet)
+            s.pacs_retrieve = pacs.get("retrieve", s.pacs_retrieve)
+            s.pacs_move_destination = pacs.get("move_destination", s.pacs_move_destination)
+            s.pacs_modalities = list(pacs.get("modalities", s.pacs_modalities))
+            s.pacs_max_results = pacs.get("max_results", s.pacs_max_results)
             sec = raw.get("security", {})
             if "secret_file" in sec:
                 s.secret_file = Path(sec["secret_file"]).expanduser()

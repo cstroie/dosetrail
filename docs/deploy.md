@@ -42,8 +42,15 @@ systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
 - `dosetrail-receive` listens for DICOM on `[dicom] port` (11112). Register
   `AE DOSETRAIL / host / 11112` on the modalities and the PACS that should send dose
   objects; restrict callers with `allowed_aets`.
-- `dosetrail-qr.timer` queries the PACS every hour for the last two days (C-FIND + C-GET;
-  nothing needs configuring on the PACS for C-GET).
+- `dosetrail-qr.timer` queries the PACS every hour for the last two days, one day and one
+  modality at a time (many PACS cap the number of studies a query returns; set
+  `max_results` and capped days are split into time windows).
+- Three ways to get data in:
+  - **C-GET** (`retrieve = "get"`, default) – nothing to configure on the PACS;
+  - **C-MOVE** (`retrieve = "move"`) – register `DOSETRAIL` (host, port 11112) on the PACS;
+    objects arrive at the receiver; `dosetrail qr` starts a temporary receiver if the
+    service is not running;
+  - **push** – configure modalities or the PACS to send dose objects to the receiver.
 
 ## 5. Importing history
 - OpenREM: `dosetrail openrem-dump --ssh root@openrem-host` then `dosetrail openrem-import`
