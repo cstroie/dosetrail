@@ -68,3 +68,18 @@ Requested for the charts workspace:
 5. **Modalities beyond CT:**
    - radiography: `metric=dap` per exposure, with exam codes that include the projection;
    - fluoroscopy: `dap_total`, `kar_total` and `fluoro_time` per study.
+
+## Milestone 5: exports, regulatory reports, data quality, alerts
+
+More plain working pages, yours to restyle:
+- `reports.html` (new rail entry "Reports"): the quarterly INSP report (OMS 1255/2016) preview with XLSX download, and the monthly anonymised paediatric survey export.
+- `quality.html` (admin tab "Data quality"): rule counts, completeness per device, and studies with findings.
+- `rules.html` (admin tab "Alert rules"): enable, threshold, severity and notify per rule.
+- The overview alert queue now uses real alerts (`GET /api/alerts`). "Acknowledge" calls `POST /api/alerts/{id}/ack`.
+  - API alerts carry `study_id`; their `id` is the alert's own id.
+  - `value` and `limit` are short texts.
+
+Requested:
+1. **Study detail:** `GET /api/studies/{id}` now has `quality: [{rule, severity, title, detail}]`. Show it near the readouts. Also show the study's open alerts: `GET /api/alerts?status=all` filtered by `study_id`, or ask for a `study_id` filter.
+2. **Alerts page:** the rail's "Alerts" entry still points to the overview. A full page could list open and acknowledged alerts, add a note on acknowledge (`{note}`), and filter by rule.
+3. **Export buttons:** the study list uses `exportUrl()`. Other lists could offer `level=event` (one row per series or exposure) and `pid=1` for users with the pid role.
