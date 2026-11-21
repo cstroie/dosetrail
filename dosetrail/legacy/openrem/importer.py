@@ -37,6 +37,7 @@ from ...db.models import (
     SizeSource,
     Study,
 )
+from ...ingest.identity import device_key, patient_key
 from ...maintenance import recompute_all
 from ...patient_age import parse_dicom_age
 
@@ -117,16 +118,10 @@ def parse_ts(v: str | None) -> dt.datetime | None:
 
 
 def device_identity(r: dict) -> str:
-    uid = s(r.get("device_observer_uid"))
-    if uid:
-        return "uid:" + uid
-    man = (s(r.get("manufacturer")) or "").casefold()
-    serial = s(r.get("device_serial_number"))
-    if serial:
-        return f"sn:{man}|{serial.casefold()}"
-    parts = [r.get(k) or "" for k in ("manufacturer", "manufacturer_model_name", "station_name",
-                                      "institution_name", "institutional_department_name")]
-    return "tuple:" + "|".join(p.strip().casefold() for p in parts)
+    return device_key(r.get("manufacturer"), r.get("manufacturer_model_name"),
+                      r.get("device_serial_number"), r.get("station_name"),
+                      r.get("institution_name"), r.get("institutional_department_name"),
+                      r.get("device_observer_uid"))
 
 
 def filters(v: str | None) -> tuple[float | None, float | None]:
@@ -295,7 +290,7 @@ class OpenREMImporter:
         if not raw:
             return None
         hashed = boolean(r.get("id_hashed"))
-        h = raw.lower() if hashed else sha256(raw)
+        h = raw.lower() if hashed else patient_key(raw)
         name = None if boolean(r.get("name_hashed")) else s(r.get("patient_name"))
         clear = None if hashed else raw
         pid = self.patient_by_hash.get(h)
@@ -322,8 +317,7 @@ class OpenREMImporter:
     def _device(self, r: dict, batch: list[dict]) -> int | None:
         if not any(r.get(k) for k in ("manufacturer", "manufacturer_model_name", "station_name")):
             return None
-        key = device_identity(r)
-        ikey = hashlib.sha256(key.encode()).hexdigest()
+        ikey = device_identity(r)
         did = self.device_by_key.get(ikey)
         if did is None:
             did = self._id(Device)

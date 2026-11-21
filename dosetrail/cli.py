@@ -179,6 +179,24 @@ def _cmd_devices_origin(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_import(args: argparse.Namespace) -> int:
+    from .db.session import make_engine, make_sessionmaker
+    from .ingest.files import import_paths
+
+    def progress(i, path, result):
+        if args.verbose or result.status == "failed":
+            print(f"{i:6} {result.status:10} {path} {result.message}")
+        elif i % 500 == 0:
+            print(f"{i} files…")
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        store = import_paths(session, args.paths, _secret(), progress=progress)
+    for k, v in sorted(store.stats.items()):
+        print(f"{k}: {v}")
+    return 1 if store.stats.get("failed") else 0
+
+
 def _cmd_info(_args: argparse.Namespace) -> int:
     s = load_settings()
     print(f"DoseTrail {__version__}")
@@ -253,6 +271,12 @@ def build_parser() -> argparse.ArgumentParser:
     do.add_argument("--apply", action="store_true")
     do.add_argument("--url")
     do.set_defaults(func=_cmd_devices_origin)
+
+    ip = sub.add_parser("import", help="import DICOM files or folders (RDSR, DX/CR headers)")
+    ip.add_argument("paths", nargs="+")
+    ip.add_argument("-v", "--verbose", action="store_true")
+    ip.add_argument("--url")
+    ip.set_defaults(func=_cmd_import)
 
     i = sub.add_parser("info", help="show configuration")
     i.set_defaults(func=_cmd_info)
