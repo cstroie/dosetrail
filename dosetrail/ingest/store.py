@@ -18,6 +18,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db.models import (
@@ -65,15 +66,23 @@ class Store:
         self.session = session
         self.secret = secret
         self.source = source
-        inst = session.scalar(select(Institution).filter_by(code=institution_code))
-        if inst is None:
-            inst = Institution(code=institution_code, name="Default", is_local=True)
-            session.add(inst)
-            session.flush()
-        self.institution_id = inst.id
+        self.institution_id = self._institution(institution_code)
         self.stats: Counter = Counter()
 
     # ------------------------------------------------------------------ entities
+
+    def _institution(self, code: str) -> int:
+        """Get or create; tolerate a concurrent worker creating it first."""
+        inst = self.session.scalar(select(Institution).filter_by(code=code))
+        if inst is not None:
+            return inst.id
+        try:
+            with self.session.begin_nested():
+                inst = Institution(code=code, name="Default", is_local=True)
+                self.session.add(inst)
+            return inst.id
+        except IntegrityError:
+            return self.session.scalar(select(Institution.id).filter_by(code=code))
 
     def device(self, d: dict) -> Device | None:
         if not any(d.get(k) for k in ("manufacturer", "model_name", "station_name",

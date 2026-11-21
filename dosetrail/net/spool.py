@@ -17,6 +17,7 @@ import threading
 import time
 from pathlib import Path
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..ingest.files import read
@@ -115,10 +116,20 @@ class SpoolWorker(threading.Thread):
                 if work is None:
                     continue
                 status, message = self._one(session, store, work)
+                if status == "retry":  # put it back and try the batch again later
+                    work.rename(work.with_suffix(".dcm"))
+                    self.stats["retried"] = self.stats.get("retried", 0) + 1
+                    log.warning("database error, will retry %s: %s", path.name, message)
+                    session.rollback()
+                    break
                 self.stats[status] = self.stats.get(status, 0) + 1
                 self._dispose(work, status, message)
                 handled += 1
-            session.commit()
+            try:
+                session.commit()
+            except OperationalError as e:
+                log.warning("commit failed, batch will be retried: %s", e)
+                session.rollback()
         return handled
 
     def _one(self, session: Session, store: Store, path: Path) -> tuple[str, str]:
@@ -129,6 +140,8 @@ class SpoolWorker(threading.Thread):
             with session.begin_nested():
                 r = store.store(parse(ds))
             return r.status, r.message
+        except OperationalError as e:  # database unavailable/locked: not the object's fault
+            return "retry", f"{type(e).__name__}: {e}"
         except Exception as e:
             return "failed", f"{type(e).__name__}: {e}"
 

@@ -110,3 +110,23 @@ def test_two_workers_share_a_spool(rx):
     assert worker.stats.get("imported", 0) + other.stats.get("imported", 0) == 12
     assert not worker.stats.get("failed") and not other.stats.get("failed")
     assert not list(spool.incoming.iterdir())
+
+
+def test_database_error_keeps_object_queued(rx, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    from dosetrail.ingest import store as store_mod
+
+    _, worker, spool, _, port = rx
+    _send(port, [f.dx_image(study_uid="1.2.7.1", sop_uid="1.2.7.1.1")])
+
+    def boom(self, obj):
+        raise OperationalError("INSERT", {}, Exception("server has gone away"))
+
+    monkeypatch.setattr(store_mod.Store, "store", boom)
+    worker.drain()
+    assert len(spool.pending()) == 1 and not list(spool.failed.iterdir())
+    assert worker.stats["retried"] == 1
+    monkeypatch.undo()
+    worker.drain()
+    assert worker.stats["imported"] == 1 and not spool.pending()

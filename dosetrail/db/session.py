@@ -22,10 +22,18 @@ def make_engine(url: str | None = None, echo: bool = False) -> Engine:
 
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_conn, _record):  # pragma: no cover - trivial
+            dbapi_conn.isolation_level = None  # we issue BEGIN ourselves (below)
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA foreign_keys=ON")
             cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA busy_timeout=30000")
             cur.close()
+
+        @event.listens_for(engine, "begin")
+        def _sqlite_begin(conn):  # pragma: no cover - trivial
+            # take the write lock up front: a deferred transaction that later upgrades to
+            # a writer fails at once with "database is locked" when another writer exists
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
 
     return engine
 
