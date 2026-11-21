@@ -14,6 +14,7 @@ const NAV = [
   ['studies', 'studies.html', 'studies'],
   ['charts', 'charts.html', 'charts'],
   ['drl', 'drl.html', 'drl'],
+  ['reports', 'reports.html', 'reports'],
   ['alerts', 'index.html#alerts', 'alerts'],
   ['admin', 'devices.html', 'admin'],
 ];

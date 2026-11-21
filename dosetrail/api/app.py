@@ -41,7 +41,8 @@ LOGIN_HTML = Path(__file__).resolve().parent / "login.html"
 COOKIE = "dt_session"
 PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.html",
          "study.html": "study.html", "charts.html": "charts.html",
-         "devices.html": "devices.html", "drl.html": "drl.html", "review.html": "review.html"}
+         "devices.html": "devices.html", "drl.html": "drl.html", "review.html": "review.html",
+         "reports.html": "reports.html"}
 
 
 class LoginIn(BaseModel):

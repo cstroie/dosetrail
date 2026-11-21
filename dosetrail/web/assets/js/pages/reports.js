@@ -1,0 +1,78 @@
+// Regulatory reports. First: the quarterly centralised report of Order MS 1255/2016 (INSP),
+// radiology and CT sheets. The XLSX keeps the official column order so the numeric block
+// can be pasted into the INSP workbook.
+
+import '../components/dt-shell.js';
+import { h, clear, append, toast } from '../core/dom.js';
+import { num, smart } from '../core/format.js';
+import { inspReport, inspReportUrl } from '../core/api.js';
+
+const page = document.getElementById('page');
+const today = new Date();
+const lastQuarter = Math.floor(today.getMonth() / 3) || 4;
+const state = { year: lastQuarter === 4 && today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear(), quarter: lastQuarter };
+
+function render() {
+  const years = [];
+  for (let y = today.getFullYear(); y >= today.getFullYear() - 8; y -= 1) years.push(y);
+  const yearSel = h('select', { class: 'input', 'aria-label': 'Year', onchange: (e) => { state.year = Number(e.target.value); } },
+    years.map((y) => h('option', { value: y, selected: y === state.year }, String(y))));
+  const qSel = h('select', { class: 'input', 'aria-label': 'Quarter', onchange: (e) => { state.quarter = Number(e.target.value); } },
+    [1, 2, 3, 4].map((q) => h('option', { value: q, selected: q === state.quarter }, `T${q}`)));
+  clear(page).append(
+    h('h1', { class: 'section-title' }, 'Raportare trimestrială — OMS 1255/2016 (INSP)'),
+    h('div', { class: 'toolbar' }, yearSel, qSel,
+      h('button', { class: 'btn primary', type: 'button', onclick: load }, 'Preview'),
+      h('button', { class: 'btn', type: 'button', onclick: download }, 'Download XLSX'),
+      h('span', { class: 'muted small' }, 'Local devices only. One examination = one study × one procedure code.')),
+    h('div', { id: 'rep' }),
+  );
+  load();
+}
+
+function download() {
+  const href = inspReportUrl({ year: state.year, quarter: state.quarter });
+  if (!href) { toast('Reports need the server'); return; }
+  h('a', { href, download: '' }).click();
+  toast('Report export started');
+}
+
+async function load() {
+  const host = document.getElementById('rep');
+  clear(host).append(h('p', { class: 'muted' }, 'Loading…'));
+  let r;
+  try {
+    r = await inspReport({ year: state.year, quarter: state.quarter, q: 'origin:local' });
+  } catch (e) {
+    clear(host).append(h('p', { class: 'error' }, e.message));
+    return;
+  }
+  const kpis = h('div', { class: 'kpis drl-kpis' },
+    r.sheets.map((s) => h('div', { class: 'kpi' }, h('span', { class: 'code' }, s.title),
+      h('span', { class: 'v' }, num(s.rows.reduce((a, x) => a + x.total, 0))),
+      h('span', { class: 'm' }, `examinations in ${s.rows.filter((x) => x.total).length} codes`))),
+    h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Not reported'), h('span', { class: 'v' }, num(r.notes.unclassified)),
+      h('span', { class: 'm' }, 'studies without a national code (e.g. limbs)')),
+    h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Sex other / unknown'), h('span', { class: 'v' }, num(r.notes.other_sex)),
+      h('span', { class: 'm' }, 'counted in totals, not in M/F columns')));
+  clear(host).append(h('p', { class: 'muted small' }, `${r.period.from} – ${r.period.to}`), kpis);
+  for (const s of r.sheets) {
+    const rows = s.rows.filter((x) => x.total);
+    const bands = Object.keys(rows[0]?.counts || {});
+    const mbands = Object.keys(rows[0]?.means || {});
+    const head = h('thead', {}, h('tr', {},
+      h('th', {}, 'Cod'), h('th', {}, 'Examinare'), h('th', { class: 'r' }, 'Total'),
+      r.count_bands.map((b) => h('th', { class: 'r' }, `${b} M/F`)),
+      r.mean_bands.map((b) => h('th', { class: 'r' }, `${s.quantity} ${b}`))));
+    const body = h('tbody', {}, rows.map((x) => h('tr', {},
+      h('td', { class: 'mono' }, x.code), h('td', {}, [x.exam, x.type].filter(Boolean).join(' — ')),
+      h('td', { class: 'r' }, num(x.total)),
+      bands.map((b) => h('td', { class: 'r' }, `${x.counts[b].M || '·'} / ${x.counts[b].F || '·'}`)),
+      mbands.map((b) => h('td', { class: 'r' }, x.means[b] == null ? '' : smart(x.means[b]))))));
+    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 30, class: 'empty' }, 'No examination in this quarter.')));
+    append(host, [h('h2', { class: 'section-title' }, `${s.title} · ${s.quantity} (${s.unit})`),
+      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, head, body)))]);
+  }
+}
+
+render();

@@ -44,6 +44,7 @@ const ICONS = {
   studies: 'M4 6h16M4 12h16M4 18h16',
   charts: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   drl: 'M3 12h18M6 20V12M11 20v-5M16 20V8M21 4l-5 4',
+  reports: 'M6 2h9l5 5v15H6zM14 2v6h6M9 13h8M9 17h8',
   alerts: 'M12 3 2 20h20zM12 10v4M12 17v.5',
   admin: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2',
   search: 'M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14M20 20l-3.5-3.5',

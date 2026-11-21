@@ -247,3 +247,16 @@ export function drlDownloadUrl(kind, { q = '', set = '', min_n = 20, format = 'x
   if (kind !== 'dataset') { u.searchParams.set('set', set); u.searchParams.set('min_n', String(min_n)); }
   return u.href;
 }
+
+/** GET /api/reports/insp1255?year=&quarter=&q= → { period, notes, count_bands, mean_bands, sheets } */
+export function inspReport(params) {
+  return isSample ? serverOnly('Reports') : remote('/api/reports/insp1255', params);
+}
+
+/** Download link for the same report as XLSX (official column order). */
+export function inspReportUrl({ year, quarter, q = 'origin:local' }) {
+  if (isSample) return null;
+  const u = new URL('/api/reports/insp1255', MODE);
+  for (const [k, v] of Object.entries({ year, quarter, q, format: 'xlsx' })) u.searchParams.set(k, String(v));
+  return u.href;
+}
