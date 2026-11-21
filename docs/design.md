@@ -49,7 +49,7 @@ DoseTrail is an open-source (MIT) patient radiation exposure monitor for CT, rad
 | *(frontend)* **ECharts**: one vendored, pinned JS file | **SR tree walker and RDSR mapping** | |
 | | **Skin dose calculation** (later) | |
 
-**Frontend (decided):** **no npm and no build step.** The frontend is plain HTML, CSS and vanilla JavaScript ES modules, with native web components, served statically by FastAPI. **ECharts** is the only vendored library, kept as one local file. The visual design is being explored through `frontend-brief.md`, which asks for 3 variants.
+**Frontend (decided):** **no npm and no build step.** The frontend is plain HTML, CSS and vanilla JavaScript ES modules, with native web components, served statically by FastAPI. **ECharts** is the only vendored library, kept as one local file. The visual direction is **variant B, "Console"** (chosen 2026-11-21, provisional). It is dark-first, with light as the second theme. Navigation is an icon rail plus a context bar. A command palette (Ctrl K) handles search and commands, and filters are typed `key:value` tokens with autocomplete that are stored in the URL. The study list sits beside a preview pane. Numbers use a monospace font. Charts live on a workspace of drag-and-resize panels that share one query. The mockups are in the design canvas and exported to git-ignored `design-inbox/`; the brief is `frontend-brief.md`. The implementation lives in `dosetrail/web/` (see its README); until the API exists it runs on synthetic sample data.
 
 ---
 
@@ -427,7 +427,7 @@ DRL tables are stored as **versioned reference sets** (local, national, European
 ## 13. Decisions and open questions
 
 **Decided (2026-11-21):**
-- **Frontend:** HTML, CSS and vanilla JavaScript only; no npm and no build step. Three design variants are requested (`frontend-brief.md`).
+- **Frontend:** HTML, CSS and vanilla JavaScript only; no npm and no build step. Visual direction: **variant B "Console"**, provisional (§3).
 - **Python:** 3.12 is the minimum, and the production host will provide it.
 - **pynetdicom** is kept.
 - **Legacy import:** CSV dumps are made on the OpenREM server and copied to the DoseTrail host.

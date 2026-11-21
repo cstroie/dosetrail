@@ -27,7 +27,7 @@ dosetrail = "dosetrail.cli:main"
 include = ["dosetrail*"]
 
 [tool.setuptools.package-data]
-dosetrail = ["seeds/**/*", "db/migrations/**/*", "db/alembic.ini"]
+dosetrail = ["seeds/**/*", "db/migrations/**/*", "db/alembic.ini", "web/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

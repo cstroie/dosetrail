@@ -1,0 +1,87 @@
+/*
+ * DoseTrail design tokens (direction B, "Console").
+ * Dark is the reference theme; light uses the same token names.
+ * Themes switch only through [data-theme] on <html>; components never hard-code colours.
+ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg: #0A0E13;
+  --panel: #111821;
+  --panel-2: #172130;
+  --overlay: rgba(4, 8, 12, .6);
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, .45);
+
+  /* text and lines */
+  --text: #DCE4EC;
+  --muted: #8E9BA8;
+  --line: #223040;
+  --line-2: #34465A;
+
+  /* accent / focus */
+  --accent: #3CC4D8;
+  --accent-ink: #06141A;
+  --accent-soft: #0F3440;
+  --focus: #7FE3F0;
+
+  /* status (always paired with a word or icon) */
+  --ok: #4CC38A;    --ok-soft: #10301F;
+  --warn: #F4B740;  --warn-soft: #33270B;
+  --alert: #FF6B5E; --alert-soft: #3A1512;
+  --ref: #FF6B5E;   /* reference lines (DRL, thresholds) */
+
+  /* modalities */
+  --m-ct: #6FA8FF; --m-dx: #45CDB8; --m-rf: #B79BFF; --m-mg: #FF8CC0; --m-nm: #D9C65A;
+
+  /* categorical series for devices, fixed order (validate CVD separation before release) */
+  --d1: #5AB0F0; --d2: #FFA552; --d3: #4FD1BE; --d4: #F27DB3;
+  --d5: #B89CF0; --d6: #D9B85E; --d7: #A3D2FF; --d8: #A7B2BD;
+
+  /* sequential (heat maps) */
+  --seq: #3CC4D8;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #E9EDF1;
+  --panel: #FFFFFF;
+  --panel-2: #F3F5F8;
+  --overlay: rgba(14, 22, 32, .35);
+  --shadow-pop: 0 16px 40px rgba(14, 22, 32, .18);
+  --text: #0E1620;
+  --muted: #4F5B67;
+  --line: #D3DAE1;
+  --line-2: #AFB9C4;
+  --accent: #00788A;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #DDF1F4;
+  --focus: #00788A;
+  --ok: #18794E;    --ok-soft: #DDF3E7;
+  --warn: #8A5300;  --warn-soft: #FCEFD6;
+  --alert: #B3261E; --alert-soft: #FBE6E4;
+  --ref: #B3261E;
+  --m-ct: #2F5FD0; --m-dx: #00806F; --m-rf: #7A4FB5; --m-mg: #B03A72; --m-nm: #7A6A00;
+  --d1: #1F6FB4; --d2: #D46A00; --d3: #1E8C7E; --d4: #C0397A;
+  --d5: #7353A8; --d6: #8A6A12; --d7: #3F8FDB; --d8: #5B6773;
+  --seq: #00788A;
+}
+
+:root {
+  /* type: system stacks only, nothing downloaded */
+  --font-sans: "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", "Liberation Sans", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-lg: 16px; --fs-xl: 20px; --fs-num: 24px;
+  --lh: 1.4;
+
+  /* spacing */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+
+  /* radius */
+  --r: 4px; --r-lg: 6px; --r-pill: 999px;
+
+  /* layout */
+  --rail-w: 68px;
+  --row-h: 28px;
+}
