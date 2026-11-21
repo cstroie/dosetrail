@@ -85,13 +85,15 @@ def test_run_dx_per_exposure_ct_per_study_and_override(session):
     assert stats["studies"] == 2
     ap, lat, spine = dx.events
     assert _codes(session, dx.id, ap.id) == {
-        "ro-nom-rx:RG-TH", "ro-drl-ms838-2025:RX-TORACE-PA-AP", "ec-rp185:RX-THORAX-AP-PA"}
+        "ro-nom-rx:RG-TH", "ro-drl-ms838-2025:RX-TORACE-PA-AP", "ec-rp185:RX-THORAX-AP-PA",
+        "ro-insp-1255-rx:T1"}
     assert _codes(session, dx.id, lat.id) == {"ro-nom-rx:RG-TH",
-                                               "ro-drl-ms838-2025:RX-TORACE-LAT"}
+                                               "ro-drl-ms838-2025:RX-TORACE-LAT",
+                                               "ro-insp-1255-rx:T2"}
     assert _codes(session, dx.id, spine.id) == set()
     assert _codes(session, dx.id, None) == {"ro-nom-rx:RG-TH"}
     assert _codes(session, ct.id) == {"ro-nom-ct:CT-CR", "ro-drl-ms838-2025:CT-CAP",
-                                      "ec-rp185:CT-HEAD"}
+                                      "ec-rp185:CT-HEAD", "ro-insp-1255-ct:C"}
     session.refresh(ct)
     assert ct.contrast_mode == "N"
 
@@ -112,3 +114,13 @@ def test_run_dx_per_exposure_ct_per_study_and_override(session):
     before = len(_codes(session, dx.id))
     classify.run(session)
     assert len(_codes(session, dx.id)) == before
+
+
+def test_national_ct_code_follows_contrast(session):
+    load_all(session)
+    s = Study(study_uid="c.9", modality="CT", study_datetime=T, source_kind="test",
+              study_description="Abdomen^Abdomen_contrast (Adult)")
+    session.add(s)
+    session.flush()
+    classify.run(session, [s.id])
+    assert "ro-insp-1255-ct:ASC" in _codes(session, s.id)

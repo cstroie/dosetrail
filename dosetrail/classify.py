@@ -146,6 +146,7 @@ class Classifier:
         for sys_key, code, cid in session.execute(
                 select(CodeSystem.key, Code.code, Code.id).join(Code.system)):
             self.code_id[(sys_key, code)] = cid
+        self.code_key = {v: k for k, v in self.code_id.items()}
         self.crosswalk: dict[int, list[tuple[set[str] | None, int]]] = defaultdict(list)
         with (SEEDS / "crosswalk.csv").open(encoding="utf-8", newline="") as fh:
             for r in csv.DictReader(fh):
@@ -237,16 +238,25 @@ class Classifier:
                 if h:
                     votes[h] += 1
             hit = votes.most_common(1)[0][0] if votes else None
-        if hit:
-            cid, mid = hit
-            row(cid, mid)
-            for dst in self.drl_codes(cid, None):
-                row(dst, None)
         if family == "ct":
             texts = [normalise(study.get(f)) for f in STUDY_FIELDS]
             texts += [normalise(e.get("protocol")) for e in events if not e.get("is_localizer")]
             out.contrast = self.rules.contrast_mode(texts)
+        if hit:
+            cid, mid = hit
+            row(cid, mid)
+            for dst in self.drl_codes(cid, None):
+                row(self.contrast_variant(dst, out.contrast), None)
         return out
+
+    def contrast_variant(self, code_id: int, contrast: str | None) -> int:
+        """National CT codes have a contrast variant (C -> CSC): use it for contrast exams."""
+        if contrast not in ("C", "NC", "MF"):
+            return code_id
+        key = self.code_key.get(code_id)
+        if key is None or key[0] != "ro-insp-1255-ct":
+            return code_id
+        return self.code_id.get((key[0], key[1] + "SC"), code_id)
 
 
 # ------------------------------------------------------------------ batch run

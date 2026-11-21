@@ -278,3 +278,19 @@ def test_drl_dataset_and_summary_downloads(client):
     s = client.get("/api/drl/summary", params={"q": "", "format": "csv", "min_n": 1})
     assert s.status_code == 200 and s.content.decode("utf-8-sig").startswith("unit,device,")
     assert client.get("/api/drl/summary", params={"set": "x"}).status_code == 400
+
+
+def test_insp1255_report_endpoint(client):
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [s["key"] for s in body["sheets"]] == ["radiologie", "ct"]
+    x = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4,
+                                                     "format": "xlsx"})
+    assert x.status_code == 200 and x.content[:2] == b"PK"
+    assert client.get("/api/reports/insp1255", params={"year": 2026,
+                                                       "quarter": 7}).status_code == 400
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/reports/insp1255", params={"year": 2026,
+                                                       "quarter": 1}).status_code == 403

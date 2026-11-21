@@ -135,6 +135,35 @@ def _cmd_drl_dataset(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_report_1255(args: argparse.Namespace) -> int:
+    import datetime as dt
+    import getpass
+
+    from .api.data import conditions, overrides, parse
+    from .db.models import AuditLog
+    from .db.session import make_engine, make_sessionmaker
+    from .reports import insp1255
+
+    now = dt.datetime.now()
+    start, end = insp1255.quarter_range(args.year, args.quarter)
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        conds = conditions(parse(args.query), now, overrides(session))
+        report = insp1255.build(session, conds, start, end)
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="report",
+                             target=f"insp1255:{args.year}Q{args.quarter}:xlsx",
+                             detail={"q": args.query, "file": args.output}))
+        session.commit()
+    with open(args.output, "wb") as fh:
+        insp1255.write_xlsx(report, fh, {"Generat": now.isoformat(sep=" ", timespec="seconds"),
+                                         "Selecție": args.query})
+    for s in report["sheets"]:
+        print(f"{s.title}: {sum(r['total'] for r in s.rows)} examinations in "
+              f"{sum(1 for r in s.rows if r['total'])} codes")
+    print(f"unclassified studies: {report['notes']['unclassified']} -> {args.output}")
+    return 0
+
+
 def _cmd_classify(args: argparse.Namespace) -> int:
     from . import classify
     from .db.session import make_engine, make_sessionmaker
@@ -460,6 +489,14 @@ def build_parser() -> argparse.ArgumentParser:
     dd.add_argument("-o", "--output", required=True, help="the extension sets the format")
     dd.add_argument("--url")
     dd.set_defaults(func=_cmd_drl_dataset)
+
+    rp = sub.add_parser("report-1255", help="quarterly INSP report, Order 1255/2016 (xlsx)")
+    rp.add_argument("--year", type=int, required=True)
+    rp.add_argument("--quarter", type=int, required=True, choices=[1, 2, 3, 4])
+    rp.add_argument("-q", "--query", default="origin:local")
+    rp.add_argument("-o", "--output", required=True)
+    rp.add_argument("--url")
+    rp.set_defaults(func=_cmd_report_1255)
 
     cl = sub.add_parser("classify", help="assign standard exam codes and DRL codes to studies")
     cl.add_argument("--study", type=int, action="append", help="only this study id (repeatable)")

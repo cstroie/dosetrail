@@ -448,6 +448,32 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         return _file(write, format, "dosetrail-icrp135-summary", now)
 
+    @app.get("/api/reports/insp1255")
+    def report_insp1255(request: Request, year: int, quarter: int, q: str = "origin:local",
+                        format: str = "json", user: User = Depends(current_user),
+                        session: Session = Depends(db)):
+        from ..reports import insp1255
+
+        _exporter(user)
+        try:
+            start, end = insp1255.quarter_range(year, quarter)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if format not in ("json", "xlsx"):
+            raise HTTPException(400, "format is json|xlsx")
+        now = clock()
+        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        report = insp1255.build(session, conds, start, end)
+        _audit(session, request, user, "report", f"insp1255:{year}Q{quarter}:{format}",
+               {"q": q})
+        session.commit()
+        if format == "json":
+            return insp1255.as_json(report)
+        info = {"Generat": now.isoformat(sep=" ", timespec="seconds"),
+                "De": user.display_name or user.username, "Selecție": q or "(toate)"}
+        return _file(lambda fh: insp1255.write_xlsx(report, fh, info), "xlsx",
+                     f"insp-1255-{year}-T{quarter}", now)
+
     @app.get("/api/lookup")
     def lookup(q: str = "", limit: int = 6, user: User = Depends(current_user),
                session: Session = Depends(db)):
