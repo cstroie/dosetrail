@@ -24,6 +24,10 @@ class Settings:
         default_factory=lambda: Path.home() / ".config" / "dosetrail" / "secret")
     session_hours: float = 12.0
     secure_cookies: bool = False  # set true behind HTTPS
+    # web UI / API
+    web_host: str = "127.0.0.1"
+    web_port: int = 8104
+    web_trusted_proxies: list[str] = field(default_factory=lambda: ["127.0.0.1"])
     # DICOM networking
     dicom_aet: str = "DOSETRAIL"
     dicom_port: int = 11112
@@ -61,6 +65,10 @@ def load_settings() -> Settings:
             s.echo_sql = bool(db.get("echo", s.echo_sql))
             if "data_dir" in raw.get("paths", {}):
                 s.data_dir = Path(raw["paths"]["data_dir"])
+            web = raw.get("web", {})
+            s.web_host = web.get("host", s.web_host)
+            s.web_port = int(web.get("port", s.web_port))
+            s.web_trusted_proxies = list(web.get("trusted_proxies", s.web_trusted_proxies))
             dcm = raw.get("dicom", {})
             s.dicom_aet = dcm.get("aet", s.dicom_aet)
             s.dicom_port = int(dcm.get("port", s.dicom_port))

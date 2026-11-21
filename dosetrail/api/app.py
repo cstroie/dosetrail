@@ -114,7 +114,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         user.last_login_at = dt.datetime.now()
         session.commit()
         response.set_cookie(COOKIE, sign_session(secret, user.id, settings.session_hours),
-                            httponly=True, samesite="strict", secure=settings.secure_cookies,
+                            httponly=True, samesite="strict",
+                            # always Secure over HTTPS (X-Forwarded-Proto from a trusted proxy)
+                            secure=settings.secure_cookies or request.url.scheme == "https",
                             max_age=int(settings.session_hours * 3600), path="/")
         return _me(user)
 

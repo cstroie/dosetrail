@@ -68,6 +68,13 @@ def test_cookie_flags(client):
     r = login(client, "viewer", "viewer-pass-1")
     cookie = r.headers["set-cookie"].lower()
     assert "httponly" in cookie and "samesite=strict" in cookie
+    assert "secure" not in cookie  # plain HTTP on the LAN still logs in
+
+
+def test_cookie_is_secure_over_https(client):
+    https = TestClient(client.app, base_url="https://testserver")
+    r = https.post("/api/login", json={"username": "viewer", "password": "viewer-pass-1"})
+    assert r.status_code == 200 and "secure" in r.headers["set-cookie"].lower()
 
 
 def test_studies_carry_pseudonyms_only(client):

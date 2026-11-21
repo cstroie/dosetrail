@@ -10,7 +10,7 @@ Group=dosetrail
 WorkingDirectory=/opt/dosetrail
 Environment=DOSETRAIL_CONFIG=/etc/dosetrail/dosetrail.toml
 EnvironmentFile=-/etc/dosetrail/dosetrail.env
-ExecStart=/opt/dosetrail/.venv/bin/dosetrail serve --host 127.0.0.1 --port 8000
+ExecStart=/opt/dosetrail/.venv/bin/dosetrail serve
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=yes

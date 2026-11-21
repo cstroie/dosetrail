@@ -37,7 +37,7 @@ cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
 ```
-- `dosetrail-web` listens on 127.0.0.1:8000; publish it through an HTTPS reverse proxy
+- `dosetrail-web` listens on `[web] host:port` (default 127.0.0.1:8104); publish it through an HTTPS reverse proxy
   (nginx, Apache) and set `secure_cookies = true`.
 - `dosetrail-receive` listens for DICOM on `[dicom] port` (11112). Register
   `AE DOSETRAIL / host / 11112` on the modalities and the PACS that should send dose

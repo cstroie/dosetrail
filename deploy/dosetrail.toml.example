@@ -6,11 +6,18 @@ url = "mysql+pymysql://dosetrail:CHANGE-ME@localhost/dosetrail?charset=utf8mb4"
 [security]
 secret_file = "/var/lib/dosetrail/secret"   # created on first start; back it up
 session_hours = 12
-secure_cookies = true                        # behind an HTTPS reverse proxy
+secure_cookies = true                        # force Secure cookies (HTTPS-only logins);
+                                             # without it they are Secure whenever the
+                                             # request arrived over HTTPS
+
+[web]
+host = "127.0.0.1"                           # 0.0.0.0 to listen on every interface
+port = 8104                                  # "80" for HTTP + "104" for DICOM
+trusted_proxies = ["127.0.0.1"]              # reverse proxies allowed to set X-Forwarded-*
 
 [dicom]
 aet = "DOSETRAIL"
-port = 11112
+port = 11112                                 # the IANA-registered DICOM port
 bind = "0.0.0.0"
 allowed_aets = []                            # e.g. ["CT1", "PACS"]; empty = any caller
 spool_dir = "/var/lib/dosetrail/spool"

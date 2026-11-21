@@ -168,11 +168,14 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
     from .api.app import create_app
 
-    if args.host not in ("127.0.0.1", "localhost", "::1"):
-        print(f"warning: listening on {args.host}; put DoseTrail behind an HTTPS reverse proxy")
-    # access_log off: query strings may contain search terms with identifiers
-    uvicorn.run(create_app(), host=args.host, port=args.port, access_log=False,
-                proxy_headers=True, forwarded_allow_ips="127.0.0.1")
+    s = load_settings()
+    host, port = args.host or s.web_host, args.port or s.web_port
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"warning: listening on {host}; put DoseTrail behind an HTTPS reverse proxy")
+    # access_log off: query strings may contain search terms with identifiers.
+    # X-Forwarded-For/-Proto are honoured only from the configured reverse proxies.
+    uvicorn.run(create_app(), host=host, port=port, access_log=False,
+                proxy_headers=True, forwarded_allow_ips=",".join(s.web_trusted_proxies))
     return 0
 
 
@@ -394,8 +397,8 @@ def build_parser() -> argparse.ArgumentParser:
     u.set_defaults(func=_cmd_user)
 
     sv = sub.add_parser("serve", help="run the web UI and API")
-    sv.add_argument("--host", default="127.0.0.1")
-    sv.add_argument("--port", type=int, default=8000)
+    sv.add_argument("--host", help="address to listen on (default from settings: 127.0.0.1)")
+    sv.add_argument("--port", type=int, help="port (default from settings: 8104)")
     sv.set_defaults(func=_cmd_serve)
 
     do = sub.add_parser("devices-origin",
