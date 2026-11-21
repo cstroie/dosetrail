@@ -49,7 +49,7 @@ DoseTrail is an open-source (MIT) patient radiation exposure monitor for CT, rad
 | *(frontend)* **ECharts**: one vendored, pinned JS file | **SR tree walker and RDSR mapping** | |
 | | **Skin dose calculation** (later) | |
 
-**Frontend:** to stay consistent with this budget, the proposal is **no Node build chain**: plain ES modules and small hand-written web components, served statically by FastAPI, with ECharts as the only vendored library. The alternative is Vue or React with a Vite build, which is nicer to develop but brings hundreds of transitive npm packages. *To be decided (§12).*
+**Frontend (decided):** **no npm and no build step.** The frontend is plain HTML, CSS and vanilla JavaScript ES modules, with native web components, served statically by FastAPI. **ECharts** is the only vendored library, kept as one local file. The visual design is being explored through `frontend-brief.md`, which asks for 3 variants.
 
 ---
 
@@ -301,11 +301,14 @@ OpenREM may have stored patient ID and name in clear, as unsalted SHA-256, or no
 
 ---
 
-## 12. Open questions
+## 12. Decisions and open questions
 
-1. **Frontend:** no build step (vanilla JS modules and ECharts) or Vue with a Vite build?
-2. **Python floor:** 3.12. Will the production host provide it, via a system package or `/opt`?
-3. **pynetdicom:** keep it (recommended), or write our own DICOM upper-layer implementation?
-4. **Legacy import location:** run the dump on the OpenREM server and copy the CSVs (which contain clear identifiers) to the DoseTrail host? Or run DoseTrail's importer next to the source database?
-5. **National survey and DRL export formats:** to be identified.
-6. **Notifications:** e-mail through a local SMTP server, or something else?
+**Decided (2026-11-21):**
+- **Frontend:** HTML, CSS and vanilla JavaScript only; no npm and no build step. Three design variants are requested (`frontend-brief.md`).
+- **Python:** 3.12 is the minimum, and the production host will provide it.
+- **pynetdicom** is kept.
+- **Legacy import:** CSV dumps are made on the OpenREM server and copied to the DoseTrail host.
+- **Notifications:** pluggable channels: e-mail over SMTP (stdlib `smtplib`) and **ntfy** (plain HTTP POST with stdlib `urllib`), with more to come.
+
+**Open:**
+1. National survey and DRL export formats are still to be identified.
