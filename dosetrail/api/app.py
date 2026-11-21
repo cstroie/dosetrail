@@ -178,6 +178,23 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def drl(user: User = Depends(current_user)):
         return data.drl()
 
+    @app.get("/api/drl/sets")
+    def drl_sets(user: User = Depends(current_user), session: Session = Depends(db)):
+        from .. import drl as drl_mod
+
+        return drl_mod.reference_sets(session)
+
+    @app.get("/api/drl/compare")
+    def drl_compare(q: str = "origin:local", set: str = "ro-ms838-2025", by: str = "facility",
+                    min_n: int = 20, user: User = Depends(current_user),
+                    session: Session = Depends(db)):
+        from .. import drl as drl_mod
+
+        try:
+            return data.drl_compare(session, q, clock(), set, by, max(min_n, 1))
+        except drl_mod.DRLError as e:
+            raise HTTPException(400, str(e)) from e
+
     @app.get("/api/studies")
     def studies(q: str = "", sort: str = "date", dir: str = "desc", page: int = 1,
                 size: int = 50, user: User = Depends(current_user),

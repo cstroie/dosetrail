@@ -418,3 +418,15 @@ def stats(session: Session, q: str, now: dt.datetime, metric: str, by: str, syst
                      min_n=min_n, physical=_physical_ids(session), names=device_names(session))
     out["q"] = q
     return out
+
+
+def drl_compare(session: Session, q: str, now: dt.datetime, set_key: str, by: str,
+                min_n: int) -> dict:
+    """GET /api/drl/compare – local medians against a reference set."""
+    from .. import drl as drl_mod
+
+    conds = conditions(parse(q), now, overrides(session))
+    out = drl_mod.compare(session, conds, set_key, by_device=(by == "device"), min_n=min_n,
+                          physical=_physical_ids(session), names=device_names(session))
+    out["q"] = q
+    return out

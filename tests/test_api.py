@@ -239,3 +239,12 @@ def test_stats_endpoint(client):
     assert g["RX-TORACE-PA-AP"]["median"] == 0.05
     bad = client.get("/api/stats", params={"metric": "nope"})
     assert bad.status_code == 400 and "unknown metric" in bad.json()["error"]
+
+
+def test_drl_endpoints(client):
+    login(client, "viewer", "viewer-pass-1")
+    sets = {s["key"] for s in client.get("/api/drl/sets").json()}
+    assert {"ro-ms838-2025", "ec-rp185-2018"} <= sets
+    r = client.get("/api/drl/compare", params={"q": "", "min_n": 1}).json()
+    assert r["set"] == "ro-ms838-2025" and r["by"] == "facility"
+    assert client.get("/api/drl/compare", params={"set": "x"}).status_code == 400
