@@ -1,9 +1,14 @@
 """Conversion of DICOM measured values to DoseTrail storage units.
 
-Units arrive as UCUM codes, sometimes misspelled by vendors ('mGy*cm', 'dGy.cm2', 'µGy.m2').
+Units arrive as UCUM codes, sometimes misspelled by vendors ('mGy*cm', 'dGy.cm2', 'µGy.m2',
+'Gym2').
 """
 
 from __future__ import annotations
+
+import re
+
+_GLUED = re.compile(r"([dcmu]?gy)((?:c|d|m)?m2|cm|mm)")
 
 # storage unit -> {normalised source unit: factor}
 _FACTORS: dict[str, dict[str, float]] = {
@@ -27,7 +32,10 @@ _FACTORS: dict[str, dict[str, float]] = {
 def normalise_unit(unit: str | None) -> str:
     u = (unit or "").strip().replace("µ", "u").replace("μ", "u").replace("*", ".")
     u = u.replace(" ", ".").replace("^", "").replace("[", "").replace("]", "")
-    return u.lower()
+    u = u.lower()
+    # dose products written without a separator: 'Gym2' (Siemens Ysio), 'Gycm2', 'mGycm'
+    m = _GLUED.fullmatch(u)
+    return f"{m.group(1)}.{m.group(2)}" if m else u
 
 
 def convert(value: float | None, unit: str | None, target: str) -> float | None:

@@ -139,3 +139,12 @@ def test_ignored_objects_are_recorded_once(session):
     n = session.scalar(select(func.count()).select_from(IngestedObject)
                        .where(IngestedObject.status == "ignored"))
     assert n == 1
+
+
+def test_glued_vendor_dose_units():
+    from dosetrail.dicom.units import convert, normalise_unit
+
+    # Siemens Ysio writes the DAP unit as 'Gym2' (UCUM: Gy.m2)
+    assert normalise_unit("Gym2") == "gy.m2" and normalise_unit("mGycm") == "mgy.cm"
+    assert convert(0.00000129, "Gym2", "Gy.cm2") == pytest.approx(0.0129)
+    assert normalise_unit("mGy") == "mgy" and normalise_unit("Gy") == "gy"
