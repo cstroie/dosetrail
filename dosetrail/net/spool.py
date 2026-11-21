@@ -1,6 +1,8 @@
 """Spool: received objects wait on disk until the worker imports them.
 
-    spool/incoming/   written by the receiver (atomic: *.part then rename)
+    spool/incoming/   written by the receiver (atomic: *.part then rename); a worker claims a
+                      file by renaming it to *.work, so several processes (the receiver
+                      service and a query/retrieve run) can share one spool safely
     spool/archive/    imported objects, kept only when keep_received is on (by date)
     spool/failed/     objects that could not be imported, with a .reason file
 """
@@ -45,7 +47,35 @@ class Spool:
         return final
 
     def pending(self) -> list[Path]:
-        return sorted(self.incoming.glob("*.dcm"), key=lambda p: p.stat().st_mtime)
+        files = []
+        for p in self.incoming.glob("*.dcm"):
+            try:
+                files.append((p.stat().st_mtime, p))
+            except FileNotFoundError:  # claimed by another worker meanwhile
+                continue
+        return [p for _, p in sorted(files)]
+
+    def claim(self, path: Path) -> Path | None:
+        """Atomically take a pending file; None if another worker was faster."""
+        work = path.with_suffix(".work")
+        try:
+            path.rename(work)
+        except FileNotFoundError:
+            return None
+        return work
+
+    def recover(self, older_than: float = 3600) -> int:
+        """Return files left claimed by a crashed worker to the queue."""
+        n = 0
+        now = time.time()
+        for w in self.incoming.glob("*.work"):
+            try:
+                if now - w.stat().st_mtime > older_than:
+                    w.rename(w.with_suffix(".dcm"))
+                    n += 1
+            except FileNotFoundError:
+                continue
+        return n
 
 
 class SpoolWorker(threading.Thread):
@@ -73,17 +103,23 @@ class SpoolWorker(threading.Thread):
 
     def drain(self) -> int:
         """Import what is pending now; return the number of files handled."""
+        self.spool.recover()
         files = self.spool.pending()[: self.batch]
         if not files:
             return 0
+        handled = 0
         with self.maker() as session:
             store = Store(session, self.secret, source="scp")
             for path in files:
-                status, message = self._one(session, store, path)
+                work = self.spool.claim(path)
+                if work is None:
+                    continue
+                status, message = self._one(session, store, work)
                 self.stats[status] = self.stats.get(status, 0) + 1
-                self._dispose(path, status, message)
+                self._dispose(work, status, message)
+                handled += 1
             session.commit()
-        return len(files)
+        return handled
 
     def _one(self, session: Session, store: Store, path: Path) -> tuple[str, str]:
         try:
@@ -97,15 +133,16 @@ class SpoolWorker(threading.Thread):
             return "failed", f"{type(e).__name__}: {e}"
 
     def _dispose(self, path: Path, status: str, message: str) -> None:
+        name = path.with_suffix(".dcm").name
         if status == "failed":
-            target = self.spool.failed / path.name
+            target = self.spool.failed / name
             shutil.move(path, target)
             target.with_suffix(".reason").write_text(message + "\n")
             log.warning("failed %s: %s", path.name, message)
         elif self.keep:
             day = self.spool.archive / dt.date.today().strftime("%Y%m%d")
             day.mkdir(exist_ok=True)
-            shutil.move(path, day / path.name)
+            shutil.move(path, day / name)
         else:
             path.unlink(missing_ok=True)
 

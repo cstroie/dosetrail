@@ -89,3 +89,24 @@ def test_broken_object_goes_to_failed(rx):
     failed = list(spool.failed.glob("*.dcm"))
     assert failed and failed[0].with_suffix(".reason").read_text().strip()
     assert worker.stats.get("failed") == 1
+
+
+def test_two_workers_share_a_spool(rx):
+    _, worker, spool, maker, port = rx
+    other = SpoolWorker(spool, maker, b"r" * 32)
+    objs = [f.dx_image(study_uid=f"1.2.8.{i}", sop_uid=f"1.2.8.{i}.1") for i in range(12)]
+    assert _send(port, objs)[1:] == [0] * 12
+    claimed = [p for p in spool.pending() if spool.claim(p)]  # claim everything once
+    assert len(claimed) == 12 and spool.pending() == []
+    assert all(spool.claim(p) is None for p in claimed)  # nobody can claim twice
+    for w in spool.incoming.glob("*.work"):
+        w.rename(w.with_suffix(".dcm"))
+    import threading
+
+    t = threading.Thread(target=other.drain)
+    t.start()
+    worker.drain()
+    t.join()
+    assert worker.stats.get("imported", 0) + other.stats.get("imported", 0) == 12
+    assert not worker.stats.get("failed") and not other.stats.get("failed")
+    assert not list(spool.incoming.iterdir())
