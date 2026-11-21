@@ -1,0 +1,18 @@
+[Unit]
+Description=DoseTrail PACS query/retrieve (last two days)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=dosetrail
+Group=dosetrail
+WorkingDirectory=/opt/dosetrail
+Environment=DOSETRAIL_CONFIG=/etc/dosetrail/dosetrail.toml
+EnvironmentFile=-/etc/dosetrail/dosetrail.env
+ExecStart=/opt/dosetrail/.venv/bin/dosetrail qr --days 2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/dosetrail

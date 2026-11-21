@@ -1,0 +1,22 @@
+# /etc/dosetrail/dosetrail.toml  (mode 0640, owner root:dosetrail)
+
+[database]
+url = "mysql+pymysql://dosetrail:CHANGE-ME@localhost/dosetrail?charset=utf8mb4"
+
+[security]
+secret_file = "/var/lib/dosetrail/secret"   # created on first start; back it up
+session_hours = 12
+secure_cookies = true                        # behind an HTTPS reverse proxy
+
+[dicom]
+aet = "DOSETRAIL"
+port = 11112
+bind = "0.0.0.0"
+allowed_aets = []                            # e.g. ["CT1", "PACS"]; empty = any caller
+spool_dir = "/var/lib/dosetrail/spool"
+keep_received = false
+
+[pacs]
+host = "pacs.example.org"
+port = 104
+aet = "PACS_AET"

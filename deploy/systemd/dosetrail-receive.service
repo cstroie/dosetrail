@@ -1,0 +1,23 @@
+[Unit]
+Description=DoseTrail DICOM receiver (C-STORE/C-ECHO SCP)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dosetrail
+Group=dosetrail
+WorkingDirectory=/opt/dosetrail
+Environment=DOSETRAIL_CONFIG=/etc/dosetrail/dosetrail.toml
+EnvironmentFile=-/etc/dosetrail/dosetrail.env
+ExecStart=/opt/dosetrail/.venv/bin/dosetrail receive
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/dosetrail
+
+[Install]
+WantedBy=multi-user.target
