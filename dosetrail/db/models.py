@@ -489,3 +489,61 @@ class AppSetting(Base):
         DateTime, server_default=func.now(), onupdate=func.now()
     )
 
+
+
+# ---------------------------------------------------------------- alerts
+
+
+class AlertRule(TimestampMixin, Base):
+    """A condition that raises an alert for a study.
+
+    kind:
+    * ``threshold``: ``metric`` (a study metric) ``>= threshold``;
+    * ``drl_ratio``: the exam's dose ``>= threshold`` × its national DRL (exam and age
+      group);
+    * ``cumulative``: the patient's sum of ``metric`` over ``window_days``, including this
+      study, ``>= threshold``;
+    * ``count``: the patient's number of studies (of ``modality``) over ``window_days``
+      ``>= threshold``.
+    """
+
+    __tablename__ = "alert_rule"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(AsciiId(64), unique=True)
+    name: Mapped[str] = mapped_column(Text(255))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    kind: Mapped[str] = mapped_column(AsciiId(16))
+    modality: Mapped[str | None] = mapped_column(AsciiId(64))  # comma list; NULL = any
+    metric: Mapped[str | None] = mapped_column(AsciiId(32))
+    threshold: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(AsciiId(16))
+    window_days: Mapped[int | None] = mapped_column(Integer)
+    max_age_days: Mapped[int | None] = mapped_column(Integer)  # only patients younger than
+    severity: Mapped[str] = mapped_column(AsciiId(8), default="warn")  # warn | alert
+    notify: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str | None] = mapped_column(Text(1024))
+
+
+class Alert(Base):
+    __tablename__ = "alert"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("alert_rule.id", ondelete="CASCADE"))
+    study_id: Mapped[int] = mapped_column(ForeignKey("study.id", ondelete="CASCADE"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
+    study_datetime: Mapped[dt.datetime | None] = mapped_column(DateTime, index=True)
+    severity: Mapped[str] = mapped_column(AsciiId(8))
+    value: Mapped[float | None] = mapped_column(Float)
+    limit_value: Mapped[float | None] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(AsciiId(16))
+    message: Mapped[str] = mapped_column(Text(512))
+    status: Mapped[str] = mapped_column(AsciiId(16), default="open")  # open | acknowledged
+    ack_by: Mapped[str | None] = mapped_column(AsciiId(64))
+    ack_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    ack_note: Mapped[str | None] = mapped_column(Text(1024))
+    notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    notify_error: Mapped[str | None] = mapped_column(Text(512))
+
+    __table_args__ = (
+        UniqueConstraint("rule_id", "study_id", name="uq_alert_rule_study"),
+        Index("ix_alert_status", "status", "study_datetime"),
+    )

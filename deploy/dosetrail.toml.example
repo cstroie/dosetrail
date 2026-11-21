@@ -31,3 +31,19 @@ retrieve = "get"                             # get (C-GET, no PACS setup) | move
 # move_destination = "DOSETRAIL"             # C-MOVE target AE; the PACS must know it
 modalities = ["CT", "DX", "CR", "RF", "XA", "MG", "SR"]   # queried one at a time
 # max_results = 500                          # the PACS's C-FIND cap; days are split if hit
+
+[notify]
+# Alert notifications (rules with "notify" on, studies from the last 48 h). Messages carry
+# no patient identifiers, only a link to the study (login needed).
+base_url = "https://dose.example.org"
+# e-mail
+# email_to = ["physics@example.org"]
+# email_from = "dosetrail@example.org"
+# smtp_host = "smtp.example.org"
+# smtp_port = 587
+# smtp_starttls = true
+# smtp_user = "dosetrail"
+# smtp_password_file = "/etc/dosetrail/smtp-password"   # mode 0600
+# ntfy (https://ntfy.sh or a self-hosted server)
+# ntfy_url = "https://ntfy.example.org/dosetrail-alerts"
+# ntfy_token_file = "/etc/dosetrail/ntfy-token"         # optional, mode 0600

@@ -4,7 +4,7 @@ import '../components/dt-shell.js';
 import { h, append, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
-import { overview, lookup, studyHref } from '../core/api.js';
+import { overview, lookup, studyHref, ackAlert, isSample } from '../core/api.js';
 
 const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', XA: '--m-rf', MG: '--m-mg' };
 const page = document.getElementById('page');
@@ -31,21 +31,38 @@ function kpis(mods) {
       sparkline(m.weekly, MOD_COLOR[m.code]))));
 }
 
+/** Alerts from the API carry study_id (their own id is the alert's); sample alerts do not. */
+function alertHref(a) {
+  return studyHref(a.study_id != null ? { id: a.study_id } : { accession: a.accession });
+}
+
 function alertQueue(alerts, now) {
   const list = h('ul', { class: 'queue' });
   for (const a of alerts) {
     const li = h('li', {},
       h('span', { class: `tag ${a.level}` }, a.kind),
-      h('span', {}, h('a', { class: 't', href: studyHref(a) }, a.title), h('br'),
+      h('span', {}, h('a', { class: 't', href: alertHref(a) }, a.title), h('br'),
         h('span', { class: 'm mono' }, `${a.accession} · ${dateTime(a.time)} · ${ago(a.time, now)} ago`)),
       h('span', { class: 'v' }, a.value, h('br'), h('span', { class: 'm' }, a.limit)),
       h('span'),
       h('span', { class: 'acts' },
-        h('a', { class: 'btn', href: studyHref(a) }, t('overview.open')),
-        h('button', { class: 'btn', type: 'button', onclick: (e) => {
-          li.classList.add('acked');
-          e.currentTarget.disabled = true;
-          toast(`Acknowledged: ${a.title} (sample mode, not saved)`);
+        h('a', { class: 'btn', href: alertHref(a) }, t('overview.open')),
+        h('button', { class: 'btn', type: 'button', onclick: async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          if (isSample) {
+            li.classList.add('acked');
+            toast(`Acknowledged: ${a.title} (sample mode, not saved)`);
+            return;
+          }
+          try {
+            await ackAlert(a.id, null);
+            li.classList.add('acked');
+            toast(`Acknowledged: ${a.title}`);
+          } catch (err) {
+            btn.disabled = false;
+            toast(err.message);
+          }
         } }, t('overview.ack'))));
     list.append(li);
   }

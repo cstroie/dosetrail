@@ -45,6 +45,7 @@ class Settings:
         default_factory=lambda: ["CT", "DX", "CR", "RF", "XA", "MG", "SR"])
     pacs_max_results: int | None = None  # the PACS C-FIND cap, if any
     source: Path | None = None
+    notify: dict = field(default_factory=dict)  # [notify] table, see dosetrail/notify.py
 
 
 def _candidate_files() -> list[Path]:
@@ -90,6 +91,7 @@ def load_settings() -> Settings:
                 s.secret_file = Path(sec["secret_file"]).expanduser()
             s.session_hours = float(sec.get("session_hours", s.session_hours))
             s.secure_cookies = bool(sec.get("secure_cookies", s.secure_cookies))
+            s.notify = dict(raw.get("notify", {}))
             s.source = path
             break
     s.database_url = os.environ.get("DOSETRAIL_DATABASE_URL", s.database_url)

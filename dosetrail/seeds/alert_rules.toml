@@ -1,0 +1,102 @@
+# Default alert rules. Loaded once: rules that already exist are never overwritten, so
+# thresholds edited by an administrator are kept. Units: Gy, Gy.cm2, mGy, mGy.cm, s.
+#
+# kind = threshold  : study metric >= threshold
+# kind = drl_ratio  : exam dose >= threshold x national DRL (exam and age group)
+# kind = cumulative : patient's sum of metric over window_days >= threshold
+# kind = count      : patient's number of studies (modality) over window_days >= threshold
+
+[[rule]]
+key = "fluoro-kar-5gy"
+name = "Fluoroscopy: Ka,r ≥ 5 Gy (substantial radiation dose level)"
+kind = "threshold"
+modality = "RF,XA"
+metric = "kar_total"
+threshold = 5.0
+unit = "Gy"
+severity = "alert"
+notify = true
+note = "NCRP Report 168 substantial radiation dose level: patient follow-up for skin effects."
+
+[[rule]]
+key = "fluoro-dap-500"
+name = "Fluoroscopy: DAP ≥ 500 Gy·cm² (substantial radiation dose level)"
+kind = "threshold"
+modality = "RF,XA"
+metric = "dap_total"
+threshold = 500.0
+unit = "Gy.cm2"
+severity = "alert"
+notify = true
+note = "NCRP Report 168 substantial radiation dose level (field size dependent)."
+
+[[rule]]
+key = "fluoro-time-60min"
+name = "Fluoroscopy: time ≥ 60 min"
+kind = "threshold"
+modality = "RF,XA"
+metric = "fluoro_time"
+threshold = 3600.0
+unit = "s"
+severity = "warn"
+notify = false
+note = "NCRP Report 168 substantial radiation dose level for fluoroscopy time."
+
+[[rule]]
+key = "fluoro-kar-cumulative-90d"
+name = "Fluoroscopy: cumulative Ka,r ≥ 5 Gy in 90 days"
+kind = "cumulative"
+modality = "RF,XA"
+metric = "kar_total"
+threshold = 5.0
+unit = "Gy"
+window_days = 90
+severity = "alert"
+notify = true
+note = "Repeat procedures on the same skin area add up (NCRP 168: consider 60 days to 1 year)."
+
+[[rule]]
+key = "ct-ctdivol-80"
+name = "CT: CTDIvol ≥ 80 mGy"
+kind = "threshold"
+modality = "CT"
+metric = "ctdivol_max"
+threshold = 80.0
+unit = "mGy"
+severity = "warn"
+notify = true
+note = "AAPM CT dose check notification value for adult head (the highest adult value)."
+
+[[rule]]
+key = "ct-ctdivol-paed-50"
+name = "CT: CTDIvol ≥ 50 mGy in a child under 6"
+kind = "threshold"
+modality = "CT"
+metric = "ctdivol_max"
+threshold = 50.0
+unit = "mGy"
+max_age_days = 2191
+severity = "warn"
+notify = true
+note = "AAPM paediatric notification values: head 50 mGy below 2 y, 60 mGy at 2–5 y."
+
+[[rule]]
+key = "drl-2x"
+name = "Exam dose ≥ 2 × national DRL"
+kind = "drl_ratio"
+threshold = 2.0
+severity = "warn"
+notify = false
+note = "OMS 838/2025 values by exam and age group: CT per series, radiography per projection, fluoroscopy per study."
+
+[[rule]]
+key = "ct-count-paed-12m"
+name = "Child with ≥ 5 CT studies in 12 months"
+kind = "count"
+modality = "CT"
+threshold = 5.0
+window_days = 365
+max_age_days = 6574
+severity = "warn"
+notify = false
+note = "Repeated CT in a child: review the justification and alternatives."

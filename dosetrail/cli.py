@@ -195,6 +195,44 @@ def _cmd_report_1255(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_alerts(args: argparse.Namespace) -> int:
+    import datetime as dt
+
+    from . import alerts, notify
+    from .db.session import make_engine, make_sessionmaker
+
+    s = load_settings()
+    cfg = notify.NotifySettings.from_dict(s.notify)
+    engine = make_engine(args.url or s.database_url)
+    with make_sessionmaker(engine)() as session:
+        if args.action == "evaluate":
+            start = dt.datetime.fromisoformat(args.since) if args.since else None
+            end = dt.datetime.fromisoformat(args.until) if args.until else None
+            stats = alerts.evaluate_range(session, start, end, progress=print)
+            print(", ".join(f"{k}: {v}" for k, v in sorted(stats.items())))
+        elif args.action == "notify":
+            stats = notify.dispatch(session, cfg)
+            session.commit()
+            print(dict(stats) or "nothing to send", "channels:", cfg.channels or "none")
+        elif args.action == "test-notify":
+            if not cfg.channels:
+                print("no channel configured: set [notify] smtp_host + email_to, or ntfy_url")
+                return 1
+            m = notify.Message("[DoseTrail] Test notification",
+                               "This is a test message from DoseTrail.", cfg.base_url, False)
+            for ch in cfg.channels:
+                try:
+                    notify.SENDERS[ch](cfg, m)
+                    print(f"{ch}: sent")
+                except Exception as e:  # noqa: BLE001
+                    print(f"{ch}: FAILED {e}")
+        else:
+            for a in alerts.listing(session, "open", 50):
+                print(f"{a['time']}  {a['level']:5} {a['kind']:7} {a['message']}  "
+                      f"[{a['title']}] study {a['study_id']}")
+    return 0
+
+
 def _cmd_classify(args: argparse.Namespace) -> int:
     from . import classify
     from .db.session import make_engine, make_sessionmaker
@@ -363,7 +401,10 @@ def _cmd_receive(args: argparse.Namespace) -> int:
     s = load_settings()
     spool = Spool(s.spool_dir)
     maker = make_sessionmaker(make_engine(args.url or s.database_url))
-    worker = SpoolWorker(spool, maker, _secret(), keep=s.keep_received)
+    from .notify import NotifySettings
+
+    worker = SpoolWorker(spool, maker, _secret(), keep=s.keep_received,
+                         notify=NotifySettings.from_dict(s.notify))
     rx = Receiver(spool, args.aet or s.dicom_aet, args.port or s.dicom_port,
                   args.bind or s.dicom_bind, s.dicom_allowed_aets)
     worker.start()
@@ -535,6 +576,13 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("-o", "--output", required=True)
     rp.add_argument("--url")
     rp.set_defaults(func=_cmd_report_1255)
+
+    al = sub.add_parser("alerts", help="evaluate alert rules, send notifications, list")
+    al.add_argument("action", choices=["evaluate", "notify", "list", "test-notify"])
+    al.add_argument("--since", help="evaluate studies from this date (YYYY-MM-DD)")
+    al.add_argument("--until", help="evaluate studies before this date (YYYY-MM-DD)")
+    al.add_argument("--url")
+    al.set_defaults(func=_cmd_alerts)
 
     cl = sub.add_parser("classify", help="assign standard exam codes and DRL codes to studies")
     cl.add_argument("--study", type=int, action="append", help="only this study id (repeatable)")

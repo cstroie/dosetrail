@@ -127,10 +127,26 @@ def load_unit_conversions(session: Session) -> list[str]:
     return [f"unit conversions: {len(rows)}"]
 
 
+def load_alert_rules(session: Session) -> list[str]:
+    """Add the default alert rules that are missing; never overwrite an existing rule."""
+    from ..db.models import AlertRule
+
+    existing = set(session.scalars(select(AlertRule.key)))
+    added = 0
+    for r in _toml("alert_rules.toml")["rule"]:
+        if r["key"] in existing:
+            continue
+        session.add(AlertRule(enabled=True, **r))
+        added += 1
+    session.flush()
+    return [f"alert rules: {added} added, {len(existing)} kept"]
+
+
 def load_all(session: Session) -> list[str]:
     return (
         load_code_systems(session)
         + load_group_schemes(session)
         + load_reference_sets(session)
         + load_unit_conversions(session)
+        + load_alert_rules(session)
     )

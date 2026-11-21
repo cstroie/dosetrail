@@ -66,6 +66,20 @@ class DismissIn(BaseModel):
     record_ids: list[int]
 
 
+class AckIn(BaseModel):
+    note: str | None = None
+
+
+class RulePatch(BaseModel):
+    enabled: bool | None = None
+    threshold: float | None = None
+    severity: str | None = None
+    notify: bool | None = None
+    window_days: int | None = None
+    max_age_days: int | None = None
+    name: str | None = None
+
+
 class DecisionIn(BaseModel):
     family: str  # rx | rf | ct
     field: str  # protocol | anatomy | study_description | procedure_name | ...
@@ -301,6 +315,59 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def code_list(system: str, user: User = Depends(current_user),
                   session: Session = Depends(db)):
         return _review(lambda: review.codes(session, system))
+
+    # ------------------------------------------------------------------ alerts
+
+    @app.get("/api/alerts")
+    def alert_list(status: str = "open", limit: int = 50, user: User = Depends(current_user),
+                   session: Session = Depends(db)):
+        from .. import alerts
+
+        return alerts.listing(session, None if status == "all" else status,
+                              min(max(limit, 1), 500), names=data.device_names(session))
+
+    @app.post("/api/alerts/{alert_id}/ack")
+    def alert_ack(alert_id: int, body: AckIn, request: Request,
+                  user: User = Depends(current_user), session: Session = Depends(db)):
+        from ..db.models import Alert
+
+        a = session.get(Alert, alert_id)
+        if a is None:
+            raise HTTPException(404, "alert not found")
+        a.status, a.ack_by, a.ack_at = "acknowledged", user.username, clock()
+        a.ack_note = (body.note or "")[:1024] or None
+        _audit(session, request, user, "alert.ack", f"alert:{alert_id}",
+               {"study_id": a.study_id, "note": a.ack_note})
+        session.commit()
+        return {"id": a.id, "status": a.status, "ack_by": a.ack_by}
+
+    @app.get("/api/alert-rules")
+    def alert_rules(user: User = Depends(current_user), session: Session = Depends(db)):
+        from ..db.models import AlertRule
+
+        cols = ("id", "key", "name", "enabled", "kind", "modality", "metric", "threshold",
+                "unit", "window_days", "max_age_days", "severity", "notify", "note")
+        return [{c: getattr(r, c) for c in cols}
+                for r in session.scalars(select(AlertRule).order_by(AlertRule.id))]
+
+    @app.patch("/api/alert-rules/{rule_id}")
+    def alert_rule_patch(rule_id: int, body: RulePatch, request: Request,
+                         user: User = Depends(admin_user), session: Session = Depends(db)):
+        from ..db.models import AlertRule
+
+        r = session.get(AlertRule, rule_id)
+        if r is None:
+            raise HTTPException(404, "rule not found")
+        patch = body.model_dump(exclude_unset=True)
+        if "severity" in patch and patch["severity"] not in ("warn", "alert"):
+            raise HTTPException(400, "severity is warn|alert")
+        changes = {k: {"from": getattr(r, k), "to": v} for k, v in patch.items()
+                   if getattr(r, k) != v}
+        for k, v in patch.items():
+            setattr(r, k, v)
+        _audit(session, request, user, "alert_rule.update", f"rule:{r.key}", changes)
+        session.commit()
+        return {"id": r.id, "changes": changes}
 
     # ------------------------------------------------------------------ exports
 

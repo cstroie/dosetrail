@@ -273,3 +273,15 @@ export function surveyUrl({ month, format = 'csv', q = 'origin:local' }) {
 export function quality(params = {}) {
   return isSample ? serverOnly('Data quality') : remote('/api/quality', params);
 }
+
+/** GET /api/alerts?status=open|acknowledged|all&limit= (same shape as overview.alerts) */
+export function alerts(status = 'open', limit = 50) {
+  return isSample ? sample('overview.json').then((o) => o.alerts) : remote('/api/alerts', { status, limit });
+}
+/** POST /api/alerts/{id}/ack {note} (audit-logged) */
+export const ackAlert = (id, note) => send('POST', `/api/alerts/${id}/ack`, { note });
+/** GET /api/alert-rules · PATCH /api/alert-rules/{id} (admin) */
+export function alertRules() {
+  return isSample ? serverOnly('Alert rules') : remote('/api/alert-rules');
+}
+export const updateAlertRule = (id, patch) => send('PATCH', `/api/alert-rules/${id}`, patch);

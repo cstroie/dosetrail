@@ -83,10 +83,13 @@ class SpoolWorker(threading.Thread):
     """Imports spooled objects; one savepoint per object, commit per batch."""
 
     def __init__(self, spool: Spool, maker: sessionmaker[Session], secret: bytes,
-                 keep: bool = False, interval: float = 1.0, batch: int = 100):
+                 keep: bool = False, interval: float = 1.0, batch: int = 100,
+                 notify=None):
         super().__init__(name="dosetrail-spool", daemon=True)
         self.spool, self.maker, self.secret = spool, maker, secret
         self.keep, self.interval, self.batch = keep, interval, batch
+        self.notify = notify  # notify.NotifySettings: send alert notifications when idle
+        self._last_dispatch = 0.0
         self.stop_event = threading.Event()
         self.stats: dict[str, int] = {}
 
@@ -94,6 +97,7 @@ class SpoolWorker(threading.Thread):
         while not self.stop_event.is_set():
             try:
                 if not self.drain():
+                    self.dispatch()
                     self.stop_event.wait(self.interval)
             except Exception:  # keep the worker alive; the object stays in incoming/
                 log.exception("spool worker error")
@@ -101,6 +105,24 @@ class SpoolWorker(threading.Thread):
 
     def stop(self) -> None:
         self.stop_event.set()
+
+    def dispatch(self, every: float = 30.0) -> None:
+        """Send pending alert notifications, at most every ``every`` seconds."""
+        import time
+
+        if self.notify is None or time.monotonic() - self._last_dispatch < every:
+            return
+        self._last_dispatch = time.monotonic()
+        from ..notify import dispatch
+
+        try:
+            with self.maker() as session:
+                sent = dispatch(session, self.notify)
+                session.commit()
+            if sent:
+                log.info("notifications: %s", dict(sent))
+        except Exception:  # noqa: BLE001 – notifications must never stop the importer
+            log.exception("notification dispatch failed")
 
     def drain(self) -> int:
         """Import what is pending now; return the number of files handled."""

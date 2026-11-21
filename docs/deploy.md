@@ -58,3 +58,9 @@ systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
 - Back-fill from the PACS: `dosetrail qr --from 2026-08-01 --to 2026-11-21` (resumable;
   finished days are remembered).
 - New devices start as *external*; mark your own rooms local on Admin → Devices.
+
+## Alerts and notifications
+- Default alert rules are seeded by `dosetrail seed`; edit them in the UI (Admin → Alert rules) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
+- New studies are evaluated as they are imported. To evaluate history, run `dosetrail alerts evaluate --since 2026-01-01`.
+- Notifications are sent by the receiver service when it is idle, at most every 30 s. They can also be sent with `dosetrail alerts notify`. Only alerts on studies from the last 48 h are sent.
+- Configure `[notify]` (see `dosetrail.toml.example`), then check it with `dosetrail alerts test-notify`.

@@ -211,14 +211,15 @@ class Store:
         return study, new
 
     def _classify(self, study_id: int) -> None:
-        """Exam codes for the touched study; never blocks an import."""
+        """Exam codes and alerts for the touched study; never blocks an import."""
         import logging
 
-        from .. import classify
+        from .. import alerts, classify
 
         try:
             with self.session.begin_nested():
                 classify.run(self.session, [study_id])
+                alerts.evaluate(self.session, [study_id])
         except Exception as exc:  # noqa: BLE001 – classification is best effort here
             logging.getLogger(__name__).warning("classification of study %s failed: %s",
                                                 study_id, exc)

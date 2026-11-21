@@ -73,7 +73,10 @@ def overview(session: Session, now: dt.datetime) -> dict:
             "month": total(mods, today - dt.timedelta(days=30), today),
             "delta_pct": round(100 * (week - prev) / prev) if prev else 0, "weekly": weekly,
         })
-    return {"generated": iso_min(now), "modalities": modalities, "alerts": [],
+    from .. import alerts
+
+    return {"generated": iso_min(now), "modalities": modalities,
+            "alerts": alerts.listing(session, "open", 20, names=device_names(session)),
             "feeds": feeds(session, now)}
 
 

@@ -309,3 +309,29 @@ def test_quality_endpoint_and_study_findings(client):
     assert r["studies"] >= 1 and "ct_dlp_mismatch" in r["rules"]
     sid = client.get("/api/studies", params={"q": "modality:XA"}).json()["rows"][0]["id"]
     assert isinstance(client.get(f"/api/studies/{sid}").json()["quality"], list)
+
+
+def test_alert_endpoints(client):
+    from dosetrail import alerts
+
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        xa = s.scalar(select(Study).filter_by(study_uid="1.2.3"))
+        xa.total_rp_dose = 6.0
+        alerts.evaluate(s, [xa.id])
+        s.commit()
+    login(client, "viewer", "viewer-pass-1")
+    open_ = client.get("/api/alerts").json()
+    a = next(x for x in open_ if x["rule"] == "fluoro-kar-5gy")
+    assert a["study_id"] and a["level"] == "alert"
+    assert any(x["id"] == a["id"] for x in client.get("/api/overview").json()["alerts"])
+    r = client.post(f"/api/alerts/{a['id']}/ack", json={"note": "seen, patient informed"})
+    assert r.json()["status"] == "acknowledged"
+    assert all(x["id"] != a["id"] for x in client.get("/api/alerts").json())
+    rules = client.get("/api/alert-rules").json()
+    rid = next(x["id"] for x in rules if x["key"] == "drl-2x")
+    assert client.patch(f"/api/alert-rules/{rid}", json={"threshold": 3}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    r = client.patch(f"/api/alert-rules/{rid}", json={"threshold": 3, "severity": "alert"})
+    assert r.json()["changes"]["threshold"] == {"from": 2.0, "to": 3.0}
+    assert client.patch(f"/api/alert-rules/{rid}", json={"severity": "x"}).status_code == 400
