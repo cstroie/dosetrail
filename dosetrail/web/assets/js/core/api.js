@@ -105,10 +105,18 @@ export async function studies({ q = '', sort = 'date', dir = 'desc', page = 1, s
   };
 }
 
-/** GET /api/studies/{accession} (sample: only the XA showcase has full detail) */
-export async function study(accession) {
-  if (!isSample) return remote(`/api/studies/${encodeURIComponent(accession)}`);
+/**
+ * GET /api/studies/{id}. The API addresses studies by internal id: accession numbers can be
+ * missing, hashed or shared. Sample mode keeps using the accession (one XA showcase).
+ */
+export async function study(ref) {
+  if (!isSample) return remote(`/api/studies/${encodeURIComponent(ref)}`);
   return sample('study-A2026112100123.json');
+}
+
+/** Link to a study's detail page: by id when the API provides one, else by accession. */
+export function studyHref(s) {
+  return s.id != null ? `study.html?id=${s.id}` : `study.html?acc=${encodeURIComponent(s.accession)}`;
 }
 
 /** Quick lookup for the command palette and the overview: accession prefix. */
@@ -128,6 +136,7 @@ export async function lookup(text, limit = 6) {
  * → [{protocol, device_id, device, ctdivol, dlp, weight, time}]
  */
 export async function ctAcquisitions(q = '') {
+  if (!isSample) return remote('/api/stats/ct/acquisitions', { q });
   const [rows, devs, n] = await Promise.all([sample('ct-acquisitions.json'), deviceMap(), now()]);
   const tokens = parse(q).filter((t) => ['date', 'device', 'proto', 'origin', 'weight'].includes(t.key));
   const ctx = { devices: devs, now: n };

@@ -7,7 +7,7 @@ import '../components/dt-data-grid.js';
 import { h, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dateTime, patientSummary } from '../core/format.js';
-import { studies, deviceMap, drl } from '../core/api.js';
+import { studies, deviceMap, drl, studyHref } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
 const DEFAULT_Q = 'modality:CT date:90d age:>=18 origin:local -phantom';
@@ -45,7 +45,7 @@ const COLUMNS = [
   { key: 'flag', srLabel: 'Flag', sortable: false, width: '22px', render: flagCell },
   { key: 'date', label: 'Date', width: '118px', render: (s) => h('span', { class: 'mono' }, dateTime(s.date).slice(5)) },
   { key: 'device', label: 'Device', render: (s) => s.device_name },
-  { key: 'accession', label: 'Accession', width: '140px', render: (s) => h('a', { class: 'mono', href: `study.html?acc=${s.accession}` }, s.accession) },
+  { key: 'accession', label: 'Accession', width: '140px', render: (s) => h('a', { class: 'mono', href: studyHref(s) }, s.accession) },
   { key: 'patient', label: 'Patient', width: '130px', render: (s) => h('span', { class: 'mono' }, patientSummary(s.patient)) },
   { key: 'description', label: 'Study description' },
   { key: 'events', label: 'Ev S/A/L', align: 'right', width: '80px', render: (s) => `${s.events.spiral}/${s.events.axial}/${s.events.localizer}` },
@@ -114,7 +114,7 @@ async function init() {
   };
 
   grid.columns = COLUMNS;
-  grid.rowId = (s) => s.accession;
+  grid.rowId = (s) => s.id ?? s.accession;
   // first visit: CTDIvol column hidden by default
   if (!prefs.get('grid.ct.hidden')) prefs.set('grid.ct.hidden', COLUMNS.filter((c) => c.hidden).map((c) => c.key));
   grid.setState({ sort: initial.sort, dir: initial.dir, page: initial.page, size: 50 });
@@ -124,7 +124,10 @@ async function init() {
   });
   grid.addEventListener('state-change', (e) => syncUrl(e.detail, currentQ));
   grid.addEventListener('row-focus', (e) => previewBody.replaceChildren(preview(e.detail)));
-  grid.addEventListener('row-open', (e) => toast(`Full detail for ${e.detail.accession}: only the XA sample study has a detail page in sample mode.`));
+  grid.addEventListener('row-open', (e) => {
+    if (e.detail.id != null) location.href = studyHref(e.detail);
+    else toast(`Full detail for ${e.detail.accession}: only the XA sample study has a detail page in sample mode.`);
+  });
   qb.addEventListener('query-change', (e) => apply(e.detail));
 
   async function exportRows(kind) {

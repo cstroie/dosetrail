@@ -4,7 +4,7 @@ import '../components/dt-shell.js';
 import { h, append, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
-import { overview, lookup } from '../core/api.js';
+import { overview, lookup, studyHref } from '../core/api.js';
 
 const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', XA: '--m-rf', MG: '--m-mg' };
 const page = document.getElementById('page');
@@ -36,12 +36,12 @@ function alertQueue(alerts, now) {
   for (const a of alerts) {
     const li = h('li', {},
       h('span', { class: `tag ${a.level}` }, a.kind),
-      h('span', {}, h('a', { class: 't', href: `study.html?acc=${a.accession}` }, a.title), h('br'),
+      h('span', {}, h('a', { class: 't', href: studyHref(a) }, a.title), h('br'),
         h('span', { class: 'm mono' }, `${a.accession} · ${dateTime(a.time)} · ${ago(a.time, now)} ago`)),
       h('span', { class: 'v' }, a.value, h('br'), h('span', { class: 'm' }, a.limit)),
       h('span'),
       h('span', { class: 'acts' },
-        h('a', { class: 'btn', href: `study.html?acc=${a.accession}` }, t('overview.open')),
+        h('a', { class: 'btn', href: studyHref(a) }, t('overview.open')),
         h('button', { class: 'btn', type: 'button', onclick: (e) => {
           li.classList.add('acked');
           e.currentTarget.disabled = true;
@@ -85,7 +85,7 @@ function lookupPanel() {
       if (mine !== seq) return;
       clear(results);
       for (const s of found) {
-        results.append(h('a', { class: 'res', href: s.modality === 'XA' ? `study.html?acc=${s.accession}` : `studies.html?q=${encodeURIComponent('acc:' + s.accession)}` },
+        results.append(h('a', { class: 'res', href: s.id != null || s.modality === 'XA' ? studyHref(s) : `studies.html?q=${encodeURIComponent('acc:' + s.accession)}` },
           h('span', { class: 'tag info' }, s.modality), h('span', { class: 'mono' }, s.accession), h('span', { class: 'mono' }, s.dose),
           h('span', { class: 'd' }, `${s.description} · ${s.device_name} · ${dateTime(s.date)}`)));
       }

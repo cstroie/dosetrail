@@ -13,7 +13,9 @@ import { study, isSample } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
 const page = document.getElementById('page');
-const acc = new URL(location.href).searchParams.get('acc') || 'A2026112100123';
+const params = new URL(location.href).searchParams;
+const acc = params.get('acc') || 'A2026112100123';
+const ref = params.get('id') ?? acc; // the API addresses studies by id
 
 function gauge(value, limit) {
   const pct = Math.min(100, (value / (limit * 1.15)) * 100);
@@ -135,7 +137,7 @@ const EVENT_COLUMNS = [
 ];
 
 async function render() {
-  const s = await study(acc);
+  const s = await study(ref);
   let selected = 0;
   const p = s.patient;
   const identity = h('span', { class: 'mono' }, p.pseudo_id);
@@ -198,7 +200,7 @@ async function render() {
             h('dt', {}, 'Accession'), h('dd', { class: 'mono' }, s.accession),
             h('dt', {}, 'Patient'), h('dd', {}, identity, ' ', revealBtn),
             h('dt', {}, 'Age · sex'), h('dd', { class: 'mono' }, `${p.age} y · ${p.sex}`),
-            h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm} cm · ${p.weight_kg} kg`),
+            h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm ?? '—'} cm · ${p.weight_kg ?? '—'} kg`),
             h('dt', {}, 'Date'), h('dd', { class: 'mono' }, `${s.start.replace('T', ' ')}–${s.end.slice(11)}`),
             h('dt', {}, 'Device'), h('dd', {}, `${s.device.name}${s.device.biplane ? ' (biplane)' : ''}`),
             h('dt', {}, 'Physician'), h('dd', {}, s.physician))),

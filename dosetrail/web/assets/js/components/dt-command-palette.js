@@ -2,7 +2,7 @@
 // (navigation, theme, language, DAP unit). Native <dialog>, so focus is trapped and Esc closes.
 
 import { h, clear } from '../core/dom.js';
-import { lookup } from '../core/api.js';
+import { lookup, studyHref } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { lang } from '../core/i18n.js';
 
@@ -54,7 +54,7 @@ class DtCommandPalette extends HTMLElement {
     const cmds = COMMANDS.filter((c) => !q || c.label.toLowerCase().includes(q.toLowerCase()));
     this.items = [
       ...studies.map((s) => ({ group: 'studies', kind: s.modality, label: `${s.accession} · ${s.description}`, extra: s.dose,
-        run: () => { location.href = s.modality === 'XA' ? `study.html?acc=${s.accession}` : `studies.html?q=${encodeURIComponent('acc:' + s.accession)}`; } })),
+        run: () => { location.href = s.id != null || s.modality === 'XA' ? studyHref(s) : `studies.html?q=${encodeURIComponent('acc:' + s.accession)}`; } })),
       ...cmds.map((c) => ({ ...c, kind: c.group, extra: c.keys || '' })),
     ];
     if (/^[A-Z]?\d{4,}/i.test(q)) {
