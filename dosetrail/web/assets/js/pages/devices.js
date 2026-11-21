@@ -2,6 +2,8 @@
 // inline. Suggested merges (same manufacturer, case-insensitive, plus model and serial) open in
 // the merge inspector, where the surviving display name is chosen. In sample mode, edits and
 // merges change the page only; the API will persist them and write the audit log.
+// Any devices can also be selected with the checkboxes and merged by hand (firmware update,
+// renamed station…), and the selection can be marked local or external in one step.
 
 import '../components/dt-shell.js';
 import { h, clear, toast } from '../core/dom.js';
@@ -17,6 +19,9 @@ let suggestions = [];
 let current = null;  // suggestion under review
 let survivor = null; // record id whose display name survives
 let filterText = '';
+let originFilter = 'all';    // all | local | external
+let selected = new Set();    // physical device ids ticked in the table
+let mergeName = '';          // display name after merge (editable in the inspector)
 let nowIso = '';
 
 function groups() {
@@ -52,18 +57,27 @@ function suggestionFor(physicalId) {
   return suggestions.find((s) => s.record_ids.includes(physicalId) && !s.done);
 }
 
+function visibleGroups() {
+  const q = filterText.toLowerCase();
+  return groups().filter((recs) => {
+    const main = recs[0];
+    if (originFilter !== 'all' && main.origin !== originFilter) return false;
+    const hay = recs.map((r) => `${r.display_name} ${r.manufacturer} ${r.model} ${r.serial} ${r.station} ${r.institution}`).join(' ').toLowerCase();
+    return !q || hay.includes(q);
+  });
+}
+
 function renderTable(tbody) {
   clear(tbody);
-  const q = filterText.toLowerCase();
-  for (const recs of groups()) {
+  for (const recs of visibleGroups()) {
     const main = recs[0];
-    const hay = recs.map((r) => `${r.display_name} ${r.manufacturer} ${r.model} ${r.serial} ${r.station}`).join(' ').toLowerCase();
-    if (q && !hay.includes(q)) continue;
     const sugg = suggestionFor(main.physical_id);
     const active = current && current === sugg;
     const total = recs.reduce((a, r) => a + r.studies, 0);
     const last = recs.reduce((a, r) => (r.last_study > a.last_study ? r : a), recs[0]);
     tbody.append(h('tr', { class: `group ${active ? 'active' : ''}` },
+      h('td', {}, h('input', { type: 'checkbox', checked: selected.has(main.id), 'aria-label': `Select ${main.display_name}`,
+        onchange: (e) => { if (e.target.checked) selected.add(main.id); else selected.delete(main.id); render(); } })),
       h('td', {}, h('input', { class: 'inline-edit', value: main.display_name, 'aria-label': `Display name for ${main.station}`,
         onchange: (e) => {
           const name = e.target.value.trim();
@@ -92,6 +106,7 @@ function renderTable(tbody) {
     if (recs.length > 1) {
       for (const r of recs) {
         tbody.append(h('tr', { class: `child ${active ? 'active' : ''}` },
+          h('td', {}),
           h('td', {}, `↳ ${r.station}`),
           h('td', { class: 'muted' }, `${r.manufacturer} ${r.model}`),
           h('td', { class: 'mono' }, r.serial || '—'),
@@ -111,6 +126,7 @@ function renderTable(tbody) {
 function review(sugg) {
   current = sugg;
   survivor = sugg.record_ids[0];
+  mergeName = records.find((r) => r.id === survivor)?.display_name || '';
   render();
   document.getElementById('inspector')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -130,47 +146,92 @@ function inspector() {
   const diffRow = (label, key) => { const v = distinct(key); return [h('span', { class: 'muted' }, label), h('span', { class: v.length > 1 ? 'x' : '' }, v.join(' · '))]; };
   const total = recs.reduce((a, r) => a + r.studies, 0);
   const survivorRec = recs.find((r) => r.id === survivor) || recs[0];
+  const sameModel = distinct('model').length === 1 && distinct('manufacturer').length === 1;
   box.append(h('div', { class: 'panel-body', style: { display: 'flex', 'flex-direction': 'column', gap: '12px' } },
-    h('div', {}, h('strong', {}, `${recs[0].manufacturer} ${recs[0].model}`), ' ', h('span', { class: 'mono muted' }, `SN ${recs[0].serial || '—'}`)),
+    sameModel
+      ? h('div', {}, h('strong', {}, `${recs[0].manufacturer} ${recs[0].model}`), ' ', h('span', { class: 'mono muted' }, `SN ${distinct('serial').join(' · ')}`))
+      : h('div', {}, h('strong', {}, 'Different models'), h('br'), h('span', { class: 'muted', style: { 'font-size': '12px' } }, 'Merge only if this is the same physical unit (e.g. after a hardware or software upgrade).')),
     h('div', { class: 'diff', 'aria-label': 'Differences between the records' },
-      diffRow('station', 'station'), diffRow('manufacturer', 'manufacturer'), diffRow('software', 'software'),
+      diffRow('station', 'station'), diffRow('manufacturer', 'manufacturer'), diffRow('model', 'model'),
+      diffRow('serial', 'serial'), diffRow('software', 'software'), diffRow('origin', 'origin'),
       h('span', { class: 'muted' }, 'rule'), h('span', {}, current.rule)),
     h('fieldset', { style: { border: '0', margin: '0', padding: '0', display: 'flex', 'flex-direction': 'column', gap: '6px' } },
       h('legend', { class: 'muted', style: { 'font-size': '11px', 'text-transform': 'uppercase', 'letter-spacing': '.06em', 'margin-bottom': '6px' } }, 'Surviving display name'),
       recs.map((r) => h('label', { class: 'opt' },
-        h('input', { type: 'radio', name: 'survivor', value: r.id, checked: r.id === survivor, onchange: () => { survivor = r.id; render(); } }),
+        h('input', { type: 'radio', name: 'survivor', value: r.id, checked: r.id === survivor, onchange: () => { survivor = r.id; mergeName = r.display_name; render(); } }),
         h('span', {}, h('strong', {}, r.display_name), h('br'), h('span', { class: 'mono muted', style: { 'font-size': '11px' } }, `${r.station} · ${num(r.studies)} studies`))))),
+    h('label', { class: 'muted', style: { display: 'grid', gap: '4px', 'font-size': '11px' } }, 'Display name after merge',
+      h('input', { class: 'input', value: mergeName || survivorRec.display_name, maxlength: 128,
+        oninput: (e) => { mergeName = e.target.value; } })),
     h('dl', { class: 'kv', style: { padding: '0' } },
-      h('dt', {}, 'After merge'), h('dd', {}, h('strong', {}, survivorRec.display_name)),
+      h('dt', {}, 'Survivor'), h('dd', {}, h('strong', {}, survivorRec.display_name)),
       h('dt', {}, 'Studies'), h('dd', { class: 'mono' }, num(total)),
       h('dt', {}, 'Stations routed here'), h('dd', { class: 'mono' }, recs.map((r) => r.station).join(', '))),
     h('div', { class: 'row' },
-      h('button', { class: 'btn primary', type: 'button', onclick: () => merge(recs, survivorRec) }, `${t('admin.merge')} ${recs.length} records`),
-      h('button', { class: 'btn', type: 'button', onclick: () => {
-        if (!isSample) { save(dismissMerge(current.record_ids), 'Suggestion dismissed'); return; }
-        current.done = true; current = null; toast('Suggestion dismissed'); render();
-      } }, t('admin.reject'))),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => merge(recs, survivorRec, (mergeName || survivorRec.display_name).trim()) }, `${t('admin.merge')} ${recs.length} devices`),
+      current.manual
+        ? h('button', { class: 'btn', type: 'button', onclick: () => { current = null; render(); } }, 'Cancel')
+        : h('button', { class: 'btn', type: 'button', onclick: () => {
+          if (!isSample) { save(dismissMerge(current.record_ids), 'Suggestion dismissed'); return; }
+          current.done = true; current = null; toast('Suggestion dismissed'); render();
+        } }, t('admin.reject'))),
     h('p', { class: 'muted', style: { 'font-size': '11px' } }, 'Reference levels and alert rules come from the surviving record. Merges are written to the audit log and can be split again.')));
   return box;
 }
 
-function merge(recs, keep) {
+function merge(recs, keep, name = keep.display_name) {
   if (!isSample) {
-    save(mergeDevices(recs.map((r) => r.id), keep.id, keep.display_name), `Merged ${recs.length} records into “${keep.display_name}”`);
+    selected.clear();
+    current = null;
+    save(mergeDevices(recs.map((r) => r.id), keep.id, name), `Merged ${recs.length} devices into “${name}”`);
     return;
   }
   const physicalId = recs[0].physical_id;
-  const name = keep.display_name;
   const main = records.find((r) => r.id === physicalId);
   main.display_name = name;
   main.studies = recs.reduce((a, r) => a + r.studies, 0);
   main.last_study = recs.reduce((a, r) => (r.last_study > a ? r.last_study : a), main.last_study);
   main.station = recs.map((r) => r.station).filter((v, i, a) => a.indexOf(v) === i).join(' / ');
   records = records.filter((r) => r.physical_id !== physicalId || r.id === physicalId);
+  selected.clear();
   current.done = true;
   current = null;
   toast(`Merged ${recs.length} records into “${name}” (sample mode, not saved)`);
   render();
+}
+
+function startManualMerge() {
+  const ids = [...selected];
+  const recs = ids.map((id) => records.find((r) => r.id === id)).filter(Boolean)
+    .sort((a, b) => b.studies - a.studies);
+  current = { record_ids: recs.map((r) => r.id), rule: 'manual selection', manual: true };
+  survivor = recs[0].id;
+  mergeName = recs[0].display_name;
+  render();
+  document.getElementById('inspector')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function setOrigin(origin) {
+  const ids = [...selected];
+  if (!isSample) {
+    selected.clear();
+    save(Promise.all(ids.map((id) => updateDevice(id, { origin }))), `${ids.length} device(s) marked ${origin}`);
+    return;
+  }
+  for (const r of records) if (ids.includes(r.physical_id)) r.origin = origin;
+  selected.clear();
+  toast(`${ids.length} device(s) marked ${origin} (sample mode, this page only)`);
+  render();
+}
+
+function selectionBar() {
+  if (!selected.size) return null;
+  return h('div', { class: 'row', role: 'toolbar', 'aria-label': 'Selected devices', style: { gap: '6px', 'align-items': 'center', padding: '8px 12px', 'border-bottom': '1px solid var(--line, #333)' } },
+    h('strong', {}, `${selected.size} selected`),
+    h('button', { class: 'btn primary xs', type: 'button', disabled: selected.size < 2, title: 'Merge the selected devices into one', onclick: startManualMerge }, 'Merge…'),
+    h('button', { class: 'btn xs', type: 'button', onclick: () => setOrigin('local') }, 'Mark local'),
+    h('button', { class: 'btn xs', type: 'button', onclick: () => setOrigin('external') }, 'Mark external'),
+    h('button', { class: 'btn xs', type: 'button', onclick: () => { selected.clear(); render(); } }, 'Clear'));
 }
 
 function render() {
@@ -186,11 +247,19 @@ function render() {
           h('span', { class: 'muted mono' }, `${physical} devices · ${records.length} records`),
           left ? h('span', { class: 'tag warn' }, `${left} suggested merges`) : null,
           h('span', { class: 'spacer' }),
+          h('select', { class: 'input', 'aria-label': 'Show devices by origin', style: { width: 'auto' },
+            onchange: (e) => { originFilter = e.target.value; render(); } },
+          [['all', 'all origins'], ['local', 'local'], ['external', 'external']].map(([v, l]) => h('option', { value: v, selected: v === originFilter }, l))),
           h('input', { class: 'input', type: 'search', 'aria-label': 'Filter devices', placeholder: 'filter: model, serial, station…', value: filterText,
             oninput: (e) => { filterText = e.target.value; renderTable(tbody); } })),
+        selectionBar(),
         h('div', { class: 'grid-scroll' }, h('table', { class: 'grid tree', 'aria-label': 'Devices and their equipment records' },
-          h('thead', {}, h('tr', {}, ['Display name', 'Manufacturer · model', 'Serial', 'Station', 'Modality', 'Origin', 'Studies', 'Last study']
-            .map((x, i) => h('th', { scope: 'col', class: i === 6 ? 'r' : '' }, x)))),
+          h('thead', {}, h('tr', {},
+            h('th', { scope: 'col' }, h('input', { type: 'checkbox', 'aria-label': 'Select all shown devices',
+              checked: visibleGroups().length > 0 && visibleGroups().every((g) => selected.has(g[0].id)),
+              onchange: (e) => { for (const g of visibleGroups()) { if (e.target.checked) selected.add(g[0].id); else selected.delete(g[0].id); } render(); } })),
+            ['Display name', 'Manufacturer · model', 'Serial', 'Station', 'Modality', 'Origin', 'Studies', 'Last study']
+              .map((x, i) => h('th', { scope: 'col', class: i === 6 ? 'r' : '' }, x)))),
           tbody))),
       inspector()));
   renderTable(tbody);
@@ -200,9 +269,11 @@ async function init() {
   const [data, n] = await Promise.all([devices(), now()]);
   records = structuredClone(data.records);
   suggestions = structuredClone(data.merge_suggestions);
+  selected = new Set([...selected].filter((id) => records.some((r) => r.id === id && r.physical_id === id)));
   nowIso = n;
   current = suggestions[0] || null;
   survivor = current?.record_ids[0] ?? null;
+  mergeName = records.find((r) => r.id === survivor)?.display_name || '';
   render();
 }
 
