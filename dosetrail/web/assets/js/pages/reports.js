@@ -5,7 +5,7 @@
 import '../components/dt-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
-import { inspReport, inspReportUrl, surveyUrl } from '../core/api.js';
+import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
@@ -26,10 +26,41 @@ function render() {
       h('button', { class: 'btn', type: 'button', onclick: download }, 'Download XLSX'),
       h('span', { class: 'muted small' }, 'Local devices only. One examination = one study × one procedure code.')),
     h('div', { id: 'rep' }),
+    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Analiza semestrială — medii trimestriale față de NRD (OMS 1245/2021)'),
+    h('div', { class: 'toolbar' },
+      h('button', { class: 'btn primary', type: 'button', onclick: loadTrend }, 'Show 6 quarters ending at the selected one'),
+      h('button', { class: 'btn', type: 'button', onclick: () => {
+        const href = drlTrendUrl({ year: state.year, quarter: state.quarter });
+        if (!href) { toast('Reports need the server'); return; }
+        h('a', { href, download: '' }).click();
+      } }, 'Download XLSX'),
+      h('span', { class: 'muted small' }, 'Quarterly mean / national DRL; median shown to spot outliers. Rows above the DRL most often first.')),
+    h('div', { id: 'trend' }),
     h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Studiul național de dozimetrie pediatrică (plan draft)'),
     surveyBar(),
   );
   load();
+}
+
+async function loadTrend() {
+  const host = document.getElementById('trend');
+  clear(host).append(h('p', { class: 'muted' }, 'Loading…'));
+  let r;
+  try { r = await drlTrend({ year: state.year, quarter: state.quarter }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
+  const cell = (x) => {
+    if (!x) return h('td', { class: 'r muted' }, '—');
+    const cls = x.mean_over_drl > 1.5 ? 'alert' : x.mean_over_drl > 1 ? 'warn' : 'ok';
+    return h('td', { class: 'r', title: `n ${x.n} · mean ${smart(x.mean)} · median ${smart(x.median)}` },
+      h('span', { class: `tag ${cls}` }, `${num(x.mean_over_drl, 2)}×`), h('br'), h('span', { class: 'muted small' }, `med ${smart(x.median)} · n ${x.n}`));
+  };
+  clear(host).append(h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'Exam'), h('th', {}, 'Group'), h('th', { class: 'r' }, 'DRL'),
+      r.quarters.map((q) => h('th', { class: 'r' }, q)), h('th', { class: 'r' }, 'Above'), h('th', { class: 'r' }, 'Trend'))),
+    h('tbody', {}, r.rows.map((x) => h('tr', { class: x.last_above ? 'hot' : '' },
+      h('td', { title: x.exam }, x.exam_meaning), h('td', {}, x.band_label || 'all'),
+      h('td', { class: 'r' }, `${smart(x.reference)} ${x.unit}`), x.quarters.map(cell),
+      h('td', { class: 'r' }, `${x.quarters_above}/${x.quarters_with_data}`),
+      h('td', { class: 'r' }, x.trend_pct_per_quarter == null ? '' : `${x.trend_pct_per_quarter > 0 ? '+' : ''}${num(x.trend_pct_per_quarter, 0)} %/q`)))))))); 
 }
 
 function surveyBar() {

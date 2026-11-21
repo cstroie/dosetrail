@@ -285,3 +285,14 @@ export function alertRules() {
   return isSample ? serverOnly('Alert rules') : remote('/api/alert-rules');
 }
 export const updateAlertRule = (id, patch) => send('PATCH', `/api/alert-rules/${id}`, patch);
+
+/** GET /api/reports/drl-trend?year=&quarter=&quarters=6&set= (quarterly means vs DRL) */
+export function drlTrend(params = {}) {
+  return isSample ? serverOnly('Reports') : remote('/api/reports/drl-trend', params);
+}
+export function drlTrendUrl(params = {}) {
+  if (isSample) return null;
+  const u = new URL('/api/reports/drl-trend', MODE);
+  for (const [k, v] of Object.entries({ ...params, format: 'xlsx' })) if (v != null) u.searchParams.set(k, String(v));
+  return u.href;
+}

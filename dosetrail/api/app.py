@@ -563,6 +563,37 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         return _file(write, format, f"dosetrail-survey-{month}", now)
 
+    @app.get("/api/reports/drl-trend")
+    def report_drl_trend(request: Request, year: int | None = None, quarter: int | None = None,
+                         quarters: int = 6, set: str = "ro-ms838-2025",
+                         q: str = "origin:local", format: str = "json",
+                         user: User = Depends(current_user), session: Session = Depends(db)):
+        from .. import drl as drl_mod
+        from ..reports import trend
+
+        _exporter(user)
+        if year is None or quarter is None:
+            year, quarter = trend.default_end(clock().date())
+        if quarter not in (1, 2, 3, 4) or not 2 <= quarters <= 12:
+            raise HTTPException(400, "quarter is 1..4, quarters is 2..12")
+        if format not in ("json", "xlsx"):
+            raise HTTPException(400, "format is json|xlsx")
+        now = clock()
+        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        try:
+            report = trend.build(session, conds, year, quarter, quarters, set)
+        except drl_mod.DRLError as e:
+            raise HTTPException(400, str(e)) from e
+        _audit(session, request, user, "report", f"drl-trend:{year}Q{quarter}:{format}",
+               {"q": q, "set": set, "quarters": quarters})
+        session.commit()
+        if format == "json":
+            return report
+        info = {"Generat": now.isoformat(sep=" ", timespec="seconds"),
+                "De": user.display_name or user.username, "Selecție": q or "(toate)"}
+        return _file(lambda fh: trend.write_xlsx(report, fh, info), "xlsx",
+                     f"drl-trend-{year}-T{quarter}", now)
+
     @app.get("/api/reports/insp1255")
     def report_insp1255(request: Request, year: int, quarter: int, q: str = "origin:local",
                         format: str = "json", user: User = Depends(current_user),
