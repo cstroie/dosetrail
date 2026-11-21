@@ -1,0 +1,21 @@
+# private / site-specific
+docs/local/
+*.env
+.env*
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+# runtime data
+*.db
+*.sqlite3
+spool/
+var/
