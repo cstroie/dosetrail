@@ -31,6 +31,47 @@ def _cmd_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_openrem_dump(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .legacy.openrem.dump import Source, dump_all
+
+    src = Source(db=args.db, ssh=args.ssh, sudo_postgres=not args.no_sudo)
+    dump_all(src, Path(args.out), only=args.only)
+    return 0
+
+
+def _cmd_openrem_import(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .db.session import make_engine, make_sessionmaker
+    from .legacy.openrem.importer import OpenREMImporter
+    from .legacy.openrem.reconcile import reconcile
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        stats = OpenREMImporter(session, Path(args.dump), args.institution).run()
+        session.commit()
+        for line in stats.lines():
+            print(line)
+        lines, ok = reconcile(session, Path(args.dump))
+    print("\n".join(lines))
+    return 0 if ok else 2
+
+
+def _cmd_openrem_reconcile(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .db.session import make_engine, make_sessionmaker
+    from .legacy.openrem.reconcile import reconcile
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        lines, ok = reconcile(session, Path(args.dump))
+    print("\n".join(lines))
+    return 0 if ok else 2
+
+
 def _cmd_info(_args: argparse.Namespace) -> int:
     s = load_settings()
     print(f"DoseTrail {__version__}")
@@ -61,6 +102,25 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("seed", help="load/refresh bundled vocabularies, group schemes, DRL sets")
     s.add_argument("--url")
     s.set_defaults(func=_cmd_seed)
+
+    d = sub.add_parser("openrem-dump", help="dump an OpenREM database to CSV (read-only)")
+    d.add_argument("--db", default="openremdb", help="PostgreSQL database name")
+    d.add_argument("--ssh", help="run psql on this host via ssh, e.g. root@server")
+    d.add_argument("--no-sudo", action="store_true", help="do not run psql as 'postgres'")
+    d.add_argument("--out", default="var/openrem-dump", help="output directory")
+    d.add_argument("--only", nargs="*", help="dump only these parts")
+    d.set_defaults(func=_cmd_openrem_dump)
+
+    im = sub.add_parser("openrem-import", help="import an OpenREM dump, then reconcile")
+    im.add_argument("dump", nargs="?", default="var/openrem-dump")
+    im.add_argument("--url")
+    im.add_argument("--institution", default="Default", help="name of the local institution")
+    im.set_defaults(func=_cmd_openrem_import)
+
+    rc = sub.add_parser("openrem-reconcile", help="compare imported data with the dump summary")
+    rc.add_argument("dump", nargs="?", default="var/openrem-dump")
+    rc.add_argument("--url")
+    rc.set_defaults(func=_cmd_openrem_reconcile)
 
     i = sub.add_parser("info", help="show configuration")
     i.set_defaults(func=_cmd_info)
