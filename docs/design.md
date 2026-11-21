@@ -355,12 +355,17 @@ DoseTrail does not adopt any single national template. It stores one **standards
 5. **Converters (later):** future Romanian template, UK UKHSA formats, IAEA forms. Each reshapes product 1 or 2.
 
 ### 9.3 Reference levels as data
-DRL tables are stored as **versioned reference sets** (local, national, European RP 180/185/195, others). Each entry holds an exam code, metric, value, unit, patient group, source and validity date. Charts, study flags and alerts compare against a selected set. A new national table is a data import, not a code change.
+DRL tables are stored as **versioned reference sets** (local, national, European RP 180/185/195, others). They are seeded with the **RP 185 EDRLs**, which use paediatric weight and age groups, and with the **current Romanian national DRLs**, which use age groups 1–4, 5–9, 10–14 and ≥15 years for radiography, CT, mammography, interventional and NM. Each entry holds an exam code, metric, value, unit, patient group, source and validity date. Charts, study flags and alerts compare against a selected set. A new national table is a data import, not a code change.
 
 ---
 
 ### 9.4 Regulatory reporting, national surveys and data quality
-- **Periodic means per procedure type:** quarterly and semestrial reports of the mean, median and P75 per exam code and per patient group, compared with the selected reference set, as required by national rules. The output can be filled into the official per-exam or summary forms through converters.
+- **National reporting (Romania, first converter set):**
+  - **Quarterly centralised report:** per national procedure code, the exam counts by age band and sex, and the mean dose (DAP, ESAK/MGD, DLP, RP dose or activity) by age group. DoseTrail fills the official workbook layout directly.
+  - **Per-exam DRL survey forms (art. 12):** one row per exam per exam-type sheet, with a partial national ID (sex and birth-date digits only), age, sex, height, weight, pregnancy, indication and dose.
+  - **Single-sheet per-exam register:** a variant with pick-lists for exam code, indication, contrast or projection, and dose.
+  - **Semestrial trend analysis:** quarterly means compared with the DRL over the last 6 quarters.
+  - All of these are generated from the core dataset. The layouts are versioned converters, so a form revision is a new converter version.
 - **Survey (anonymised) export:**
   - name, national ID and exact birth date are removed;
   - age is kept in days, months or years;
@@ -429,5 +434,9 @@ DRL tables are stored as **versioned reference sets** (local, national, European
 - **Notifications:** pluggable channels: e-mail over SMTP (stdlib `smtplib`) and **ntfy** (plain HTTP POST with stdlib `urllib`), with more to come.
 
 - **Survey and DRL exports:** a standards-based core dataset (ICRP 135 method, RP 180/185/195 taxonomies, RadLex/LOINC codes, UCUM units, IHE REM RDSR export). National formats will be converters (§9).
+
+- **Deployment scope:** a local collector first. Aggregator mode comes later (§9.4).
+- **Seed vocabularies:** the proposed Romanian nomenclators for CT, conventional radiology and fluoroscopy, and clinical indications, plus the extended weight and age group scheme, ship as versioned seed data. They are credited to their author.
+- **Growth-reference tables** (WHO weight-for-age, for the P5/P95 exclusion) are **downloaded at setup** and not bundled, because of their licence.
 
 **Open:** none at the moment.
