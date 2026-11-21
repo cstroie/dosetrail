@@ -353,16 +353,26 @@ def ct_acquisitions(session: Session, q: str, now: dt.datetime, limit: int = 500
     names = device_names(session)
     rows = session.execute(
         select(Event.protocol, Event.ctdivol, Event.dlp, Event.event_datetime,
-               Study.device_id, Study.weight_kg, Study.age_days, Study.study_datetime)
+               Study.device_id, Study.weight_kg, Study.age_days, Study.study_datetime,
+               Study.id, Event.id)
         .join(Study, Study.id == Event.study_id)
         .where(Study.modality == "CT", Event.is_localizer.is_(False), *conds)
-        .order_by(Study.study_datetime.desc()).limit(limit))
+        .order_by(Study.study_datetime.desc()).limit(limit)).all()
+    from ..reference import CTReference
+
+    ref = CTReference(session)
+    codes = ref.study_codes(list({r[8] for r in rows}))
+    own = ref.event_codes([r[9] for r in rows])  # series of another region than the study
     out = []
-    for proto, ctdi, dlp, t, did, w, age, st in rows:
+    for proto, ctdi, dlp, t, did, w, age, st, sid, eid in rows:
         pid = phys.get(did, did)
+        drl = ref.for_series(own.get(eid) or codes.get(sid, {}), age, w)
         out.append({"protocol": proto or "(none)", "device_id": pid,
                     "device": names.get(pid), "ctdivol": _r(ctdi, 2), "dlp": _r(dlp, 1),
-                    "weight": w, "age": age_years(age), "time": iso_min(t or st)})
+                    "weight": w, "age": age_years(age), "time": iso_min(t or st),
+                    # the DRL that applies to this series (exam + patient group), or None
+                    "drl": {"ctdivol": drl["ctdivol"], "dlp": drl["dlp"],
+                            "source": drl["source"]}})
     return out
 
 

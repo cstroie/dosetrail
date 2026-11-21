@@ -152,7 +152,7 @@ class Checker:
                     out.append(Finding("dose_absurd", f"CTDIvol {e.ctdivol:g} mGy"))
                 if e.dlp and e.dlp > ABSURD["dlp"]:
                     out.append(Finding("dose_absurd", f"DLP {e.dlp:g} mGy·cm"))
-                code = national.get(None)
+                code = national.get(e.id) or national.get(None)
                 if code and e.dlp:
                     ref = self.drl.get((code, band, "dlp"))
                     if ref and e.dlp > 3 * ref:

@@ -37,7 +37,7 @@ from .db.models import (
     ReferenceValue,
     Study,
 )
-from .stats import EXPOSURE_EXAM, BandLookup, describe
+from .stats import EXPOSURE_EXAM, BandLookup, describe, own_codes
 
 # quantity -> (event column, local unit, factor to the reference unit by unit)
 QUANTITY = {
@@ -93,7 +93,8 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
         c = aliased(Classification)
         link = and_(c.study_id == Study.id, c.code_id.in_(code_ids),
                     or_(c.event_id == Event.id,
-                        and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM))))
+                        and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM),
+                             ~own_codes(Event.id))))
         q = (select(col, Event.id, Study.id, Study.device_id, Study.age_days, Study.weight_kg,
                     c.code_id)
              .select_from(Event).join(Study, Study.id == Event.study_id).join(c, link)

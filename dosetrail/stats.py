@@ -68,6 +68,15 @@ METRICS: dict[str, Metric] = {
 DIMENSIONS = ("exam", "device", "age_band", "weight_band", "month", "quarter", "year",
               "modality", "sex", "protocol", "view")
 EXPOSURE_EXAM = ("DX", "CR", "MG", "PX")  # modalities classified per exposure
+
+
+def own_codes(event_id_col):
+    """The event has exam codes of its own (radiography, or a CT series of another region
+    than its study): then the study's codes do not apply to it."""
+    from sqlalchemy import exists
+
+    c2 = aliased(Classification)
+    return exists(select(c2.id).where(c2.event_id == event_id_col))
 MAX_GROUPS = 500
 
 
@@ -186,7 +195,8 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
             # and fluoroscopy events take the exam of their study
             link = and_(c.study_id == Study.id,
                         or_(c.event_id == Event.id,
-                            and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM))))
+                            and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM),
+                                 ~own_codes(Event.id))))
         else:
             link = and_(c.study_id == Study.id, c.event_id.is_(None))
         cc = aliased(Code)

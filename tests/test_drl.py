@@ -71,3 +71,15 @@ def test_european_set_units_bands_and_devices(session, data):
     assert lat["unit"] == "mGy.cm2" and lat["groups"][0]["median"] == pytest.approx(80.0)
     with pytest.raises(drl.DRLError):
         drl.compare(session, [], "nope")
+
+
+def test_trunk_series_of_a_head_study_are_not_compared_with_the_head_drl(session, data):
+    s = Study(study_uid="d.t", modality="CT", study_datetime=T, source_kind="test",
+              study_description="Head^CAP_SPIRAL_NATIV (Child)", age_days=AGE_2Y)
+    s.events = [Event(protocol="Head", dlp=700.0), Event(protocol="TAP nativ", dlp=150.0)]
+    session.add(s)
+    session.flush()
+    classify.run(session, [s.id])
+    out = drl.compare(session, [Study.id == s.id], "ro-ms838-2025", min_n=1)
+    assert _row(out, "CT-CAP", "1-4y", "dlp")["groups"][0]["n"] == 1
+    assert _row(out, "CT-TRUNCHI", "1-4y", "dlp")["groups"][0]["median"] == 150.0

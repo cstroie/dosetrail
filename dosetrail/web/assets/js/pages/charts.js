@@ -48,12 +48,25 @@ function saveWs() { prefs.set(wsKey(ws.name), ws); }
 function deviceIndex(id) { return devices.findIndex((d) => d.id === id); }
 function devColor(th, id) { return th.devices[deviceIndex(id) % 8]; }
 function drlFor(metric, protocol) { return (metric === 'ctdivol' ? drlSet.ct_ctdivol_mgy : drlSet.ct_dlp_mgycm)[protocol]; }
+/** The DRL that applies to one acquisition. The API sends it per row (exam + patient age or
+ *  weight group, national OMS 838/2025 or RP 185); sample data has one value per protocol. */
+function refOf(r, metric) { return r.drl ? r.drl[metric] ?? undefined : drlFor(metric, r.protocol); }
+/** One reference per protocol for labels and markers: the median of its rows' references. */
+function protoRef(metric, protocol) {
+  const refs = rows.filter((r) => r.protocol === protocol).map((r) => refOf(r, metric)).filter((v) => v != null);
+  return refs.length ? summary(refs).median : undefined;
+}
+function refRange(metric, protocol) {
+  const refs = [...new Set(rows.filter((r) => r.protocol === protocol).map((r) => refOf(r, metric)).filter((v) => v != null))].sort((a, b) => a - b);
+  if (!refs.length) return '—';
+  return refs.length === 1 ? num(refs[0]) : `${num(refs[0])}–${num(refs[refs.length - 1])}`;
+}
 
 function protocolsBy(sort, metric) {
   const g = groupBy(rows, (r) => r.protocol);
   const list = [...g.entries()].map(([p, rs]) => ({ p, n: rs.length, med: summary(rs.map((r) => r[METRICS[metric].field])).median }));
   if (sort === 'name') list.sort((a, b) => a.p.localeCompare(b.p));
-  else if (sort === 'value') list.sort((a, b) => b.med / (drlFor(metric, b.p) || 1) - a.med / (drlFor(metric, a.p) || 1));
+  else if (sort === 'value') list.sort((a, b) => b.med / (protoRef(metric, b.p) || 1) - a.med / (protoRef(metric, a.p) || 1));
   else list.sort((a, b) => b.n - a.n);
   return list.map((x) => x.p);
 }
@@ -64,7 +77,7 @@ function summaryRows(metric, protocolFilter) {
   for (const p of protocolsBy('n', metric).filter((x) => g.has(x))) {
     for (const [dev, rs] of g.get(p)) {
       const s = summary(rs.map((r) => r[METRICS[metric].field]));
-      const ref = drlFor(metric, p);
+      const ref = protoRef(metric, p);
       out.push({ protocol: p, device_id: dev, device: rs[0].device, ...s, drl: ref, ratio: ref ? s.p75 / ref : null });
     }
   }
@@ -90,7 +103,10 @@ function period(iso, per) {
 
 function buildDots(cfg) {
   const metric = METRICS[cfg.metric];
-  const protos = protocolsBy(cfg.sort || 'n', cfg.metric).filter((p) => drlFor(cfg.metric, p));
+  const withRef = rows.filter((r) => refOf(r, cfg.metric));
+  const TOP = 12;  // more rows than this do not fit the panel; the summary table has them all
+  const allProtos = protocolsBy(cfg.sort || 'n', cfg.metric).filter((p) => withRef.some((r) => r.protocol === p));
+  const protos = allProtos.slice(0, TOP);
   const devIds = [...new Set(rows.map((r) => r.device_id))].sort((a, b) => a - b);
   const csv = [['protocol', 'device', `${metric.label} ${metric.unit}`, 'percent_of_DRL']];
   const option = (th) => {
@@ -102,12 +118,12 @@ function buildDots(cfg) {
       const pts = [];
       const meds = [];
       protos.forEach((p, i) => {
-        const rs = rows.filter((r) => r.protocol === p && r.device_id === dev);
+        const rs = withRef.filter((r) => r.protocol === p && r.device_id === dev);
         if (!rs.length) return;
         const y = i + (k - (devIds.length - 1) / 2) * 0.26;
-        const ref = drlFor(cfg.metric, p);
-        for (const r of rs) pts.push([(r[metric.field] / ref) * 100, y + (rnd() - 0.5) * 0.16, r[metric.field]]);
-        meds.push([(summary(rs.map((r) => r[metric.field])).median / ref) * 100, y]);
+        const pct = rs.map((r) => (r[metric.field] / refOf(r, cfg.metric)) * 100);
+        rs.forEach((r, j) => pts.push([pct[j], y + (rnd() - 0.5) * 0.16, r[metric.field]]));
+        meds.push([summary(pct).median, y]);
       });
       const name = devices[deviceIndex(dev)]?.display_name || `Device ${dev}`;
       series.push({ name, type: 'scatter', data: pts, symbolSize: 4, itemStyle: { color: devColor(th, dev), opacity: 0.45 }, large: true });
@@ -121,18 +137,21 @@ function buildDots(cfg) {
       legend: { ...base.legend, data: devIds.map((d) => devices[deviceIndex(d)]?.display_name) },
       grid: { left: 8, right: 24, top: 34, bottom: 40, containLabel: true },
       tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${p.seriesName}<br>${smart(p.value[2])} ${metric.unit} · ${num(p.value[0])}% of DRL` },
-      xAxis: { type: 'value', min: 0, max: 200, name: `% of local DRL (${metric.label})`, nameLocation: 'middle', nameGap: 24, ...base._axis, axisLine: { ...base._axis.axisLine, onZero: false } },
+      xAxis: { type: 'value', min: 0, max: 200, name: `% of applicable DRL (${metric.label}, exam + age/weight group)`, nameLocation: 'middle', nameGap: 24, ...base._axis, axisLine: { ...base._axis.axisLine, onZero: false } },
       yAxis: [
         { type: 'value', min: -0.5, max: protos.length - 0.5, inverse: true, show: false },
         { type: 'category', data: protos, inverse: true, position: 'left', ...base._axis, axisTick: { show: false }, splitLine: { show: false },
-          axisLabel: { ...base._axis.axisLabel, fontFamily: th.sans, color: th.text, formatter: (p) => `${p}\n{n|n ${num(rows.filter((r) => r.protocol === p).length)} · DRL ${num(drlFor(cfg.metric, p))} ${metric.unit}}`,
+          axisLabel: { ...base._axis.axisLabel, fontFamily: th.sans, color: th.text, formatter: (p) => `${p}\n{n|n ${num(withRef.filter((r) => r.protocol === p).length)} · DRL ${refRange(cfg.metric, p)} ${metric.unit}}`,
             rich: { n: { color: th.muted, fontFamily: th.mono, fontSize: 10 } } } },
       ],
       series,
     };
   };
-  rows.forEach((r) => { const ref = drlFor(cfg.metric, r.protocol); if (ref) csv.push([r.protocol, r.device, r[metric.field], num((r[metric.field] / ref) * 100, 1)]); });
-  return { option, csv, title: `${metric.label} vs local DRL, per protocol and device`, summary: summaryRows(cfg.metric) };
+  withRef.forEach((r) => { const ref = refOf(r, cfg.metric); csv.push([r.protocol, r.device, r[metric.field], num((r[metric.field] / ref) * 100, 1)]); });
+  const missing = rows.length - withRef.length;
+  const note = (allProtos.length > TOP ? ` · top ${TOP} of ${allProtos.length} protocols` : '')
+    + (missing ? ` · ${num(missing)} of ${num(rows.length)} without an applicable DRL (no exam DRL, or body exam without weight)` : '');
+  return { option, csv, title: `${metric.label} vs applicable DRL, per protocol and device${note}`, summary: summaryRows(cfg.metric) };
 }
 
 function buildBoxOrBar(cfg) {
@@ -152,11 +171,11 @@ function buildBoxOrBar(cfg) {
         ? { name, type: 'boxplot', data, itemStyle: { color: 'transparent', borderColor: devColor(th, d), borderWidth: 1.5 }, boxWidth: [4, 10] }
         : { name, type: 'bar', data, itemStyle: { color: devColor(th, d) }, barMaxWidth: 10 };
     });
-    series.push({ name: 'Local DRL', type: 'scatter', symbol: 'rect', symbolSize: [2, 26], data: protos.map((p, i) => [drlFor(cfg.metric, p) ?? null, i]),
-      itemStyle: { color: th.ref }, z: 6, tooltip: { formatter: (p) => `Local DRL ${num(p.value[0])} ${metric.unit}` } });
+    series.push({ name: 'DRL', type: 'scatter', symbol: 'rect', symbolSize: [2, 26], data: protos.map((p, i) => [protoRef(cfg.metric, p) ?? null, i]),
+      itemStyle: { color: th.ref }, z: 6, tooltip: { formatter: (p) => `Applicable DRL (median) ${num(p.value[0])} ${metric.unit}` } });
     return {
       ...base,
-      legend: { ...base.legend, data: [...devIds.map((d) => devices[deviceIndex(d)]?.display_name), 'Local DRL'] },
+      legend: { ...base.legend, data: [...devIds.map((d) => devices[deviceIndex(d)]?.display_name), 'DRL'] },
       grid: { left: 8, right: 20, top: 52, bottom: 40, containLabel: true },
       tooltip: { ...base.tooltip, trigger: 'item' },
       xAxis: { type: 'log', name: `${metric.label} ${metric.unit} (log)`, nameLocation: 'middle', nameGap: 24, ...base._axis },
@@ -174,7 +193,7 @@ function buildHist(cfg) {
   const proto = cfg.protocol || protocolsBy('n', cfg.metric)[0];
   const vals = rows.filter((r) => r.protocol === proto).map((r) => r[metric.field]);
   const bins = histogram(vals, 16);
-  const ref = drlFor(cfg.metric, proto);
+  const ref = protoRef(cfg.metric, proto);
   const option = (th) => {
     const base = baseOption(th);
     return {
@@ -205,7 +224,7 @@ function buildTrend(cfg) {
   const rs = rows.filter((r) => r.protocol === proto);
   const periods = [...new Set(rs.map((r) => period(r.time, per)))].sort();
   const byDev = groupBy(rs, (r) => r.device_id, (r) => period(r.time, per));
-  const ref = drlFor(cfg.metric, proto);
+  const ref = protoRef(cfg.metric, proto);
   const csv = [['device', 'period', 'n', stat]];
   const option = (th) => {
     const base = baseOption(th);

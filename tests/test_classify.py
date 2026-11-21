@@ -124,3 +124,20 @@ def test_national_ct_code_follows_contrast(session):
     session.flush()
     classify.run(session, [s.id])
     assert "ro-insp-1255-ct:ASC" in _codes(session, s.id)
+
+
+def test_ct_series_of_another_region_get_their_own_codes(session):
+    load_all(session)
+    s = Study(study_uid="c.10", modality="CT", study_datetime=T, source_kind="test",
+              study_description="Head^CAP_SPIRAL_NATIV (Adult)")
+    head, tap, unknown = (Event(protocol="CAP NATIV"), Event(protocol="TAP nativ"),
+                          Event(protocol="ARTERIAL"))
+    s.events = [head, tap, unknown]
+    session.add(s)
+    session.flush()
+    classify.run(session, [s.id])
+    assert _codes(session, s.id, tap.id) == {"ro-nom-ct:CT-TAP",
+                                             "ro-drl-ms838-2025:CT-TRUNCHI"}
+    assert _codes(session, s.id, head.id) == set()  # same region: follows the study
+    assert _codes(session, s.id, unknown.id) == set()  # names no region: follows the study
+    assert "ro-drl-ms838-2025:CT-CAP" in _codes(session, s.id, None)

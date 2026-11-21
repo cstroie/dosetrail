@@ -60,7 +60,7 @@ class Evaluator:
             if e.is_localizer:
                 continue
             if s.modality == "CT":
-                code = national.get(None)
+                code = national.get(e.id) or national.get(None)
                 ref = self.checker.drl.get((code, band, "dlp"))
                 if ref and e.dlp:
                     cand = (e.dlp / ref, e.dlp, ref, "mGy.cm", code)

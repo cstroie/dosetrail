@@ -146,9 +146,10 @@ def dataset_rows(session: Session, conds: list, secret: bytes,
                     ec = event_codes.get(e.id, {})
                     key = (ec.get(NATIONAL), ec.get(EUROPEAN), ec.get("ro-nom-rx"),
                            view_code(e.view, e.protocol))
-                else:
-                    key = (sc.get(NATIONAL), sc.get(EUROPEAN),
-                           next((sc[k] for k in NOMENCLATORS if k in sc), None), None)
+                else:  # a CT series of another region than its study has its own codes
+                    c = event_codes.get(e.id) or sc
+                    key = (c.get(NATIONAL), c.get(EUROPEAN),
+                           next((c[k] for k in NOMENCLATORS if k in c), None), None)
                 if key[0] or key[1]:
                     groups[key].append(e)
             for (nat, eu, nom, view), evs in groups.items():

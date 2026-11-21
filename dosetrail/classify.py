@@ -43,6 +43,9 @@ SEEDS = Path(__file__).parent / "seeds"
 NOMENCLATOR = {"rx": "ro-nom-rx", "rf": "ro-nom-rx", "ct": "ro-nom-ct"}
 FAMILY = {"DX": "rx", "CR": "rx", "MG": "rx", "PX": "rx", "RF": "rf", "XA": "rf", "CT": "ct"}
 STUDY_FIELDS = ("study_description", "procedure_name", "requested_procedure")
+DRL_SYSTEMS = ("ro-drl-ms838-2025", "ec-rp185")
+HEAD_CT = {"CT-CR", "CT-CRLD", "CT-CROR", "CT-CRMS", "CT-CRMF", "CT-CRPF", "CT-SN", "CT-SNLD",
+           "CT-SNCO", "CT-TRCR", "AG-CR"}
 EVENT_FIELDS = ("protocol", "anatomy")
 BATCH = 2000
 
@@ -247,7 +250,33 @@ class Classifier:
             row(cid, mid)
             for dst in self.drl_codes(cid, None):
                 row(self.contrast_variant(dst, out.contrast), None)
+        if family == "ct":
+            self._ct_series(events, hit[0] if hit else None, row)
         return out
+
+    def _ct_series(self, events: list[dict], study_code: int | None, row) -> None:
+        """A series whose own protocol names another region than the study, head vs not
+        head (a trunk series in a 'head' trauma study, a head series in a 'TAP' study),
+        gets its own nomenclator and DRL codes: the head DRLs (16 cm phantom) and the body
+        DRLs must not be mixed. Series that name no region, or the same kind, follow the
+        study."""
+        study_head = self._is_head(study_code)
+        for e in events:
+            if e.get("is_localizer"):
+                continue
+            own = self.match("ct", "protocol", e.get("protocol"))
+            if not own or own[0] == study_code:
+                continue
+            if study_code is not None and self._is_head(own[0]) == study_head:
+                continue
+            cid, mid = own
+            row(cid, mid, e["id"])
+            for dst in self.drl_codes(cid, None):
+                if self.code_key[dst][0] in DRL_SYSTEMS:
+                    row(dst, None, e["id"])
+
+    def _is_head(self, code_id: int | None) -> bool:
+        return code_id is not None and self.code_key.get(code_id, ("", ""))[1] in HEAD_CT
 
     def contrast_variant(self, code_id: int, contrast: str | None) -> int:
         """National CT codes have a contrast variant (C -> CSC): use it for contrast exams."""

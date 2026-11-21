@@ -156,7 +156,7 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
             evs = events.get(s.id, [])
             if s.modality == "CT":
                 for n, e in enumerate(evs, 1):
-                    yield _ct_row(base, sc, n, e)
+                    yield _ct_row(base, event_codes.get(e.id) or sc, n, e)
             elif s.modality in EXPOSURE_EXAM:
                 groups: dict[tuple, list[Event]] = defaultdict(list)
                 for e in evs:
