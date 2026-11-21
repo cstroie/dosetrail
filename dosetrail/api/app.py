@@ -27,7 +27,7 @@ from ..config import Settings, load_settings
 from ..db.models import AuditLog, User
 from ..db.session import make_engine, make_sessionmaker
 from ..security import load_or_create_secret, read_session, sign_session, verify_password
-from . import admin, data
+from . import admin, data, review
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 LOGIN_HTML = Path(__file__).resolve().parent / "login.html"
@@ -56,6 +56,13 @@ class MergeIn(BaseModel):
 
 class DismissIn(BaseModel):
     record_ids: list[int]
+
+
+class DecisionIn(BaseModel):
+    family: str  # rx | rf | ct
+    field: str  # protocol | anatomy | study_description | procedure_name | ...
+    text: str
+    code: str | None = None  # nomenclator code; null clears the decision
 
 
 def create_app(settings: Settings | None = None, engine: Engine | None = None,
@@ -201,6 +208,46 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def ct_acquisitions(q: str = "", user: User = Depends(current_user),
                         session: Session = Depends(db)):
         return data.ct_acquisitions(session, q, clock())
+
+    # ------------------------------------------------------------------ classification
+
+    def _review(fn):
+        try:
+            return fn()
+        except review.ReviewError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/classification/summary")
+    def classification_summary(user: User = Depends(current_user),
+                               session: Session = Depends(db)):
+        return review.summary(session)
+
+    @app.get("/api/classification/unclassified")
+    def classification_unclassified(family: str = "rx", limit: int = 100,
+                                    user: User = Depends(current_user),
+                                    session: Session = Depends(db)):
+        return _review(lambda: review.unclassified(session, family, min(max(limit, 1), 500)))
+
+    @app.get("/api/classification/mappings")
+    def classification_mappings(user: User = Depends(current_user),
+                                session: Session = Depends(db)):
+        return review.mappings(session)
+
+    @app.put("/api/classification/mappings")
+    def classification_decide(body: DecisionIn, request: Request,
+                              user: User = Depends(admin_user),
+                              session: Session = Depends(db)):
+        out = _review(lambda: review.decide(session, body.family, body.field, body.text,
+                                            body.code))
+        _audit(session, request, user, "classification.decide",
+               f"{body.family}:{body.field}", out)
+        session.commit()
+        return out
+
+    @app.get("/api/codes/{system}")
+    def code_list(system: str, user: User = Depends(current_user),
+                  session: Session = Depends(db)):
+        return _review(lambda: review.codes(session, system))
 
     @app.get("/api/lookup")
     def lookup(q: str = "", limit: int = 6, user: User = Depends(current_user),

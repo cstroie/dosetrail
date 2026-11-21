@@ -363,6 +363,7 @@ class Classification(Base):
     __table_args__ = (
         Index("ix_classification_study", "study_id"),
         Index("ix_classification_code", "code_id"),
+        Index("ix_classification_event", "event_id"),
     )
 
 

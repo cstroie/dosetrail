@@ -6,12 +6,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from dosetrail import classify
 from dosetrail.api.app import create_app
 from dosetrail.config import Settings
 from dosetrail.db.migrate import upgrade
 from dosetrail.db.models import AuditLog, Device, Event, Patient, Study, User
 from dosetrail.db.session import make_engine, make_sessionmaker
 from dosetrail.security import hash_password
+from dosetrail.seeds.loader import load_all
 
 SECRET = b"s" * 32
 NOW = dt.datetime(2026, 11, 21, 10, 0)
@@ -43,6 +45,15 @@ def client(tmp_path_factory):
                                dap=1.5, field_w_mm=200, sid_mm=1050, fluoro_time_s=30,
                                event_datetime=NOW - dt.timedelta(days=5)))
         s.add(st)
+        load_all(s)
+        rx = Study(study_uid="1.2.4", accession="A2", modality="DX", device_id=dev.id,
+                   study_datetime=NOW - dt.timedelta(days=2), study_description="Spine",
+                   n_events=2, source_kind="test")
+        rx.events = [Event(protocol="COLOANA", anatomy="Spine", dap=0.2),
+                     Event(protocol="W035 Torace a.p. 10kg", view="antero-posterior", dap=0.05)]
+        s.add(rx)
+        s.flush()
+        classify.run(s)
         s.commit()
     app = create_app(Settings(database_url=url), engine=engine, secret=SECRET, now=NOW)
     return TestClient(app)
@@ -88,7 +99,7 @@ def test_studies_carry_pseudonyms_only(client):
 
 def test_detail_units(client):
     login(client, "viewer", "viewer-pass-1")
-    sid = client.get("/api/studies").json()["rows"][0]["id"]
+    sid = client.get("/api/studies", params={"q": "modality:XA"}).json()["rows"][0]["id"]
     d = client.get(f"/api/studies/{sid}").json()
     ev = d["events"][0]
     assert ev["kar_mgy"] == 123.0 and ev["field_cm"] == 20.0 and ev["sid_cm"] == 105.0
@@ -98,7 +109,7 @@ def test_detail_units(client):
 
 def test_identify_needs_pid_role_and_is_audited(client):
     login(client, "viewer", "viewer-pass-1")
-    sid = client.get("/api/studies").json()["rows"][0]["id"]
+    sid = client.get("/api/studies", params={"q": "modality:XA"}).json()["rows"][0]["id"]
     assert client.post(f"/api/studies/{sid}/identify").status_code == 403
     login(client, "phys", "phys-pass-12")
     r = client.post(f"/api/studies/{sid}/identify").json()
@@ -107,7 +118,7 @@ def test_identify_needs_pid_role_and_is_audited(client):
 
 def test_audit_entry_written(client, tmp_path_factory):
     login(client, "phys", "phys-pass-12")
-    sid = client.get("/api/studies").json()["rows"][0]["id"]
+    sid = client.get("/api/studies", params={"q": "modality:XA"}).json()["rows"][0]["id"]
     client.post(f"/api/studies/{sid}/identify")
     # read the audit log through a fresh engine on the same file
     url = str(client.app.state.settings.database_url)
@@ -192,3 +203,26 @@ def test_merge_rename_split_dismiss_and_override(client):
         actions = {x.action for x in s.scalars(select(AuditLog))}
     assert {"device.merge", "device.update", "device.split",
             "device.merge_dismissed"} <= actions
+
+
+def test_classification_review(client):
+    login(client, "viewer", "viewer-pass-1")
+    summary = {r["family"]: r for r in client.get("/api/classification/summary").json()}
+    assert summary["rx"]["studies"] >= 1 and summary["rx"]["classified"] >= 1
+    todo = client.get("/api/classification/unclassified?family=rx").json()
+    spine = [x for x in todo if x["texts"]["protocol"] == "COLOANA"]
+    assert spine and spine[0]["exposures"] == 1
+    codes = {c["code"] for c in client.get("/api/codes/ro-nom-rx").json()}
+    assert "RG-CVLM" in codes
+    body = {"family": "rx", "field": "protocol", "text": "COLOANA", "code": "RG-CVLM"}
+    assert client.put("/api/classification/mappings", json=body).status_code == 403
+
+    login(client, "boss", "boss-pass-123")
+    bad = client.put("/api/classification/mappings", json={**body, "code": "CT-CR"})
+    assert bad.status_code == 400 and "not a code" in bad.json()["error"]
+    r = client.put("/api/classification/mappings", json=body).json()
+    assert r["studies_reclassified"] == 1
+    left = client.get("/api/classification/unclassified?family=rx").json()
+    assert not [x for x in left if x["texts"]["protocol"] == "COLOANA"]
+    m = client.get("/api/classification/mappings").json()
+    assert [(x["text"], x["code"]) for x in m] == [("coloana", "RG-CVLM")]
