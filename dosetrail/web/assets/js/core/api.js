@@ -35,6 +35,28 @@ const remote = (path, params = {}) => {
 
 export const isSample = MODE === 'sample';
 
+/** Writes (API mode only). Every successful write drops the read cache. */
+async function send(method, path, body) {
+  const r = await fetch(new URL(path, MODE).href, {
+    method, headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+  cache.clear();
+  return data;
+}
+
+/** PATCH /api/devices/{id}  {display_name?, modality_override? ('auto' clears), origin?} */
+export const updateDevice = (id, patch) => send('PATCH', `/api/devices/${id}`, patch);
+/** POST /api/devices/merge  {record_ids, survivor_id, display_name?} */
+export const mergeDevices = (recordIds, survivorId, displayName) =>
+  send('POST', '/api/devices/merge', { record_ids: recordIds, survivor_id: survivorId, display_name: displayName });
+/** POST /api/devices/{id}/split */
+export const splitDevice = (id) => send('POST', `/api/devices/${id}/split`);
+/** POST /api/devices/merge-suggestions/dismiss  {record_ids} */
+export const dismissMerge = (recordIds) => send('POST', '/api/devices/merge-suggestions/dismiss', { record_ids: recordIds });
+
 /** "Now" for relative times: the sample data was generated at a fixed moment. */
 export async function now() {
   if (!isSample) return new Date().toISOString().slice(0, 16);

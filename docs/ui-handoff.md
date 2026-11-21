@@ -29,4 +29,6 @@ The UI now runs against the live API (`dosetrail serve`, then log in). The pages
    The API will expose the group schemes and reference sets. A "group by" selector on chart panels is the UI side.
 7. **Hashed accessions.** These come as `#a1b2c3d4e5…` with `accession_hashed: true` (legacy data). Keep the monospace column wide enough, and don't offer "filter by accession" for them.
 8. **Stale feeds.** All local feeds are currently stale, because nothing has been received since August. The overview shows this correctly. Consider sorting stale feeds first.
-9. **Write actions.** Display-name edits, merges, alert acknowledgements and the patient-identifier reveal need endpoints. The API has `POST /api/studies/{id}/identify` (pid role, audit-logged). The device write endpoints come next on the API side.
+9. **Write actions.**
+   - Device edits are persisted in API mode (admin role, audit-logged): display name, modality override (`auto` clears it), origin, merge, split (a "Split" button on alias rows) and dismissing a merge suggestion. The functions are in `core/api.js` (`updateDevice`, `mergeDevices`, `splitDevice`, `dismissMerge`); they clear the read cache after a write.
+   - Still missing: alert acknowledgements, and a UI for the patient-identifier reveal (`POST /api/studies/{id}/identify`, pid role, audit-logged). The study page's "Reveal…" button is not wired yet.

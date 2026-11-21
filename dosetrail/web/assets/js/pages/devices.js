@@ -7,7 +7,7 @@ import '../components/dt-shell.js';
 import { h, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
-import { devices, now } from '../core/api.js';
+import { devices, now, isSample, updateDevice, mergeDevices, splitDevice, dismissMerge } from '../core/api.js';
 
 const page = document.getElementById('page');
 const ADMIN_TABS = ['Devices', 'DICOM nodes', 'Protocol mappings', 'DRLs', 'Alert rules', 'Users', 'Audit log'];
@@ -37,6 +37,17 @@ function lastTag(r) {
   return h('span', { class: `tag ${level}` }, level === 'ok' || level === 'info' ? `${ago(r.last_study, nowIso)} ago` : `stale ${ago(r.last_study, nowIso)}`);
 }
 
+/** API mode: persist, then reload from the server. Sample mode: page-only change. */
+async function save(promise, message) {
+  try {
+    await promise;
+    toast(message);
+    await init();
+  } catch (e) {
+    toast(`Not saved: ${e.message}`);
+  }
+}
+
 function suggestionFor(physicalId) {
   return suggestions.find((s) => s.record_ids.includes(physicalId) && !s.done);
 }
@@ -54,16 +65,27 @@ function renderTable(tbody) {
     const last = recs.reduce((a, r) => (r.last_study > a.last_study ? r : a), recs[0]);
     tbody.append(h('tr', { class: `group ${active ? 'active' : ''}` },
       h('td', {}, h('input', { class: 'inline-edit', value: main.display_name, 'aria-label': `Display name for ${main.station}`,
-        onchange: (e) => { main.display_name = e.target.value.trim() || main.display_name; toast(`Display name saved: ${main.display_name} (sample mode, this page only)`); } }),
+        onchange: (e) => {
+          const name = e.target.value.trim();
+          if (!name) { e.target.value = main.display_name; return; }
+          if (!isSample) { save(updateDevice(main.id, { display_name: name }), `Display name saved: ${name}`); return; }
+          main.display_name = name;
+          toast(`Display name saved: ${main.display_name} (sample mode, this page only)`);
+        } }),
       sugg ? h('button', { class: 'btn xs', type: 'button', style: { 'margin-top': '4px' }, onclick: () => review(sugg) }, `Review merge (${sugg.record_ids.length})`) : null),
       h('td', {}, `${main.manufacturer} ${main.model}`, h('br'), h('span', { class: 'muted', style: { 'font-weight': '400', 'font-size': '11px' } }, main.institution)),
       h('td', { class: 'mono' }, main.serial || '—'),
       h('td', { class: 'mono' }, main.station),
       h('td', {}, h('select', { class: 'input', 'aria-label': `Modality override for ${main.display_name}`, style: { height: '26px' },
-        onchange: (e) => toast(`Modality override: ${e.target.value}`) },
-      ['auto', 'CT', 'DX', 'CR', 'RF', 'XA', 'MG', 'NM'].map((m) => h('option', { value: m, selected: m === 'auto' }, m === 'auto' ? `auto (${main.modality})` : m)))),
+        onchange: (e) => (isSample ? toast(`Modality override: ${e.target.value}`)
+          : save(updateDevice(main.id, { modality_override: e.target.value }), `Modality override: ${e.target.value}`)) },
+      ['auto', 'CT', 'DX', 'CR', 'RF', 'XA', 'MG', 'NM'].map((m) => h('option', { value: m, selected: m === (main.modality_override || 'auto') }, m === 'auto' ? `auto (${main.modality})` : m)))),
       h('td', {}, h('select', { class: 'input', 'aria-label': `Origin of ${main.display_name}`, style: { height: '26px' },
-        onchange: (e) => { recs.forEach((r) => { r.origin = e.target.value; }); toast(`${main.display_name} is now ${e.target.value}`); } },
+        onchange: (e) => {
+          if (!isSample) { save(updateDevice(main.id, { origin: e.target.value }), `${main.display_name} is now ${e.target.value}`); return; }
+          recs.forEach((r) => { r.origin = e.target.value; });
+          toast(`${main.display_name} is now ${e.target.value}`);
+        } },
       ['local', 'external'].map((o) => h('option', { value: o, selected: o === main.origin }, o)))),
       h('td', { class: 'r num' }, num(total)),
       h('td', {}, lastTag(last))));
@@ -74,7 +96,11 @@ function renderTable(tbody) {
           h('td', { class: 'muted' }, `${r.manufacturer} ${r.model}`),
           h('td', { class: 'mono' }, r.serial || '—'),
           h('td', { class: 'mono muted' }, r.software ? `sw ${r.software}` : ''),
-          h('td', {}), h('td', {}),
+          h('td', {}),
+          h('td', {}, !isSample && r.id !== main.id
+            ? h('button', { class: 'btn xs', type: 'button', title: 'Make this record a separate device again',
+              onclick: () => save(splitDevice(r.id), `${r.station} split off`) }, 'Split')
+            : null),
           h('td', { class: 'r num' }, num(r.studies)),
           h('td', { class: 'mono muted' }, dateTime(r.last_study).slice(0, 10))));
       }
@@ -120,12 +146,19 @@ function inspector() {
       h('dt', {}, 'Stations routed here'), h('dd', { class: 'mono' }, recs.map((r) => r.station).join(', '))),
     h('div', { class: 'row' },
       h('button', { class: 'btn primary', type: 'button', onclick: () => merge(recs, survivorRec) }, `${t('admin.merge')} ${recs.length} records`),
-      h('button', { class: 'btn', type: 'button', onclick: () => { current.done = true; current = null; toast('Suggestion dismissed'); render(); } }, t('admin.reject'))),
+      h('button', { class: 'btn', type: 'button', onclick: () => {
+        if (!isSample) { save(dismissMerge(current.record_ids), 'Suggestion dismissed'); return; }
+        current.done = true; current = null; toast('Suggestion dismissed'); render();
+      } }, t('admin.reject'))),
     h('p', { class: 'muted', style: { 'font-size': '11px' } }, 'Reference levels and alert rules come from the surviving record. Merges are written to the audit log and can be split again.')));
   return box;
 }
 
 function merge(recs, keep) {
+  if (!isSample) {
+    save(mergeDevices(recs.map((r) => r.id), keep.id, keep.display_name), `Merged ${recs.length} records into “${keep.display_name}”`);
+    return;
+  }
   const physicalId = recs[0].physical_id;
   const name = keep.display_name;
   const main = records.find((r) => r.id === physicalId);
