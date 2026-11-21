@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from dosetrail.db.models import Device, Event, Patient, Study
 from dosetrail.legacy.openrem.importer import OpenREMImporter
-from dosetrail.legacy.openrem.reconcile import reconcile
+from dosetrail.legacy.openrem.reconcile import reconcile, reconcile_by_year
 
 STUDY_COLS = [
     "orem_id", "study_instance_uid", "study_date", "study_time", "accession_number",
@@ -51,7 +51,7 @@ def make_dump(tmp_path):
         _study(2, "1.2.2", patient_id="P123", patient_name="POPESCU^ION",
                patient_birth_date="2015-01-20", patient_weight="21.5", station_name="ysio-1"),
         # same Study UID twice in OpenREM (continued study) -> merged
-        _study(3, "1.2.3", patient_id="P9"),
+        _study(3, "1.2.3", patient_id="P9", modality_type="CR"),
         _study(4, "1.2.3", patient_id="P9"),
         _study(5, "1.3.1", modality_type="CT", manufacturer="SIEMENS", device_serial_number="77",
                station_name="CT1", patient_id="P9"),
@@ -65,9 +65,14 @@ def make_dump(tmp_path):
              event_type="Stationary Acquisition", exposure_uas="2600", exposure_time="5",
              kvp="70", filters="Copper:0.1;Aluminum:1.0"),
         dict(orem_study_id=2, irradiation_event_uid="e2", dose_area_product="2e-06"),
-        dict(orem_study_id=3, irradiation_event_uid="e3", dose_area_product="1e-06"),
-        dict(orem_study_id=4, irradiation_event_uid="e3", dose_area_product="1e-06"),  # dup
-        dict(orem_study_id=4, irradiation_event_uid="e4", dose_area_product="1e-06"),
+        # same exposure stored as a CR object and as a DX object (different SOP/event UIDs)
+        dict(orem_study_id=3, irradiation_event_uid="cr1", dose_area_product="1e-06",
+             started="2025-03-10 10:01:00", kvp="60", exposure_uas="1000"),
+        dict(orem_study_id=4, irradiation_event_uid="dx1", dose_area_product="1e-06",
+             started="2025-03-10 10:01:00", kvp="60", exposure_uas="1000"),
+        dict(orem_study_id=4, irradiation_event_uid="dx1", dose_area_product="1e-06"),  # same UID
+        dict(orem_study_id=4, irradiation_event_uid="dx2", dose_area_product="1e-06",
+             started="2025-03-10 10:02:00", kvp="60", exposure_uas="1000"),
     ])
     ccols = ["orem_study_id", "orem_event_id", "irradiation_event_uid", "started",
              "acquisition_protocol", "acquisition_type", "phantom", "mean_ctdivol", "dlp",
@@ -87,10 +92,17 @@ def make_dump(tmp_path):
              proj_events=0),
         dict(modality="DX", year=2019, studies=1, uids=1, ct_events=0, proj_events=1,
              sum_event_dap_gym2="1.5e-06"),
-        # OpenREM counts the duplicated event e3 twice; DoseTrail keeps it once -> DIFF
-        dict(modality="DX", year=2025, studies=3, uids=2, ct_events=0, proj_events=4,
+        dict(modality="CR", year=2025, studies=1, uids=1, ct_events=0, proj_events=1,
+             sum_event_dap_gym2="1e-06"),
+        dict(modality="DX", year=2025, studies=2, uids=2, ct_events=0, proj_events=4,
              sum_event_dap_gym2="5e-06"),
     ])
+    _write(tmp_path / "summary_year.csv.gz",
+           ["year", "uids", "events", "sum_event_dlp", "sum_event_dap_gym2"], [
+               dict(year=2019, uids=1, events=1, sum_event_dap_gym2="1.5e-06"),
+               # 4 studies rows, 3 distinct UIDs; 7 OpenREM events = 2 CT + 5 projection
+               dict(year=2025, uids=3, events=7, sum_event_dlp=505, sum_event_dap_gym2="6e-06"),
+           ])
     return tmp_path
 
 
@@ -100,7 +112,13 @@ def test_import(session, tmp_path):
     session.flush()
 
     assert stats.studies_new == 4 and stats.studies_merged == 1
-    assert stats.events_duplicate == 1
+    assert stats.events_duplicate == 1  # repeated event UID
+    assert stats.exposures_deduplicated == 1  # CR copy of the DX exposure
+    merged = session.scalar(select(Study).filter_by(study_uid="1.2.3"))
+    assert merged.modality == "DX" and merged.n_events == 2
+    kept = {e.event_uid for e in session.scalars(select(Event).filter_by(study_id=merged.id))}
+    assert kept == {"dx1", "dx2"}
+    assert (tmp_path / "dedup-report.csv.gz").exists()
     # patient linkage: hashed + clear -> one patient with clear id and legacy hash
     p = session.scalar(select(Patient).filter_by(patient_id="P123"))
     assert p.legacy_sha256 == hashlib.sha256(b"P123").hexdigest()
@@ -125,7 +143,10 @@ def test_import(session, tmp_path):
     assert loc.is_localizer and loc.event_type == "localizer"
     assert session.scalar(select(Event).filter_by(event_uid="c2")).ct_phantom_cm == 16
 
-    lines, ok = reconcile(session, tmp_path)
-    assert not ok  # the duplicated OpenREM event is reported, not silently hidden
-    assert any("DX" in line and "DIFF" in line for line in lines)
-    assert any("CT" in line and "OK" in line for line in lines)
+    _lines, ok = reconcile(session, tmp_path)
+    assert not ok  # per-modality view shows the relabelling; informational only
+    lines, ok = reconcile_by_year(session, tmp_path)
+    # 2025: 7 OpenREM events - 1 audited duplicate = 6, but the repeated event UID (dx1 twice)
+    # is also dropped -> reported as DIFF, never hidden
+    assert not ok and any(line.strip().startswith("2025") and "DIFF" in line for line in lines)
+    assert any(line.strip().startswith("2019") and "OK" in line for line in lines)

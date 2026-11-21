@@ -153,6 +153,29 @@ FROM st LEFT JOIN ct ON ct.sid = st.id LEFT JOIN pj ON pj.sid = st.id
 GROUP BY 1, 2 ORDER BY 1, 2
 """
 
+# Per-year totals over all modalities (distinct Study UIDs) – robust to modality relabelling.
+SUMMARY_YEAR = """
+WITH st AS (
+    SELECT g.id, coalesce(extract(year FROM g.study_date)::int, 0) AS year,
+           g.study_instance_uid
+    FROM remapp_generalstudymoduleattr g),
+ct AS (
+    SELECT r.general_study_module_attributes_id AS sid, count(*) AS n, sum(e.dlp) AS dlp
+    FROM remapp_ctirradiationeventdata e
+    JOIN remapp_ctradiationdose r ON r.id = e.ct_radiation_dose_id GROUP BY 1),
+pj AS (
+    SELECT p.general_study_module_attributes_id AS sid, count(*) AS n,
+           sum(e.dose_area_product) AS dap
+    FROM remapp_irradeventxraydata e
+    JOIN remapp_projectionxrayradiationdose p ON p.id = e.projection_xray_radiation_dose_id
+    GROUP BY 1)
+SELECT st.year, count(DISTINCT st.study_instance_uid) AS uids,
+       sum(coalesce(ct.n, 0)) + sum(coalesce(pj.n, 0)) AS events,
+       sum(ct.dlp) AS sum_event_dlp, sum(pj.dap) AS sum_event_dap_gym2
+FROM st LEFT JOIN ct ON ct.sid = st.id LEFT JOIN pj ON pj.sid = st.id
+GROUP BY 1 ORDER BY 1
+"""
+
 SCHEMA_VERSION = """
 SELECT name FROM django_migrations WHERE app = 'remapp' ORDER BY id DESC LIMIT 1
 """
@@ -163,5 +186,6 @@ DUMPS: dict[str, str] = {
     "proj_events": PROJ_EVENTS,
     "object_uids": OBJECT_UIDS,
     "summary": SUMMARY,
+    "summary_year": SUMMARY_YEAR,
     "schema_version": SCHEMA_VERSION,
 }

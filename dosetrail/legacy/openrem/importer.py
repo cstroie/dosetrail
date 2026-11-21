@@ -7,6 +7,9 @@
 * Studies are merged by Study Instance UID; events are unique per (study, event UID).
 * Units are converted to DoseTrail storage units (DAP Gy·m² -> Gy·cm², µAs -> mAs, ms -> s).
 * Re-running skips studies whose UID already exists.
+* Exact duplicate exposures inside a study (same time to the second, same DAP, kVp, mAs and
+  protocol – e.g. one exposure stored both as a CR and a DX object) are removed, keeping
+  the non-CR copy. Every removal is written to an audit file (dedup-report.csv.gz).
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from ...db.models import (
@@ -171,6 +174,9 @@ class Stats:
     proj_events: int = 0
     events_duplicate: int = 0
     events_orphan: int = 0
+    exposures_deduplicated: int = 0
+    dap_deduplicated_gycm2: float = 0.0
+    studies_modality_cr_to_dx: int = 0
     objects: int = 0
     notes: list[str] = field(default_factory=list)
 
@@ -186,6 +192,9 @@ class OpenREMImporter:
         self.stats = Stats()
         self.institution_id = self._institution(institution_name)
         self.study_ids: dict[str, int] = {}  # openrem study pk -> dosetrail study id
+        self.orem_modality: dict[str, str] = {}  # openrem study pk -> modality_type
+        self.study_modality: dict[int, str] = {}
+        self.modality_fix: dict[int, str] = {}
         self.uid_to_study: dict[str, int] = {}
         self.patient_by_hash: dict[str, int] = {}
         self.patient_has_clear: set[int] = set()
@@ -244,15 +253,21 @@ class OpenREMImporter:
             if uid in preexisting:
                 self.stats.studies_skipped_existing += 1
                 continue
+            modality = s(r.get("modality_type"), 16) or "OT"
+            self.orem_modality[r["orem_id"]] = modality
             if uid in self.uid_to_study:  # duplicate/continued study in OpenREM -> merge
-                self.study_ids[r["orem_id"]] = self.uid_to_study[uid]
+                sid = self.uid_to_study[uid]
+                self.study_ids[r["orem_id"]] = sid
                 self.stats.studies_merged += 1
+                if {self.study_modality.get(sid), modality} == {"CR", "DX"}:
+                    self.modality_fix[sid] = "DX"  # Siemens CR+DX copies of one study
                 continue
 
             patient_id = self._patient(r, patients, patient_updates)
             device_id = self._device(r, devices)
             sid = self._id(Study)
             self.uid_to_study[uid] = sid
+            self.study_modality[sid] = modality
             self.study_ids[r["orem_id"]] = sid
             studies.append(self._study_row(sid, uid, r, patient_id, device_id))
             self.stats.studies_new += 1
@@ -263,6 +278,9 @@ class OpenREMImporter:
         self._flush(Patient, patients)
         self._flush(Device, devices)
         self._flush(Study, studies)
+        for sid, mod in self.modality_fix.items():
+            self.conn.execute(update(Study).where(Study.id == sid).values(modality=mod))
+        self.stats.studies_modality_cr_to_dx = len(self.modality_fix)
         for pid, values in patient_updates.items():
             self.conn.execute(update(Patient).where(Patient.id == pid).values(**values))
         for did, votes in self.display_votes.items():
@@ -470,6 +488,7 @@ class OpenREMImporter:
                 compression_force_n=num(r.get("compression_force")),
                 target_material=s(r.get("anode_target"), 32),
                 exposure_control_mode=s(r.get("exposure_control_mode"), 64),
+                extra_json={"openrem_modality": self.orem_modality.get(r["orem_study_id"])},
             )
             t = self.totals[sid]
             t["n"] += 1
@@ -505,6 +524,80 @@ class OpenREMImporter:
                 self._flush(IngestedObject, batch)
         self._flush(IngestedObject, batch)
 
+    def deduplicate_exposures(self) -> None:
+        """Remove exact duplicate exposures within a study, keeping the non-CR copy."""
+        a, b = Event.__table__.alias("a"), Event.__table__.alias("b")
+
+        def same(col):
+            return or_(a.c[col] == b.c[col], and_(a.c[col].is_(None), b.c[col].is_(None)))
+
+        pairs = select(a.c.id, b.c.id).join(b, and_(
+            b.c.study_id == a.c.study_id, b.c.id > a.c.id,
+            a.c.event_datetime == b.c.event_datetime,
+            func.abs(a.c.dap - b.c.dap) < 1e-12, same("kvp"), same("mas"), same("protocol"),
+        )).where(a.c.dap.is_not(None), a.c.event_datetime.is_not(None))
+        ids = {i for pair in self.conn.execute(pairs) for i in pair}
+        if not ids:
+            return
+        ev = Event.__table__
+        st = Study.__table__
+        cols = [ev.c.id, ev.c.study_id, ev.c.event_uid, ev.c.event_datetime, ev.c.dap,
+                ev.c.kvp, ev.c.mas, ev.c.protocol, ev.c.extra_json, ev.c.event_type,
+                ev.c.rp_dose, ev.c.fluoro_time_s, ev.c.agd, ev.c.laterality,
+                st.c.study_uid, st.c.study_datetime]
+        groups: dict[tuple, list] = defaultdict(list)
+        id_list = sorted(ids)
+        for i in range(0, len(id_list), BATCH):
+            q = select(*cols).join(st, st.c.id == ev.c.study_id).where(
+                ev.c.id.in_(id_list[i:i + BATCH]))
+            for row in self.conn.execute(q):
+                key = (row.study_id, row.event_datetime, round(row.dap, 12), row.kvp, row.mas,
+                       row.protocol)
+                groups[key].append(row)
+        report, delete = [], []
+        for members in groups.values():
+            if len(members) < 2:
+                continue
+
+            def rank(r):
+                src = (r.extra_json or {}).get("openrem_modality")
+                return (src == "CR", r.id)  # prefer non-CR, then the first imported
+
+            keep, *drop = sorted(members, key=rank)
+            for r in drop:
+                delete.append(r.id)
+                self._subtract(r)
+                report.append({
+                    "study_uid": r.study_uid,
+                    "year": r.study_datetime.year if r.study_datetime else 0,
+                    "kept_event_uid": keep.event_uid, "removed_event_uid": r.event_uid,
+                    "removed_source_modality": (r.extra_json or {}).get("openrem_modality"),
+                    "event_datetime": r.event_datetime, "dap_gycm2": r.dap,
+                })
+                self.stats.dap_deduplicated_gycm2 += r.dap or 0
+        for i in range(0, len(delete), BATCH):
+            self.conn.execute(ev.delete().where(ev.c.id.in_(delete[i:i + BATCH])))
+        self.stats.exposures_deduplicated = len(delete)
+        path = self.dir / "dedup-report.csv.gz"
+        with gzip.open(path, "wt", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(report[0]) if report else ["study_uid"])
+            w.writeheader()
+            w.writerows(report)
+        path.chmod(0o600)
+
+    def _subtract(self, r) -> None:
+        t = self.totals[r.study_id]
+        t["n"] -= 1
+        if r.dap is not None:
+            t["dap"] -= r.dap
+            t["fluoro_dap" if r.event_type == "fluoro" else "acq_dap"] -= r.dap
+        if r.rp_dose is not None:
+            t["rp"] -= r.rp_dose
+        if r.fluoro_time_s is not None:
+            t["fluoro_time"] -= r.fluoro_time_s
+        if r.agd is not None and r.laterality in ("L", "R"):
+            t["agd_" + r.laterality] -= r.agd
+
     def update_totals(self) -> None:
         stmt = update(Study.__table__).where(Study.__table__.c.id == _bp("sid"))
         batch = []
@@ -529,7 +622,9 @@ class OpenREMImporter:
     def run(self, progress=print) -> Stats:
         steps = [("studies", self.import_studies), ("ct events", self.import_ct_events),
                  ("projection events", self.import_proj_events),
-                 ("processed objects", self.import_objects), ("totals", self.update_totals)]
+                 ("processed objects", self.import_objects),
+                 ("duplicate exposures", self.deduplicate_exposures),
+                 ("totals", self.update_totals)]
         for label, fn in steps:
             started = dt.datetime.now()
             fn()

@@ -46,7 +46,7 @@ def _cmd_openrem_import(args: argparse.Namespace) -> int:
 
     from .db.session import make_engine, make_sessionmaker
     from .legacy.openrem.importer import OpenREMImporter
-    from .legacy.openrem.reconcile import reconcile
+    from .legacy.openrem.reconcile import reconcile, reconcile_by_year
 
     engine = make_engine(args.url or load_settings().database_url)
     with make_sessionmaker(engine)() as session:
@@ -54,8 +54,13 @@ def _cmd_openrem_import(args: argparse.Namespace) -> int:
         session.commit()
         for line in stats.lines():
             print(line)
-        lines, ok = reconcile(session, Path(args.dump))
+        detail, _ = reconcile(session, Path(args.dump))
+        lines, ok = reconcile_by_year(session, Path(args.dump))
+    print("\nPer modality/year (informational; OpenREM CR/DX copies are relabelled):")
+    print("\n".join(detail))
+    print("\nPer year (authoritative):")
     print("\n".join(lines))
+    print("\nRECONCILIATION", "OK" if ok else "FAILED")
     return 0 if ok else 2
 
 
@@ -63,11 +68,11 @@ def _cmd_openrem_reconcile(args: argparse.Namespace) -> int:
     from pathlib import Path
 
     from .db.session import make_engine, make_sessionmaker
-    from .legacy.openrem.reconcile import reconcile
+    from .legacy.openrem.reconcile import reconcile_by_year
 
     engine = make_engine(args.url or load_settings().database_url)
     with make_sessionmaker(engine)() as session:
-        lines, ok = reconcile(session, Path(args.dump))
+        lines, ok = reconcile_by_year(session, Path(args.dump))
     print("\n".join(lines))
     return 0 if ok else 2
 
