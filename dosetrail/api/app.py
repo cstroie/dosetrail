@@ -16,7 +16,13 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -279,6 +285,74 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def code_list(system: str, user: User = Depends(current_user),
                   session: Session = Depends(db)):
         return _review(lambda: review.codes(session, system))
+
+    # ------------------------------------------------------------------ exports
+
+    @app.get("/api/export")
+    def export(request: Request, q: str = "", level: str = "study", format: str = "csv",
+               pid: bool = False, user: User = Depends(current_user),
+               session: Session = Depends(db)):
+        import tempfile
+
+        from ..export import lists
+
+        roles = user.role_set()
+        if not roles & {"exporter", "admin"}:
+            raise HTTPException(403, "the exporter role is required")
+        if pid and "pid" not in roles:
+            raise HTTPException(403, "the pid role is required to export patient identifiers")
+        if level not in ("study", "event") or format not in ("csv", "xlsx"):
+            raise HTTPException(400, "level is study|event, format is csv|xlsx")
+        now = clock()
+        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        names, physical = data.device_names(session), data._physical_ids(session)
+        _audit(session, request, user, "export", f"{level}:{format}",
+               {"q": q, "pid": pid})
+        session.commit()
+        fname = f"dosetrail-{level}s-{now:%Y%m%d-%H%M}.{format}"
+        headers = {"Content-Disposition": f'attachment; filename="{fname}"',
+                   "Cache-Control": "no-store"}
+
+        def source(s):
+            return lists.rows(s, conds, level, pid, device_names=names, physical=physical)
+
+        if format == "xlsx":
+            # closed by the streaming generator once the file has been sent
+            tmp = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)  # noqa: SIM115
+            with maker() as s:
+                lists.write_xlsx(tmp, level, pid, source(s), meta=[
+                    ("Exported", now.isoformat(sep=" ", timespec="seconds")),
+                    ("By", user.username), ("Query", q or "(all)"), ("Level", level),
+                    ("Patient identifiers", "yes" if pid else "no (pseudonyms)")])
+            tmp.seek(0)
+
+            def chunks():
+                with tmp:
+                    while block := tmp.read(1 << 16):
+                        yield block
+
+            return StreamingResponse(
+                chunks(), headers=headers,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        def csv_stream():
+            import csv
+            import io
+
+            with maker() as s:
+                buf = io.StringIO()
+                w = csv.writer(buf, lineterminator="\r\n")
+                buf.write("\ufeff")  # BOM: Excel opens UTF-8 CSV with diacritics intact
+                w.writerow([h for h, _ in lists.columns(level, pid)])
+                for i, row in enumerate(source(s)):
+                    w.writerow([lists._csv_value(v) for v in row])
+                    if i % 500 == 499:
+                        yield buf.getvalue().encode("utf-8")
+                        buf.seek(0)
+                        buf.truncate()
+                yield buf.getvalue().encode("utf-8")
+
+        return StreamingResponse(csv_stream(), headers=headers, media_type="text/csv")
 
     @app.get("/api/lookup")
     def lookup(q: str = "", limit: int = 6, user: User = Depends(current_user),

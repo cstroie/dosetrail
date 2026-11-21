@@ -79,6 +79,35 @@ def _cmd_openrem_reconcile(args: argparse.Namespace) -> int:
     return 0 if ok else 2
 
 
+def _cmd_export(args: argparse.Namespace) -> int:
+    import datetime as dt
+    import getpass
+
+    from .api.data import conditions, overrides, parse
+    from .db.models import AuditLog
+    from .db.session import make_engine, make_sessionmaker
+    from .export import lists
+
+    fmt = args.format or ("xlsx" if args.output.lower().endswith(".xlsx") else "csv")
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        conds = conditions(parse(args.query), dt.datetime.now(), overrides(session))
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="export",
+                             target=f"{args.level}:{fmt}",
+                             detail={"q": args.query, "pid": args.pid, "file": args.output}))
+        session.commit()
+        data = lists.rows(session, conds, args.level, args.pid)
+        if fmt == "xlsx":
+            n = lists.write_xlsx(args.output, args.level, args.pid, data, meta=[
+                ("Exported", dt.datetime.now().isoformat(sep=" ", timespec="seconds")),
+                ("Query", args.query or "(all)"), ("Level", args.level)])
+        else:
+            with open(args.output, "w", encoding="utf-8-sig", newline="") as fh:
+                n = lists.write_csv(fh, args.level, args.pid, data)
+    print(f"{n} rows -> {args.output}")
+    return 0
+
+
 def _cmd_classify(args: argparse.Namespace) -> int:
     from . import classify
     from .db.session import make_engine, make_sessionmaker
@@ -389,6 +418,15 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("dump", nargs="?", default="var/openrem-dump")
     rc.add_argument("--url")
     rc.set_defaults(func=_cmd_openrem_reconcile)
+
+    ex = sub.add_parser("export", help="export studies or events as CSV or XLSX")
+    ex.add_argument("-q", "--query", default="", help='query language, e.g. "modality:CT date:30d"')
+    ex.add_argument("--level", choices=["study", "event"], default="study")
+    ex.add_argument("--format", choices=["csv", "xlsx"], help="default: from the file name")
+    ex.add_argument("--pid", action="store_true", help="include patient identifiers")
+    ex.add_argument("-o", "--output", required=True)
+    ex.add_argument("--url")
+    ex.set_defaults(func=_cmd_export)
 
     cl = sub.add_parser("classify", help="assign standard exam codes and DRL codes to studies")
     cl.add_argument("--study", type=int, action="append", help="only this study id (repeatable)")

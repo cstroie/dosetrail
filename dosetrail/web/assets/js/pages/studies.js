@@ -7,7 +7,7 @@ import '../components/dt-data-grid.js';
 import { h, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dateTime, patientSummary } from '../core/format.js';
-import { studies, deviceMap, drl, studyHref } from '../core/api.js';
+import { studies, deviceMap, drl, studyHref, exportUrl } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
 const DEFAULT_Q = 'modality:CT date:90d age:>=18 origin:local -phantom';
@@ -131,6 +131,12 @@ async function init() {
   qb.addEventListener('query-change', (e) => apply(e.detail));
 
   async function exportRows(kind) {
+    const server = exportUrl({ q: currentQ, format: kind });
+    if (server) {  // the server writes every row (CSV or XLSX); the browser just downloads
+      h('a', { href: server, download: '' }).click();
+      toast('Export started: the file downloads when the server has written it');
+      return;
+    }
     const res = await studies({ q: currentQ, sort: grid.state.sort, dir: grid.state.dir, page: 1, size: 100000 });
     if (kind === 'xlsx') { toast('XLSX export is produced by the server; sample mode offers CSV.'); return; }
     const head = ['date', 'device', 'accession', 'age', 'sex', 'weight_kg', 'description', 'protocol', 'spiral', 'axial', 'localizer', 'ctdivol_max_mgy', 'dlp_total_mgycm'];

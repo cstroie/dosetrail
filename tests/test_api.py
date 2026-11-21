@@ -248,3 +248,22 @@ def test_drl_endpoints(client):
     r = client.get("/api/drl/compare", params={"q": "", "min_n": 1}).json()
     assert r["set"] == "ro-ms838-2025" and r["by"] == "facility"
     assert client.get("/api/drl/compare", params={"set": "x"}).status_code == 400
+
+
+def test_export_roles_and_formats(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/export").status_code == 403  # needs exporter (or admin)
+    login(client, "boss", "boss-pass-123")
+    assert client.get("/api/export", params={"pid": "true"}).status_code == 403  # needs pid
+    r = client.get("/api/export", params={"q": "modality:XA"})
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+    assert "attachment" in r.headers["content-disposition"]
+    text = r.content.decode("utf-8")
+    assert text.startswith("﻿Study ID,") and "P-ABCDE-12345" in text
+    assert "POPESCU" not in text and len(text.strip().splitlines()) == 2
+    x = client.get("/api/export", params={"q": "modality:XA", "format": "xlsx",
+                                          "level": "event"})
+    assert x.status_code == 200 and x.content[:2] == b"PK"
+    with make_sessionmaker(make_engine(str(client.app.state.settings.database_url)))() as s:
+        acts = [a.target for a in s.scalars(select(AuditLog).filter_by(action="export"))]
+    assert "study:csv" in acts and "event:xlsx" in acts

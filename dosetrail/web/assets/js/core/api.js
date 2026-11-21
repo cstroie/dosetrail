@@ -223,3 +223,17 @@ export function codes(system) {
 /** PUT /api/classification/mappings {family, field, text, code|null} (admin) */
 export const decideMapping = (family, field, text, code) =>
   send('PUT', '/api/classification/mappings', { family, field, text, code });
+
+/**
+ * Download link for GET /api/export?q=&level=study|event&format=csv|xlsx&pid=
+ * (exporter or admin role; pid=1 needs the pid role; every export is audit-logged).
+ */
+export function exportUrl({ q = '', level = 'study', format = 'csv', pid = false } = {}) {
+  if (isSample) return null;
+  const u = new URL('/api/export', MODE);
+  u.searchParams.set('q', q);
+  u.searchParams.set('level', level);
+  u.searchParams.set('format', format);
+  if (pid) u.searchParams.set('pid', '1');
+  return u.href;
+}
