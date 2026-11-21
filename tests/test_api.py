@@ -294,3 +294,10 @@ def test_insp1255_report_endpoint(client):
     login(client, "viewer", "viewer-pass-1")
     assert client.get("/api/reports/insp1255", params={"year": 2026,
                                                        "quarter": 1}).status_code == 403
+
+
+def test_survey_export_endpoint(client):
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/survey/export", params={"month": "2026-11", "q": "", "format": "json"})
+    assert r.status_code == 200 and r.json()["dataset"] == "dosetrail-paediatric-survey"
+    assert client.get("/api/survey/export", params={"month": "nov"}).status_code == 400

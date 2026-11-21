@@ -31,7 +31,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from ..config import Settings, load_settings
-from ..db.models import AuditLog, User
+from ..db.models import AuditLog, Study, User
 from ..db.session import make_engine, make_sessionmaker
 from ..security import load_or_create_secret, read_session, sign_session, verify_password
 from . import admin, data, review
@@ -448,6 +448,35 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                         about.row([k, v])
 
         return _file(write, format, "dosetrail-icrp135-summary", now)
+
+    @app.get("/api/survey/export")
+    def survey_export(request: Request, month: str, q: str = "origin:local",
+                      format: str = "csv", user: User = Depends(current_user),
+                      session: Session = Depends(db)):
+        from ..export import drl_dataset as ds
+        from ..export import survey
+
+        _exporter(user)
+        if format not in ("csv", "xlsx", "json"):
+            raise HTTPException(400, "format is csv|xlsx|json")
+        try:
+            start, end = survey.month_range(month)
+        except ValueError as e:
+            raise HTTPException(400, "month is YYYY-MM") from e
+        now = clock()
+        conds = [*data.conditions(data.parse(q), now, data.overrides(session)),
+                 Study.study_datetime >= start, Study.study_datetime < end]
+        _audit(session, request, user, "export", f"survey:{month}:{format}", {"q": q})
+        session.commit()
+        meta = {**ds.metadata(q, now), "dataset": "dosetrail-paediatric-survey",
+                "version": survey.SURVEY_VERSION, "month": month,
+                "plan": "MS-CNCAN-SDNP-2026-001 draft v1.0 (March 2026)"}
+
+        def write(fh):
+            with maker() as s:
+                ds.write(format, fh, survey.rows(s, conds, secret), meta, survey.DICTIONARY)
+
+        return _file(write, format, f"dosetrail-survey-{month}", now)
 
     @app.get("/api/reports/insp1255")
     def report_insp1255(request: Request, year: int, quarter: int, q: str = "origin:local",

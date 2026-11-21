@@ -260,3 +260,11 @@ export function inspReportUrl({ year, quarter, q = 'origin:local' }) {
   for (const [k, v] of Object.entries({ year, quarter, q, format: 'xlsx' })) u.searchParams.set(k, String(v));
   return u.href;
 }
+
+/** Download link: GET /api/survey/export?month=YYYY-MM&format= (anonymised paediatric survey). */
+export function surveyUrl({ month, format = 'csv', q = 'origin:local' }) {
+  if (isSample) return null;
+  const u = new URL('/api/survey/export', MODE);
+  for (const [k, v] of Object.entries({ month, format, q })) u.searchParams.set(k, v);
+  return u.href;
+}

@@ -5,7 +5,7 @@
 import '../components/dt-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
-import { inspReport, inspReportUrl } from '../core/api.js';
+import { inspReport, inspReportUrl, surveyUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
@@ -26,8 +26,25 @@ function render() {
       h('button', { class: 'btn', type: 'button', onclick: download }, 'Download XLSX'),
       h('span', { class: 'muted small' }, 'Local devices only. One examination = one study × one procedure code.')),
     h('div', { id: 'rep' }),
+    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Studiul național de dozimetrie pediatrică (plan draft)'),
+    surveyBar(),
   );
   load();
+}
+
+function surveyBar() {
+  const prev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const month = h('input', { class: 'input', type: 'month', 'aria-label': 'Month',
+    value: `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}` });
+  const fmt = h('select', { class: 'input', 'aria-label': 'Format' }, ['csv', 'json', 'xlsx'].map((f) => h('option', { value: f }, f.toUpperCase())));
+  return h('div', { class: 'toolbar' }, month, fmt,
+    h('button', { class: 'btn', type: 'button', onclick: () => {
+      const href = surveyUrl({ month: month.value, format: fmt.value });
+      if (!href) { toast('Exports need the server'); return; }
+      h('a', { href, download: '' }).click();
+      toast('Survey export started');
+    } }, 'Download survey export'),
+    h('span', { class: 'muted small' }, 'Patients < 18 y, local devices. Month only, keyed codes, no name / CNP / birth date. CT one row per series; checks DLP ±10 % and phantom.'));
 }
 
 function download() {

@@ -176,11 +176,15 @@ def metadata(q: str, now: dt.datetime, rows: int | None = None) -> dict:
             **({"rows": rows} if rows is not None else {})}
 
 
-def write(fmt: str, target: IO, data: Iterator[dict], meta: dict) -> int:
+def write(fmt: str, target: IO, data: Iterator[dict], meta: dict,
+          dictionary: list[tuple[str, str, str]] | None = None) -> int:
+    """Write rows as json / csv / xlsx with the data dictionary and metadata."""
+    dictionary = dictionary or DICTIONARY
+    fields = [d[0] for d in dictionary]
     n = 0
     if fmt == "json":
         out = {**meta, "dictionary": [{"name": a, "unit": b, "description": c}
-                                      for a, b, c in DICTIONARY], "rows": []}
+                                      for a, b, c in dictionary], "rows": []}
         for r in data:
             out["rows"].append(r)
             n += 1
@@ -192,7 +196,7 @@ def write(fmt: str, target: IO, data: Iterator[dict], meta: dict) -> int:
         import io
 
         text = io.TextIOWrapper(target, encoding="utf-8-sig", newline="")
-        w = csv.DictWriter(text, FIELDS, lineterminator="\r\n")
+        w = csv.DictWriter(text, fields, lineterminator="\r\n")
         w.writeheader()
         for r in data:
             w.writerow({k: ("" if v is None else v) for k, v in r.items()})
@@ -201,12 +205,12 @@ def write(fmt: str, target: IO, data: Iterator[dict], meta: dict) -> int:
         text.detach()
         return n
     with XlsxWriter(target) as wb:
-        ws = wb.sheet("Data", FIELDS, [max(8, min(len(f) + 2, 22)) for f in FIELDS])
+        ws = wb.sheet("Data", fields, [max(8, min(len(f) + 2, 22)) for f in fields])
         for r in data:
-            ws.row([r[f] for f in FIELDS])
+            ws.row([r[f] for f in fields])
             n += 1
         dic = wb.sheet("Dictionary", ["Field", "Unit", "Description"], [22, 10, 80])
-        for row in DICTIONARY:
+        for row in dictionary:
             dic.row(list(row))
         about = wb.sheet("About", ["Item", "Value"], [16, 90])
         for k, v in {**meta, "rows": n}.items():

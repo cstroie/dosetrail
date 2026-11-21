@@ -140,3 +140,48 @@ def test_icrp135_summary_rows(session, data):
     fac = next(r for r in ap if r["unit"] == "facility")
     assert fac["n"] == 1 and fac["median"] == 0.01 and fac["sample_ok"] is True
     assert fac["drl"] == 0.11 and fac["status"] == "below"  # 5-9 y chest PA/AP
+
+
+def test_survey_rows_paediatric_series_and_checks(session):
+    from dosetrail.export import survey
+
+    load_all(session)
+    kid = Patient(pseudo_id="P-K", sex="F")
+    session.add(kid)
+    session.flush()
+    t = dt.datetime(2026, 10, 5, 9)
+    head = Study(study_uid="v.1", modality="CT", study_datetime=t, patient_id=kid.id,
+                 age_days=300, weight_kg=10.0, source_kind="test",
+                 study_description="Head^CEREBRAL_SPIRAL_NATIV (Child)")
+    head.events = [Event(protocol="Topogram", is_localizer=True, dlp=1.0),
+                   Event(protocol="Head", ctdivol=20.0, scan_length_mm=100.0, dlp=200.0,
+                         ct_phantom_cm=16, mas=150.0, pitch=0.6),
+                   Event(protocol="Head 2", ctdivol=20.0, scan_length_mm=100.0, dlp=400.0,
+                         ct_phantom_cm=32)]
+    adult = Study(study_uid="v.2", modality="CT", study_datetime=t, age_days=40 * 366,
+                  source_kind="test", study_description="Head^HeadRoutine (Adult)")
+    adult.events = [Event(protocol="Head", ctdivol=50.0, dlp=900.0)]
+    rx = Study(study_uid="v.3", modality="DX", study_datetime=t, patient_id=kid.id,
+               age_days=400, source_kind="test", study_description="Chest")
+    rx.events = [Event(protocol="W035 Torace a.p.", view="antero-posterior", dap=0.01,
+                       kvp=60.0),
+                 Event(protocol="W035 Torace a.p.", view="antero-posterior", dap=0.02,
+                       kvp=64.0)]
+    session.add_all([head, adult, rx])
+    session.flush()
+    classify.run(session)
+
+    out = list(survey.rows(session, [], b"s" * 32))
+    assert {r["modality"] for r in out} == {"CT", "DX"}  # the adult is excluded
+    ct = [r for r in out if r["modality"] == "CT"]
+    assert [r["series"] for r in ct] == [1, 2]  # localiser excluded
+    assert ct[0]["head_age_group"] == "3mo-1y" and ct[0]["weight_group"] == "5-15kg"
+    assert ct[0]["edrl_exam"] == "CT-HEAD" and ct[0]["effective_mas"] == 250.0
+    assert ct[0]["check_dlp"] == "ok" and ct[0]["check_phantom"] == "ok"
+    assert ct[1]["check_dlp"] == "fail" and ct[1]["check_phantom"] == "warn"
+    assert ct[0]["period"] == "2026-10" and ct[0]["patient"].startswith("P-")
+    (dx,) = [r for r in out if r["modality"] == "DX"]
+    assert dx["pka"] == pytest.approx(30.0) and dx["exposures"] == 2  # mGy.cm2
+    assert dx["projection"] == "AP" and dx["kvp"] == 62.0 and dx["ndrl_exam"] == "RX-TORACE-PA-AP"
+    assert set(ct[0]) == set(survey.FIELDS)
+    assert survey.month_range("2026-12") == (dt.datetime(2026, 12, 1), dt.datetime(2027, 1, 1))

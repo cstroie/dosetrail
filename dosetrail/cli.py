@@ -135,6 +135,37 @@ def _cmd_drl_dataset(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_survey_export(args: argparse.Namespace) -> int:
+    import datetime as dt
+    import getpass
+
+    from .api.data import conditions, overrides, parse
+    from .db.models import AuditLog, Study
+    from .db.session import make_engine, make_sessionmaker
+    from .export import drl_dataset as ds
+    from .export import survey
+
+    fmt = args.output.rsplit(".", 1)[-1].lower()
+    if fmt not in ("csv", "xlsx", "json"):
+        print("the output must end in .csv, .xlsx or .json")
+        return 2
+    start, end = survey.month_range(args.month)
+    now = dt.datetime.now()
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session, open(args.output, "wb") as fh:
+        conds = [*conditions(parse(args.query), now, overrides(session)),
+                 Study.study_datetime >= start, Study.study_datetime < end]
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="export",
+                             target=f"survey:{args.month}:{fmt}",
+                             detail={"q": args.query, "file": args.output}))
+        session.commit()
+        meta = {**ds.metadata(args.query, now), "dataset": "dosetrail-paediatric-survey",
+                "version": survey.SURVEY_VERSION, "month": args.month}
+        n = ds.write(fmt, fh, survey.rows(session, conds, _secret()), meta, survey.DICTIONARY)
+    print(f"{n} rows -> {args.output}")
+    return 0
+
+
 def _cmd_report_1255(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
@@ -489,6 +520,13 @@ def build_parser() -> argparse.ArgumentParser:
     dd.add_argument("-o", "--output", required=True, help="the extension sets the format")
     dd.add_argument("--url")
     dd.set_defaults(func=_cmd_drl_dataset)
+
+    sv2 = sub.add_parser("survey-export", help="anonymised paediatric survey export (one month)")
+    sv2.add_argument("--month", required=True, help="YYYY-MM")
+    sv2.add_argument("-q", "--query", default="origin:local")
+    sv2.add_argument("-o", "--output", required=True, help=".csv, .xlsx or .json")
+    sv2.add_argument("--url")
+    sv2.set_defaults(func=_cmd_survey_export)
 
     rp = sub.add_parser("report-1255", help="quarterly INSP report, Order 1255/2016 (xlsx)")
     rp.add_argument("--year", type=int, required=True)
