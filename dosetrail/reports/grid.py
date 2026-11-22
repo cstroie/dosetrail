@@ -12,8 +12,10 @@ Values:
 
 Dose statistics leave out the studies with a DRL exclusion (weight below WHO P5 or above
 P95 for age, prematurity); they are counted in "excluded". Body exams without a weight are
-in "Weight unknown". Weights estimated from the growth charts (missing or implausible
-reported weights; growth.estimate_weights) are counted per group in "estimated". Where
+in "Weight unknown", and so are, by default, weights estimated from the growth charts
+(missing or implausible reported weights; growth.estimate_weights): a weight-group DRL needs
+reported weights. With ``estimated=True`` they place the exam in a weight group and are
+counted per group in "estimated". Where
 RP 185 has a European DRL for the exam and group, the median is compared with it: below,
 above (up to 1.5×) or well above; fewer than ``min_n`` values is "insufficient" (the
 national survey plan asks for 10 per group).
@@ -86,7 +88,7 @@ def _status(median: float, ref: float | None, n: int, min_n: int) -> str | None:
 
 
 def build(session: Session, conds: list, start: dt.datetime, end: dt.datetime,
-          min_n: int = 10, estimated: bool = True) -> dict:
+          min_n: int = 10, estimated: bool = False) -> dict:
     """``estimated=False``: body exams with a weight estimated from the growth charts go
     to "Weight unknown" instead of a weight group (measured / reported weights only)."""
     grid = Grid(session)

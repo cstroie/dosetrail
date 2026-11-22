@@ -92,7 +92,10 @@ def reference_values(session: Session, set_key: str) -> dict:
 
 def compare(session: Session, conds: list, set_key: str, *, by_device: bool = False,
             min_n: int = 20, physical: dict[int, int] | None = None,
-            names: dict[int, str] | None = None, include_excluded: bool = False) -> dict:
+            names: dict[int, str] | None = None, include_excluded: bool = False,
+            estimated_weights: bool = False) -> dict:
+    """``estimated_weights``: let weights estimated from the growth charts place a patient
+    in a weight band (off by default: a weight-band DRL needs reported weights)."""
     rs = session.scalar(select(ReferenceSet).filter_by(key=set_key))
     if rs is None:
         raise DRLError(f"unknown reference set {set_key!r}")
@@ -113,7 +116,8 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
                   band=band.key if band else None)
              for i, (rv, _code, band, scheme) in enumerate(refs)]
     collected = collect(session, conds, items, by_device=by_device, physical=physical,
-                        include_excluded=include_excluded)
+                        include_excluded=include_excluded,
+                        estimated_weights=estimated_weights)
     bands: dict[str, BandLookup] = {}
     results = []
     for i, (rv, code, band, scheme) in enumerate(refs):
@@ -143,7 +147,8 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
                         "status": _worst([g["status"] for g in groups]) if groups else "no_data"})
     results.sort(key=lambda r: (r["exam"], r["quantity"], _band_order(r, bands)))
     return {"set": rs.key, "name": rs.name, "source": rs.source, "notes": rs.notes,
-            "by": "device" if by_device else "facility", "min_n": min_n, "rows": results}
+            "by": "device" if by_device else "facility", "min_n": min_n,
+            "estimated_weights": estimated_weights, "rows": results}
 
 
 @dataclass(frozen=True)

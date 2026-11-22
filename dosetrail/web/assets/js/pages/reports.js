@@ -10,7 +10,7 @@ import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport
 const page = document.getElementById('page');
 const today = new Date();
 const lastQuarter = Math.floor(today.getMonth() / 3) || 4;
-const state = { year: lastQuarter === 4 && today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear(), quarter: lastQuarter, estimated: true };
+const state = { year: lastQuarter === 4 && today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear(), quarter: lastQuarter, estimated: false };
 
 function render() {
   const years = [];

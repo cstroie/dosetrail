@@ -13,7 +13,8 @@ upload for the same institution and month replaces the older one (status ``repla
 * groups: head exams by the RP 185 head age group, body exams by the body weight group
   (the grid's head/body rule, grid.py), or the national age groups (OMS 838/2025);
 * rows with a DRL exclusion (weight < P5 / > P95 for age, prematurity) are left out; so are
-  estimated weights from the weight groups unless asked for;
+  estimated weights from the weight groups unless asked for, and head CT series reported on
+  the 32 cm phantom (counted per row in ``n_phantom32``);
 * per institution: n and median (counted with at least ``min_n`` values: 10, fluoroscopy
   20);
 * national: the **P75 of the institution medians** (the proposed NDRL), the national
@@ -283,12 +284,14 @@ def national(session: Session, start: str, end: str, *, grid: str = "rp185",
         fam = "CT" if mod == "CT" else mod
         quants = [("dlp", r.dlp, "mGy.cm"), ("ctdivol", r.ctdivol, "mGy")] if mod == "CT" \
             else [("dap", r.pka / 1000 if r.pka is not None else None, "Gy.cm2")]
-        head = g.parameter(NATIONAL, exam) == "age"
+        head32 = g.parameter(NATIONAL, exam) == "age" and r.phantom == 32
         for quantity, v, unit in quants:
-            if v is not None:
-                values[(exam, band, quantity, unit, fam)][r.institution].append(v)
-                if head and r.phantom == 32:
-                    phantom32[(exam, band, quantity, unit, fam)] += 1
+            if v is None:
+                continue
+            if head32:  # about half the 16 cm value: left out, counted
+                phantom32[(exam, band, quantity, unit, fam)] += 1
+                continue
+            values[(exam, band, quantity, unit, fam)][r.institution].append(v)
     from .db.models import Code, CodeSystem
 
     labels = dict(session.execute(select(Code.code, Code.meaning).join(CodeSystem)

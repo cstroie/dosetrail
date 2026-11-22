@@ -15,7 +15,7 @@ const TONE = { below: 'ok', above: 'warn', well_above: 'alert' };
 const iso = (d) => d.toISOString().slice(0, 10);
 const today = new Date();
 const yearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate() + 1);
-const state = { start: iso(yearAgo), end: iso(today), grid: 'national', min_n: 10, q: 'origin:local', estimated: true };
+const state = { start: iso(yearAgo), end: iso(today), grid: 'national', min_n: 10, q: 'origin:local', estimated: false };
 
 function field(label, input) { return h('label', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'muted small' }, label), input); }
 
@@ -68,7 +68,7 @@ async function propose() {
       h('td', { class: 'muted small' }, x.method === 'p75_rooms' ? 'P75 rooms' : x.method === 'median_room' ? 'median (1 room)' : 'too few'),
       h('td', { class: 'r' }, x.reference == null ? '—' : smart(x.reference)),
       h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, `${num(x.ratio, 2)}×`) : '',
-        x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT values reported on the 32 cm (body) phantom: about half the 16 cm value — check before adopting' }, ` 32 cm: ${x.n_phantom32}`) : null)));
+        x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT series reported on the 32 cm (body) phantom (about half the 16 cm value): left out of the proposal' }, ` 32 cm left out: ${x.n_phantom32}`) : null)));
     last = x.exam;
   }
   const name = h('input', { class: 'input', value: `Local DRLs ${r.start} – ${r.end}`, style: { width: '320px' } });

@@ -26,6 +26,7 @@ const state = {
   set: new URLSearchParams(location.search).get('set') || prefs.get('drl.set') || 'ro-ms838-2025',
   by: prefs.get('drl.by') || 'facility',
   minN: prefs.get('drl.minN') || 20,
+  estimated: false,
   showEmpty: false,
 };
 
@@ -74,7 +75,9 @@ async function render() {
     toast('Export started: the file downloads when the server has written it');
   };
   page.append(
-    h('div', { class: 'toolbar' }, setSel, h('span', { class: 'seg' }, byBtns), h('label', { class: 'chk' }, 'min n ', minN), empty,
+    h('div', { class: 'toolbar' }, setSel, h('span', { class: 'seg' }, byBtns), h('label', { class: 'chk' }, 'min n ', minN),
+      h('label', { class: 'chk', title: 'Weight bands (RP 185 body exams): also use weights estimated from the growth charts (median for age and sex)' },
+        h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; load(); } }), ' estimated weights'), empty,
       h('span', { class: 'spacer' }),
       h('button', { class: 'btn', type: 'button', title: 'Per room and facility: n, median, quartiles, DRL ratio (XLSX)', onclick: download('summary') }, 'ICRP 135 summary'),
       h('button', { class: 'btn', type: 'button', title: 'One row per study and DRL exam, pseudonymous, with a data dictionary (XLSX)', onclick: download('dataset') }, 'DRL dataset')),
@@ -92,7 +95,7 @@ async function load() {
   const table = document.getElementById('drl-table');
   clear(table).append(h('tbody', {}, h('tr', {}, h('td', {}, 'Loading…'))));
   try {
-    last = await drlCompare({ q: state.q, set: state.set, by: state.by, min_n: state.minN });
+    last = await drlCompare({ q: state.q, set: state.set, by: state.by, min_n: state.minN, estimated: state.estimated });
   } catch (e) {
     clear(table).append(h('tbody', {}, h('tr', {}, h('td', { class: 'error' }, e.message))));
     toast(e.message);

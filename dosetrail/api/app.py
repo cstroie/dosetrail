@@ -63,7 +63,7 @@ class LocalDRLIn(BaseModel):
     end: dt.date
     min_n: int = 10
     q: str = "origin:local"
-    estimated: bool = True
+    estimated: bool = False
     rows: list[dict]
 
 
@@ -414,7 +414,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.get("/api/drl/local/propose")
     def local_drl_propose(q: str = "origin:local", start: dt.date | None = None,
                           end: dt.date | None = None, grid: str = "national",
-                          min_n: int = 10, estimated: bool = True,
+                          min_n: int = 10, estimated: bool = False,
                           user: User = Depends(current_user), session: Session = Depends(db)):
         """Proposed local DRLs: P75 of the room medians (ICRP 135); see localdrl.py."""
         from .. import localdrl
@@ -490,12 +490,12 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/api/drl/compare")
     def drl_compare(q: str = "origin:local", set: str = "ro-ms838-2025", by: str = "facility",
-                    min_n: int = 20, user: User = Depends(current_user),
-                    session: Session = Depends(db)):
+                    min_n: int = 20, estimated: bool = False,
+                    user: User = Depends(current_user), session: Session = Depends(db)):
         from .. import drl as drl_mod
 
         try:
-            return data.drl_compare(session, q, clock(), set, by, max(min_n, 1))
+            return data.drl_compare(session, q, clock(), set, by, max(min_n, 1), estimated)
         except drl_mod.DRLError as e:
             raise HTTPException(400, str(e)) from e
 
@@ -1316,7 +1316,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/api/reports/grid")
     def report_grid(request: Request, year: int, quarter: int, q: str = "origin:local",
-                    format: str = "json", min_n: int = 10, estimated: bool = True,
+                    format: str = "json", min_n: int = 10, estimated: bool = False,
                     user: User = Depends(current_user), session: Session = Depends(db)):
         """The second grid: ICRP 135 / RP 185 groups (head by age, body by weight)."""
         from ..reports import grid

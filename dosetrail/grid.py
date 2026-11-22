@@ -7,9 +7,10 @@ limit belongs to the upper group.
 
 Which exams are "head" is data: ``seeds/group_grid.toml`` (see its header). A body exam
 of a patient without a weight goes to "Weight unknown", so the totals still match the
-national grid. Weights estimated from the growth charts (growth.estimate_weights) place
-body exams in a weight group by default; ``estimated_weights=False`` in stats.compute /
-reports.grid.build counts them as unknown instead.
+national grid. Weights estimated from the growth charts (growth.estimate_weights) count as
+unknown in the DRL views (reports.grid.build, the DRL comparison, local DRLs and the
+central statistics, unless asked for); exploratory charts (stats.compute) include them
+unless ``estimated_weights=False``.
 
 Group keys carry the parameter: ``age:1-6y``, ``weight:5-15kg``, ``age:?``, ``weight:?``,
 ``?`` (exam not classified in the chosen system).

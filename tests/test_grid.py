@@ -116,7 +116,7 @@ def test_report_without_estimated_weights(session, studies):
     est.weight_kg, est.weight_source = 18.5, SizeSource.estimated_reference
     session.flush()
     span = (T - dt.timedelta(days=1), T + dt.timedelta(days=1))
-    on = grid_report.build(session, [], *span, min_n=1)
+    on = grid_report.build(session, [], *span, min_n=1, estimated=True)
     rows = {(x["exam"], x["group"], x["quantity"]): x for x in on["rows"]}
     assert rows[("CT-TORACE", "weight:15-30kg", "dlp")]["n_all"] == 2
     assert rows[("CT-TORACE", "weight:15-30kg", "dlp")]["estimated"] == 1

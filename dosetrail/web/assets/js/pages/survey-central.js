@@ -87,7 +87,7 @@ async function loadNational() {
         h('td', { class: 'r' }, num(x.n)),
         h('td', { class: 'r', title: x.institutions.map((i) => `${i.name || i.institution}: median ${smart(i.median)} (n ${i.n})${i.counts ? '' : ' — too few'}`).join('\n') }, `${x.n_institutions_counted}/${x.n_institutions}`),
         h('td', { class: 'r' }, `${smart(x.national_median)} ${UNIT[x.unit] || x.unit}`,
-          x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT values reported on the 32 cm (body) phantom: about half the 16 cm value' }, ` 32 cm: ${x.n_phantom32}`) : null),
+          x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT series reported on the 32 cm (body) phantom (about half the 16 cm value): left out' }, ` 32 cm left out: ${x.n_phantom32}`) : null),
         h('td', { class: 'r' }, x.ndrl_proposal == null ? '—' : h('b', {}, smart(x.ndrl_proposal))),
         h('td', {}, x.iq_flag ? h('span', { class: `tag ${IQ[x.iq_flag][0]}`, title: IQ[x.iq_flag][1] }, num(x.iq_factor, 2)) : ''),
         h('td', { class: 'r' }, x.edrl == null ? '—' : smart(x.edrl)), h('td', {}, tag(x.status_edrl)),

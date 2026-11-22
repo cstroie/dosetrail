@@ -29,7 +29,8 @@ def two(session):
                                    (300, 320, 340, 360, 380, 400, 420, 440, 460, 480)]
              + [{"dlp": "-5"}, {"dlp": ""}])  # a negative DLP and an empty row: rejected
     b = _csv("I-BBBB", "2026-10", [{"dlp": v} for v in (500, 520, 540, 560, 580, 600, 620,
-                                                         640, 660, 680)])
+                                                         640, 660, 680)]
+             + [{"dlp": 150, "phantom": 32}])  # head on the 32 cm phantom: left out
     ua = aggregate.upload(session, a, filename="a.csv", user="central")
     ub = aggregate.upload(session, b, filename="b.csv")
     return ua, ub
@@ -58,6 +59,7 @@ def test_replacement_and_national(session, two):
     # medians 390 and 590 -> P75 of [390, 590] = 540
     assert dlp["ndrl_proposal"] == pytest.approx(540) and dlp["edrl"]
     assert dlp["status_edrl"] in aggregate.STATUS and dlp["iq_flag"] == "ok"
+    assert dlp["n_phantom32"] == 1
     # a new upload for the same institution and month replaces the old one
     aggregate.upload(session, _csv("I-AAAA", "2026-10", [{"dlp": 100}] * 10))
     dlp = [r for r in aggregate.national(session, "2026-01", "2026-12")["rows"]

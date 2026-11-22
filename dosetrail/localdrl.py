@@ -10,6 +10,9 @@ study, mammography per study; DRL exclusions left out). Then, as ICRP 135 descri
 * one room: its **median** (ICRP 135's "typical value" for a single facility);
 * none: no proposal (the row shows the counts, so the gap is visible).
 
+Head CT series reported on the 32 cm (body) phantom are left out (their CTDIvol and DLP are
+about half the 16 cm value); each row says how many (``n_phantom32``).
+
 Grids: ``national`` (OMS 838/2025 age groups 1–4, 5–9, 10–14, ≥15 years) or ``icrp`` (the
 second grid: head exams by age, body exams by weight; see grid.py). Each row shows the
 national DRL (national grid) or the RP 185 EDRL (ICRP grid) where one exists.
@@ -30,7 +33,7 @@ import datetime as dt
 import re
 from typing import IO
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .db.models import Code, CodeSystem, GroupBand, GroupScheme, ReferenceSet, ReferenceValue
@@ -118,6 +121,31 @@ def _references(session: Session, grid: str) -> dict[tuple, float]:
     return out
 
 
+def _collect(session: Session, conds: list, items: list[Item], exams: list[str],
+             estimated_weights: bool = True) -> tuple[dict, dict]:
+    """drl.collect per room, leaving out head CT series reported on the 32 cm (body) phantom:
+    their CTDIvol / DLP are about half the 16 cm value and would pull a head DRL down. Their
+    number per item is returned too, so the rows can say how many were left out."""
+    from .db.models import Event
+    from .grid import Grid
+
+    g = Grid(session)
+    head = {it.key for it, exam in zip(items, exams, strict=True)
+            if it.quantity in ("dlp", "ctdivol") and g.parameter(NATIONAL, exam) == "age"}
+    heads = [it for it in items if it.key in head]
+    rest = [it for it in items if it.key not in head]
+    got = collect(session, conds, rest, by_device=True, estimated_weights=estimated_weights)
+    if heads:
+        not32 = or_(Event.ct_phantom_cm.is_(None), Event.ct_phantom_cm != 32)
+        got.update(collect(session, [*conds, not32], heads, by_device=True,
+                           estimated_weights=estimated_weights))
+        p32 = collect(session, [*conds, Event.ct_phantom_cm == 32], heads,
+                      estimated_weights=estimated_weights)
+    else:
+        p32 = {}
+    return got, {k: sum(len(v) for v in d.values()) for k, d in p32.items()}
+
+
 def _room_rule(per_dev: dict, min_n: int, names: dict) -> dict:
     rooms = []
     every = []
@@ -147,7 +175,7 @@ def _status(value: float | None, ref: float | None) -> str | None:
 
 
 def propose(session: Session, conds: list, grid: str = "national", min_n: int = 10,
-            estimated_weights: bool = True) -> dict:
+            estimated_weights: bool = False) -> dict:
     """Proposed local DRLs for the studies ``conds`` selects (put the period in conds)."""
     from .api.data import device_names
 
@@ -156,18 +184,8 @@ def propose(session: Session, conds: list, grid: str = "national", min_n: int = 
                   applies_to=t["applies_to"], scheme=t["scheme"].key,
                   parameter=t["scheme"].parameter, band=t["band"].key)
              for i, t in enumerate(templates)]
-    got = collect(session, conds, items, by_device=True, estimated_weights=estimated_weights)
-    # head CT values reported on the 32 cm body phantom are about half the 16 cm value:
-    # counted per row so a proposal built on them is visible (quality rule phantom_32_head)
-    from .db.models import Event
-    from .grid import Grid
-
-    g = Grid(session)
-    head_ct = [it for it, t in zip(items, templates, strict=True)
-               if t["quantity"] in ("dlp", "ctdivol") and g.parameter(NATIONAL, t["code"].code)
-               == "age"]
-    p32 = collect(session, [*conds, Event.ct_phantom_cm == 32], head_ct,
-                  estimated_weights=estimated_weights) if head_ct else {}
+    got, p32 = _collect(session, conds, items, [t["code"].code for t in templates],
+                        estimated_weights=estimated_weights)
     refs = _references(session, grid)
     names = device_names(session)
     rows = []
@@ -183,7 +201,7 @@ def propose(session: Session, conds: list, grid: str = "national", min_n: int = 
             "band": t["band"].key, "band_label": t["band"].label,
             "quantity": t["quantity"], "unit": t["unit"], "applies_to": t["applies_to"],
             **rule, "reference": _sig(ref),
-            "n_phantom32": sum(len(v) for v in (p32.get(i) or {}).values()),
+            "n_phantom32": p32.get(i, 0),  # left out: head series on the 32 cm phantom
             "ratio": rule["value"] / ref if rule["value"] and ref else None,
             "status": _status(rule["value"], ref)})
     return {"grid": grid, "min_n": min_n, "estimated_weights": estimated_weights,
@@ -270,7 +288,7 @@ def review(session: Session, set_key: str, conds: list, min_n: int = 10) -> dict
                   applies_to=rv.applies_to, scheme=sc.key if sc else None,
                   parameter=sc.parameter if sc else None, band=b.key if b else None)
              for i, (rv, _c, b, sc) in enumerate(vals)]
-    got = collect(session, conds, items, by_device=True)
+    got, p32 = _collect(session, conds, items, [c.code for _rv, c, _b, _sc in vals])
     refs = _references(session, grid)
     names = device_names(session)
     rows = []
@@ -291,6 +309,7 @@ def review(session: Session, set_key: str, conds: list, min_n: int = 10) -> dict
             "change_pct": round((new / local - 1) * 100, 1) if new is not None and local
             else None,
             "n": rule["n"], "n_rooms": rule["n_rooms"], "method": rule["method"],
+            "n_phantom32": p32.get(i, 0),
             "rooms_above": [{"device_name": r["device_name"], "n": r["n"],
                              "median": _sig(r["median"])} for r in over],
             "reference": _sig(ref),

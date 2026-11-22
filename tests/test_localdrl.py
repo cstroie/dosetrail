@@ -35,7 +35,11 @@ def test_propose_rooms(session, data):  # noqa: F811
     session.flush()
     again = _row(localdrl.propose(session, [], "national", min_n=1)["rows"],
                  "CT-CAP", "1-4y", "dlp")
-    assert again["n_phantom32"] == 1
+    # left out of the proposal: room B had only that series, so room A alone remains
+    assert again["n_phantom32"] == 1 and again["method"] == "median_room"
+    assert again["value"] == 800
+    ev.ct_phantom_cm = None
+    session.flush()
     icrp = localdrl.propose(session, [], "icrp", min_n=1)
     assert _row(icrp["rows"], "CT-CAP", "1-6y", "dlp")["value"] == pytest.approx(1180)
 
