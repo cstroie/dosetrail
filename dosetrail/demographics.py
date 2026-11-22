@@ -37,6 +37,12 @@ def _foreign(birth: dt.date | None, headers: list[dt.date]) -> dt.date | None:
     return next((h for h in headers if abs((h - birth).days) >= FOREIGN_YEARS * 365.25), None)
 
 
+def another_person(pat: Patient, birth: dt.date | None) -> bool:
+    """True when `birth` (e.g. from the HIS record found by the patient's ID) is so far from
+    the patient's known, non-placeholder birth date that the record is someone else's."""
+    return _real(pat.birth_date) and _foreign(birth, [pat.birth_date]) is not None
+
+
 def reconcile(pat: Patient, *, his_sex=None, his_birth: dt.date | None = None,
               dicom_sex=None, dicom_birth: dt.date | None = None,
               on: dt.date | None = None) -> bool:

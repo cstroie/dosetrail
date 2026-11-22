@@ -271,7 +271,48 @@ def _cmd_his(args: argparse.Namespace) -> int:
                       + (f" – {res['error']}" if res["error"] else ""))
             session.commit()
             return 1 if bad else 0
+        if args.action == "run":
+            return _his_run(session, secret, args)
     return 2
+
+
+def _his_run(session, secret, args) -> int:
+    """The lookup worker: a batch every few seconds while there is work; heartbeat."""
+    import time
+
+    from .his import enrich, servers
+    from .his.hippobridge import HisError
+
+    totals: dict = {}
+
+    def report(row, stats):
+        if args.dry_run or args.verbose:
+            d = row.detail or {}
+            print(f"study {row.study_id}: {row.status} score={row.match_score} "
+                  f"{d.get('written') or ''} {d.get('rejected') or ''}".rstrip())
+
+    while True:
+        try:
+            stats = enrich.run_batch(session, secret, limit=args.limit, dry_run=args.dry_run,
+                                     report=report)
+            msg = ", ".join(f"{k} {v}" for k, v in stats.items()) or "idle"
+            for k, v in stats.items():
+                totals[k] = totals.get(k, 0) + v
+            error = None
+        except HisError as e:
+            session.rollback()
+            msg = f"{'paused' if e.kind == 'retry' else 'stopped'}: {e} (next try in 5 min)"
+            error, stats = str(e), {}
+        if not args.dry_run:
+            servers.write_status(session, {"message": msg, "totals": totals, "error": error})
+            session.commit()
+        if args.once or args.dry_run:
+            print(msg)
+            return 1 if error else 0
+        if error:
+            time.sleep(300)  # credentials or configuration: wait for an admin
+        elif not stats or stats.get("no_server"):
+            time.sleep(60)
 
 
 def _cmd_refetch(args: argparse.Namespace) -> int:
@@ -797,8 +838,14 @@ def build_parser() -> argparse.ArgumentParser:
     cn.add_argument("--url")
     cn.set_defaults(func=_cmd_cnp)
 
-    hs = sub.add_parser("his", help="HIS / RIS: check the configured servers' login")
-    hs.add_argument("action", choices=["check"])
+    hs = sub.add_parser("his", help="HIS / RIS: check the servers' login; run the lookup "
+                                    "worker (patient, weight, height, request)")
+    hs.add_argument("action", choices=["check", "run"])
+    hs.add_argument("--once", action="store_true", help="run: one batch, then exit")
+    hs.add_argument("--limit", type=int, default=20, help="run: studies per batch")
+    hs.add_argument("--dry-run", action="store_true",
+                    help="run: one batch, print the outcome, write nothing")
+    hs.add_argument("--verbose", action="store_true", help="run: print every study")
     hs.add_argument("--url")
     hs.set_defaults(func=_cmd_his)
 

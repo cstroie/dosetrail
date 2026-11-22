@@ -26,6 +26,8 @@ from ..db.models import (
     AgePrecision,
     Device,
     Event,
+    HisLookup,
+    HisServer,
     IngestedObject,
     Institution,
     Patient,
@@ -69,6 +71,7 @@ class Store:
         self.source = source
         self.institution_id = self._institution(institution_code)
         self.stats: Counter = Counter()
+        self._his_enabled: bool | None = None  # any enabled HIS server (looked up once)
 
     # ------------------------------------------------------------------ entities
 
@@ -222,21 +225,28 @@ class Store:
         if obj.kind in ("ct_rdsr", "proj_rdsr") and study.modality in ("SR", "OT", None):
             study.modality = s.get("modality") or study.modality
         self.session.flush()
+        if new and self._his_wanted(device):
+            self.session.add(HisLookup(study_id=study.id, status="pending", attempts=0))
+            self.session.flush()
         return study, new
+
+    def _his_wanted(self, device) -> bool:
+        """Queue a HIS lookup for a new study (done later by `dosetrail his run`)."""
+        if self._his_enabled is None:
+            self._his_enabled = self.session.scalar(
+                select(HisServer.id).where(HisServer.enabled.is_(True)).limit(1)) is not None
+        return self._his_enabled and (device is None or device.his_policy != "none")
 
     def _classify(self, study_id: int) -> None:
         """Exam codes and alerts for the touched study; never blocks an import."""
         import logging
 
-        from .. import alerts, classify, growth, skindose
+        from .. import classify
 
         try:
             with self.session.begin_nested():
                 classify.run(self.session, [study_id])
-                growth.estimate_weights(self.session, [study_id])
-                growth.apply_exclusions(self.session, [study_id])
-                skindose.update_psd(self.session, [study_id])
-                alerts.evaluate(self.session, [study_id])
+                derive(self.session, [study_id])
         except Exception as exc:  # noqa: BLE001 – classification is best effort here
             logging.getLogger(__name__).warning("classification of study %s failed: %s",
                                                 study_id, exc)
@@ -253,6 +263,17 @@ class Store:
     def _count(self, r: Result) -> Result:
         self.stats[r.status] += 1
         return r
+
+
+def derive(session: Session, study_ids: list[int]) -> None:
+    """Values derived from weight, age and doses: weight estimates, DRL exclusions, skin
+    dose, alerts. Run after anything changes them (ingest, HIS enrichment)."""
+    from .. import alerts, growth, skindose
+
+    growth.estimate_weights(session, study_ids)
+    growth.apply_exclusions(session, study_ids)
+    skindose.update_psd(session, study_ids)
+    alerts.evaluate(session, study_ids)
 
 
 def _touch_device(device: Device, when: dt.datetime | None, new_study: bool) -> None:

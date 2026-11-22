@@ -252,9 +252,11 @@ class Client:
         return parse_request(body) if body else None
 
     def verify_login(self) -> None:
-        """Raise HisError('auth') unless the HIS accepts the credentials."""
+        """Raise HisError('auth') when the HIS rejects the credentials (401/403), and
+        HisError('retry') when it accepts them but cannot show the user (404: the gateway's
+        HIS session is broken – its searches then answer "not found" for everyone)."""
         if self._get("/api/whoami") is None:
-            raise HisError("bad", "no login check endpoint (/api/whoami)")
+            raise HisError("retry", "HIS session not usable (login check answered 404)")
 
     def check(self) -> dict:
         """Reachability and credentials: {ok, ms, error}."""

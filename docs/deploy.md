@@ -36,6 +36,7 @@ sessions depend on it.
 cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
+systemctl enable --now dosetrail-his   # only with a HIS server (see below)
 ```
 - `dosetrail-web` listens on `[web] host:port` (default 127.0.0.1:8104); publish it through an HTTPS reverse proxy
   (nginx, Apache) and set `secure_cookies = true`.
@@ -74,10 +75,36 @@ systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
 - With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Missing or implausible weights (outside P1–P99) are replaced by the median weight for age and sex (`weight_source = estimated_reference`; an implausible reported value is kept in `weight_reported_kg` and still reported by data quality). Estimates are marked on the study page, in exports and in the second-grid report; patients over 20 years, or without age or sex, keep no weight. Run `dosetrail growth check` after importing weights, e.g. from the RIS (a reported weight replaces an estimate); new studies are estimated and checked as they arrive.
 
 ## DICOM nodes
-- Remote AEs are managed in Admin → DICOM nodes:
+- Remote AEs are managed in Admin → Integration:
   - **query/retrieve** nodes are the PACS that `dosetrail qr` pulls from;
   - **sends** nodes are modalities or PACS allowed to send to the receiver.
   The receiver re-reads the allowed list every minute. Changes are audit-logged, and each node has a C-ECHO test.
 - `[pacs]` in `dosetrail.toml` is imported once as a node named "PACS". After that, the database is used. `dosetrail qr --node NAME` picks a node. `--host/--aec` still overrides for one run.
 - The receiver and `qr` write a heartbeat that the page shows (running/stopped, objects per sending AE, sync progress). It also shows a 120-day coverage strip of fully retrieved days.
 - Stop the receiver with SIGTERM (systemd does), not Ctrl-C.
+
+## HIS / RIS (patient, weight, height, request, indication)
+- Add the server in Admin → Integration → HIS / RIS servers, then press **Test** (or run
+  `dosetrail his check`). Supported: a HippoBridge FHIR gateway. Use a HIS account with read
+  access. The password is stored encrypted with a key derived from the site secret, and is
+  never shown again; if the site secret changes, enter the password again.
+- With an enabled server, every new study is queued. The `dosetrail-his` service
+  (`dosetrail his run`) works through the queue one study at a time, pausing between calls
+  (`min_interval_s`):
+  1. it finds the patient by the patient ID (a national ID such as the CNP, or a HIS code);
+  2. sex and birth date follow CNP > HIS > DICOM, and the exact age is recomputed;
+  3. it takes the imaging request of the same type ordered closest before the exam
+     (window: `window_before_h` / `window_after_h`), which supplies weight, height,
+     pregnancy, ward, requester, indication and guideline decision;
+  4. weight and height are written when plausible for the age and sex, by rank: measured >
+     request on the exam day (`chart_same_day`) > request ≤ 72 h (`chart_72h`) > DICOM
+     header > HIS patient record, which is undated (`his_chart_undated`) > estimate.
+- New studies whose request isn't found are tried again after 15 min, 2 h and 24 h.
+- Per device, Admin → Devices → HIS limits lookups to the patient (e.g. a room ordered
+  through another HIS) or turns them off.
+- A HIS record or national ID whose birth date is 12 or more years from a real header birth
+  date is treated as another person's (for example, a baby registered under a parent's ID)
+  and not used.
+- Try it without writing: `dosetrail his run --dry-run --limit 20`.
+- National IDs alone (offline, no HIS): `dosetrail cnp backfill` shows what would change;
+  add `--apply` to write it.

@@ -128,3 +128,25 @@ def test_estimate_weights(session, tables, monkeypatch):
     growth.apply_exclusions(session)
     session.refresh(typo)
     assert typo.drl_exclusion is None
+
+
+def test_known_source_weights_are_kept_unless_unrealistic(session, tables, monkeypatch):
+    from dosetrail.db.models import SizeSource
+
+    monkeypatch.setattr(growth, "tables", lambda directory=None: tables)
+    boy = Patient(pseudo_id="P-K1", sex="M")
+    session.add(boy)
+    session.flush()
+    rows = [Study(study_uid=f"k.{i}", modality="DX", study_datetime=dt.datetime(2026, 1, 5),
+                  patient_id=boy.id, age_days=0, weight_kg=w, weight_source=src,
+                  source_kind="test")
+            for i, (w, src) in enumerate([(2.2, SizeSource.chart_same_day),   # < P1, real
+                                          (2.2, SizeSource.dicom_unknown),    # < P1, unknown
+                                          (0.3, SizeSource.chart_same_day)])]  # impossible
+    session.add_all(rows)
+    session.flush()
+    assert growth.estimate_weights(session)["replaced_implausible"] == 2
+    for s in rows:
+        session.refresh(s)
+    assert rows[0].weight_kg == 2.2 and rows[0].weight_source == SizeSource.chart_same_day
+    assert rows[1].weight_source == rows[2].weight_source == SizeSource.estimated_reference

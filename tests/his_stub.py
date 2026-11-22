@@ -59,6 +59,7 @@ class Stub:
         self.requests: dict[str, list[dict]] = {}
         self.calls: list[str] = []
         self.fail_with: int | None = None
+        self.broken_session = False  # login accepted, but whoami 404 and searches empty
         stub = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -85,8 +86,10 @@ class Stub:
                 if u.path == "/fhir/Metadata":
                     return self._send(200, {"resourceType": "CapabilityStatement"})
                 if u.path == "/api/whoami":
+                    if good and stub.broken_session:
+                        return self._send(404, {"message": "User identity not found"})
                     return self._send(200 if good else 401, {"user": USER} if good else {})
-                if not good:
+                if not good or stub.broken_session:
                     return self._send(404, nf)
                 if u.path == "/fhir/Patient":
                     p = stub.patients.get(q.get("q", ""))

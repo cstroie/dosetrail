@@ -51,6 +51,10 @@ DAYS_PER_MONTH = 30.4375
 CHILD_DAYS = 6575  # 18 years: DRL weight exclusions apply to children only
 EXCLUDE_BELOW, EXCLUDE_ABOVE = 5.0, 95.0  # DRL statistics (survey plan)
 IMPLAUSIBLE_BELOW, IMPLAUSIBLE_ABOVE = 1.0, 99.0  # data quality (survey plan)
+# A weight whose source is known (measured, request form, HIS record) is kept unless it is
+# physiologically impossible: |z| > 5. Between P1/P99 and that it is real but unusual (an
+# ex-preterm infant, an obese teenager): kept, flagged by data quality, excluded from DRLs.
+REALISTIC_Z = 5.0
 
 
 @dataclass(frozen=True)
@@ -167,7 +171,8 @@ class GrowthTables:
             age_days / DAYS_PER_MONTH > self.month_range[1] else "WHO"
         return {"z": round(z, 2), "percentile": round(p, 1), "exclusion": exclusion,
                 "source": source,
-                "implausible": p < IMPLAUSIBLE_BELOW or p > IMPLAUSIBLE_ABOVE}
+                "implausible": p < IMPLAUSIBLE_BELOW or p > IMPLAUSIBLE_ABOVE,
+                "unrealistic": abs(z) > REALISTIC_Z}
 
 
 _CACHE: dict[Path, GrowthTables | None] = {}
@@ -249,7 +254,8 @@ def estimate_weights(session, study_ids=None, batch: int = 5000) -> dict:
     * no weight: ``weight_kg`` = median (P50) of the table for the patient's age and sex,
       ``weight_source`` = ``estimated_reference``;
     * a reported weight outside P1–P99: kept in ``weight_reported_kg``, replaced the same
-      way (the quality rule ``weight_implausible`` still reports it);
+      way (the quality rule ``weight_implausible`` still reports it); a weight with a known
+      source (measured, request form, HIS record) only when unrealistic (|z| > 5);
     * an earlier estimate is refreshed (e.g. after a table update);
     * needs age, sex M/F and an age the tables cover (0–20 years with the CDC table;
       0–10 years with WHO only). Others keep their weight, or none.
@@ -266,6 +272,8 @@ def estimate_weights(session, study_ids=None, batch: int = 5000) -> dict:
     if g is None:
         return {**stats, "error": "growth tables not installed (dosetrail growth install)"}
     est_src = SizeSource.estimated_reference
+    TRUSTED = {SizeSource.measured, SizeSource.chart_same_day, SizeSource.chart_72h,  # noqa: N806
+               SizeSource.his_chart_undated}
     q = (select(Study.id, Study.age_days, Study.weight_kg, Study.weight_source, Patient.sex)
          .join(Patient, Patient.id == Study.patient_id)
          .where(Study.age_days.is_not(None), Patient.sex.in_(["M", "F", "m", "f"]),
@@ -288,7 +296,7 @@ def estimate_weights(session, study_ids=None, batch: int = 5000) -> dict:
             stats["estimated_missing"] += 1
             continue
         a = g.assess(sex, age, w)
-        if a is not None and a["implausible"]:
+        if a is not None and (a["unrealistic"] if src in TRUSTED else a["implausible"]):
             changes.append({"id": sid, "weight_kg": est, "weight_source": est_src,
                             "weight_reported_kg": w})
             stats["replaced_implausible"] += 1
