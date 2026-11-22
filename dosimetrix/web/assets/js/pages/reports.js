@@ -5,12 +5,18 @@
 import '../components/dt-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
+import { t } from '../core/i18n.js';
 import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
 const lastQuarter = Math.floor(today.getMonth() / 3) || 4;
 const state = { year: lastQuarter === 4 && today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear(), quarter: lastQuarter, estimated: false };
+
+// The API (and the XLSX) keep the official Romanian form wording; the page translates it.
+const sheetTitle = (s) => t(`rep.sheet.${s.key}`) === `rep.sheet.${s.key}` ? s.title : t(`rep.sheet.${s.key}`);
+const Q_KEYS = { 'DAP mediu': 'dap', 'DLP mediu': 'dlp', 'Doza medie în punctul de referință': 'kar', 'ESAK sau MGD': 'esak', 'Kerma în aer': 'kerma', DAP: 'dapd' };
+const qLabel = (q) => (Q_KEYS[q.label] ? t(`rep.q.${Q_KEYS[q.label]}`) : q.label);
 
 function render() {
   const years = [];
@@ -20,45 +26,45 @@ function render() {
   const qSel = h('select', { class: 'input', 'aria-label': 'Quarter', onchange: (e) => { state.quarter = Number(e.target.value); } },
     [1, 2, 3, 4].map((q) => h('option', { value: q, selected: q === state.quarter }, `T${q}`)));
   clear(page).append(
-    h('h1', { class: 'section-title' }, 'Raportare trimestrială — OMS 1255/2016 (INSP)'),
+    h('h1', { class: 'section-title' }, t('rep.insp')),
     h('div', { class: 'toolbar' }, yearSel, qSel,
-      h('button', { class: 'btn primary', type: 'button', onclick: load }, 'Preview'),
-      h('button', { class: 'btn', type: 'button', onclick: download }, 'Download XLSX'),
-      h('span', { class: 'muted small' }, 'Local devices only. One examination = one study × one procedure code.')),
+      h('button', { class: 'btn primary', type: 'button', onclick: load }, t('rep.preview')),
+      h('button', { class: 'btn', type: 'button', onclick: download }, t('rep.xlsx')),
+      h('span', { class: 'muted small' }, t('rep.insp.hint'))),
     h('div', { id: 'rep' }),
-    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Analiza semestrială — medii trimestriale față de NRD (OMS 1245/2021)'),
+    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, t('rep.trend')),
     h('div', { class: 'toolbar' },
-      h('button', { class: 'btn primary', type: 'button', onclick: loadTrend }, 'Show 6 quarters ending at the selected one'),
+      h('button', { class: 'btn primary', type: 'button', onclick: loadTrend }, t('rep.trend.btn')),
       h('button', { class: 'btn', type: 'button', onclick: () => {
         const href = drlTrendUrl({ year: state.year, quarter: state.quarter });
-        if (!href) { toast('Reports need the server'); return; }
+        if (!href) { toast(t('rep.needserver')); return; }
         h('a', { href, download: '' }).click();
-      } }, 'Download XLSX'),
-      h('span', { class: 'muted small' }, 'Quarterly mean / national DRL; median shown to spot outliers. Rows above the DRL most often first.')),
+      } }, t('rep.xlsx')),
+      h('span', { class: 'muted small' }, t('rep.trend.hint'))),
     h('div', { id: 'trend' }),
-    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Grila ICRP 135 / RP 185 (extinsă) — alături de grila națională'),
+    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, t('rep.grid')),
     h('div', { class: 'toolbar' },
-      h('button', { class: 'btn primary', type: 'button', onclick: loadGrid }, 'Show the selected quarter'),
+      h('button', { class: 'btn primary', type: 'button', onclick: loadGrid }, t('rep.grid.btn')),
       h('button', { class: 'btn', type: 'button', onclick: () => {
         const href = gridReportUrl({ year: state.year, quarter: state.quarter, estimated: state.estimated });
-        if (!href) { toast('Reports need the server'); return; }
+        if (!href) { toast(t('rep.needserver')); return; }
         h('a', { href, download: '' }).click();
-      } }, 'Download XLSX'),
+      } }, t('rep.xlsx')),
       h('label', { class: 'row', title: 'Missing or implausible weights replaced by the median weight for age and sex (WHO to 10 y, CDC 2000 to 20 y). Off: those body exams count as "Weight unknown".' },
         h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; loadGrid(); } }),
-        'Include estimated weights (WHO / CDC median)'),
-      h('span', { class: 'muted small' }, 'Head exams by age (0–<3 mo, 3 mo–<1 y, 1–<6 y, 6–<18 y, ≥18 y), body exams by weight (<5 … ≥110 kg). Median vs RP 185 EDRL where it exists.')),
+        t('rep.grid.est')),
+      h('span', { class: 'muted small' }, t('rep.grid.hint'))),
     h('div', { id: 'grid' }),
-    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Studiul național de dozimetrie pediatrică (plan draft)'),
+    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, t('rep.survey')),
     surveyBar(),
-    h('p', { class: 'muted small' }, 'Central collection (for the coordinating centre): ', h('a', { href: 'survey-central.html' }, 'upload the sites’ exports and compute the national statistics →')),
+    h('p', { class: 'muted small' }, t('rep.central'), h('a', { href: 'survey-central.html' }, t('rep.central.link'))),
   );
   load();
 }
 
 async function loadTrend() {
   const host = document.getElementById('trend');
-  clear(host).append(h('p', { class: 'muted' }, 'Loading…'));
+  clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
   let r;
   try { r = await drlTrend({ year: state.year, quarter: state.quarter }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
   const cell = (x) => {
@@ -68,10 +74,10 @@ async function loadTrend() {
       h('span', { class: `tag ${cls}` }, `${num(x.mean_over_drl, 2)}×`), h('br'), h('span', { class: 'muted small' }, `med ${smart(x.median)} · n ${x.n}`));
   };
   clear(host).append(h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
-    h('thead', {}, h('tr', {}, h('th', {}, 'Exam'), h('th', {}, 'Group'), h('th', { class: 'r' }, 'DRL'),
-      r.quarters.map((q) => h('th', { class: 'r' }, q)), h('th', { class: 'r' }, 'Above'), h('th', { class: 'r' }, 'Trend'))),
+    h('thead', {}, h('tr', {}, h('th', {}, t('rep.exam')), h('th', {}, t('rep.group')), h('th', { class: 'r' }, t('rep.drl')),
+      r.quarters.map((q) => h('th', { class: 'r' }, q)), h('th', { class: 'r' }, t('rep.above')), h('th', { class: 'r' }, t('rep.trendcol')))),
     h('tbody', {}, r.rows.map((x) => h('tr', { class: x.last_above ? 'hot' : '' },
-      h('td', { title: x.exam }, x.exam_meaning), h('td', {}, x.band_label || 'all'),
+      h('td', { title: x.exam }, x.exam_meaning), h('td', {}, x.band_label || t('rep.all')),
       h('td', { class: 'r' }, `${smart(x.reference)} ${x.unit}`), x.quarters.map(cell),
       h('td', { class: 'r' }, `${x.quarters_above}/${x.quarters_with_data}`),
       h('td', { class: 'r' }, x.trend_pct_per_quarter == null ? '' : `${x.trend_pct_per_quarter > 0 ? '+' : ''}${num(x.trend_pct_per_quarter, 0)} %/q`)))))))); 
@@ -79,7 +85,7 @@ async function loadTrend() {
 
 async function loadGrid() {
   const host = document.getElementById('grid');
-  clear(host).append(h('p', { class: 'muted' }, 'Loading…'));
+  clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
   let r;
   try { r = await gridReport({ year: state.year, quarter: state.quarter, estimated: state.estimated }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
   const tone = { below: 'ok', above: 'warn', well_above: 'alert', insufficient: '' };
@@ -88,7 +94,7 @@ async function loadGrid() {
   clear(host).append(h('p', { class: 'muted small' }, `${r.start} – ${r.end} · body values: ${num(n.body_values)}, of which weight estimated (median for age and sex, WHO / CDC) ${num(n.body_weight_estimated || 0)}, no weight ${num(n.body_weight_unknown)}`
     + (n.body_values && n.body_weight_unknown / n.body_values > 0.5 ? ' — the weight grid needs weights (RIS or entered at the modality).' : '')
     + (r.estimated_weights ? '. Estimated weights fill the weight groups; they are never measured values.' : '. Estimated weights left out: only reported weights place body exams in a group.')));
-  for (const [param, title] of [['age', 'Head examinations · by age'], ['weight', 'Body examinations · by weight']]) {
+  for (const [param, title] of [['age', t('rep.head')], ['weight', t('rep.body')]]) {
     const rows = r.rows.filter((x) => x.parameter === param);
     let last = null;
     const body = h('tbody', {}, rows.map((x) => {
@@ -103,10 +109,10 @@ async function loadGrid() {
         h('td', { class: 'r' }, x.edrl == null ? '—' : smart(x.edrl)),
         h('td', { class: 'r' }, x.status ? h('span', { class: `tag ${tone[x.status]}`, title: x.ratio ? `median / EDRL = ${num(x.ratio, 2)}` : '' }, x.ratio && x.status !== 'insufficient' ? `${num(x.ratio, 2)}×` : label[x.status]) : ''));
     }));
-    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'No examination in this quarter.')));
+    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, t('rep.none'))));
     append(host, [h('h2', { class: 'section-title' }, title),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
-        h('thead', {}, h('tr', {}, ['Exam', 'Quantity', 'Group', 'n', 'Excl.', 'Est. wt', 'Median', 'P75', 'Mean', 'EDRL', 'vs EDRL'].map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
+        h('thead', {}, h('tr', {}, t('rep.cols').split('|').map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
   }
 }
 
@@ -121,20 +127,20 @@ function surveyBar() {
       if (!href) { toast('Exports need the server'); return; }
       h('a', { href, download: '' }).click();
       toast('Survey export started');
-    } }, 'Download survey export'),
-    h('span', { class: 'muted small' }, 'Patients < 18 y, local devices. Month only, keyed codes, no name / CNP / birth date. CT one row per series; checks DLP ±10 % and phantom.'));
+    } }, t('rep.survey.dl')),
+    h('span', { class: 'muted small' }, t('rep.survey.hint')));
 }
 
 function download() {
   const href = inspReportUrl({ year: state.year, quarter: state.quarter });
-  if (!href) { toast('Reports need the server'); return; }
+  if (!href) { toast(t('rep.needserver')); return; }
   h('a', { href, download: '' }).click();
-  toast('Report export started');
+  toast(t('rep.started'));
 }
 
 async function load() {
   const host = document.getElementById('rep');
-  clear(host).append(h('p', { class: 'muted' }, 'Loading…'));
+  clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
   let r;
   try {
     r = await inspReport({ year: state.year, quarter: state.quarter, q: 'origin:local' });
@@ -143,28 +149,28 @@ async function load() {
     return;
   }
   const kpis = h('div', { class: 'kpis drl-kpis' },
-    r.sheets.filter((s) => s.rows.some((x) => x.total)).map((s) => h('div', { class: 'kpi' }, h('span', { class: 'code' }, s.title),
+    r.sheets.filter((s) => s.rows.some((x) => x.total)).map((s) => h('div', { class: 'kpi' }, h('span', { class: 'code' }, sheetTitle(s)),
       h('span', { class: 'v' }, num(s.rows.reduce((a, x) => a + x.total, 0))),
-      h('span', { class: 'm' }, `examinations in ${s.rows.filter((x) => x.total).length} codes`))),
-    h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Not reported'), h('span', { class: 'v' }, num(r.notes.unclassified)),
-      h('span', { class: 'm' }, 'studies without a national code (e.g. limbs)')),
-    h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Sex other / unknown'), h('span', { class: 'v' }, num(r.notes.other_sex)),
-      h('span', { class: 'm' }, 'counted in totals, not in M/F columns')));
+      h('span', { class: 'm' }, t('rep.k.exams').replace('{n}', s.rows.filter((x) => x.total).length)))),
+    h('div', { class: 'kpi' }, h('span', { class: 'code' }, t('rep.k.unrep')), h('span', { class: 'v' }, num(r.notes.unclassified)),
+      h('span', { class: 'm' }, t('rep.k.unrep.m'))),
+    h('div', { class: 'kpi' }, h('span', { class: 'code' }, t('rep.k.sex')), h('span', { class: 'v' }, num(r.notes.other_sex)),
+      h('span', { class: 'm' }, t('rep.k.sex.m'))));
   clear(host).append(h('p', { class: 'muted small' }, `${r.period.from} – ${r.period.to}`), kpis);
   for (const s of r.sheets) {
     const rows = s.rows.filter((x) => x.total);
     const qs = s.quantities.filter((q) => q.key);
     const head = h('thead', {}, h('tr', {},
-      h('th', {}, 'Cod'), h('th', {}, 'Examinare'), h('th', { class: 'r' }, 'Total'),
+      h('th', {}, t('rep.code')), h('th', {}, t('rep.examination')), h('th', { class: 'r' }, t('rep.total')),
       s.count_bands.map((b) => h('th', { class: 'r' }, `${b.label} M/F`)),
-      qs.map((q) => s.mean_bands.map((b) => h('th', { class: 'r' }, `${q.label} ${b.label}`)))));
+      qs.map((q) => s.mean_bands.map((b) => h('th', { class: 'r' }, `${qLabel(q)} ${b.label}`)))));
     const body = h('tbody', {}, rows.map((x) => h('tr', {},
       h('td', { class: 'mono' }, x.code), h('td', {}, [x.exam, x.type].filter(Boolean).join(' — ')),
       h('td', { class: 'r' }, num(x.total)),
       s.count_bands.map((b) => h('td', { class: 'r' }, `${x.counts[b.key].M || '·'} / ${x.counts[b.key].F || '·'}`)),
       qs.map((q) => s.mean_bands.map((b) => h('td', { class: 'r' }, x.means[q.key][b.key] == null ? '' : smart(x.means[q.key][b.key])))))));
-    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 40, class: 'empty' }, 'No examination in this quarter.')));
-    append(host, [h('h2', { class: 'section-title' }, `${s.title} · ${qs.map((q) => `${q.label} (${q.unit})`).join(' · ')}`),
+    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 40, class: 'empty' }, t('rep.none'))));
+    append(host, [h('h2', { class: 'section-title' }, `${sheetTitle(s)} · ${qs.map((q) => `${qLabel(q)} (${q.unit})`).join(' · ')}`),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, head, body)))]);
   }
 }
