@@ -1,10 +1,11 @@
-"""WHO weight-for-age: z-scores and percentiles, for plausibility checks and DRL exclusions.
+"""Weight-for-age: z-scores and percentiles, for plausibility checks and DRL exclusions.
 
-Tables (downloaded at setup, never bundled: the WHO data has its own licence):
+Tables (downloaded at setup, never bundled: each has its own terms):
 * WHO Child Growth Standards (2006), weight-for-age, 0–5 years, by day (``weianthro.txt``);
-* WHO Growth Reference (2007), weight-for-age, 5–10 years, by month (``wfawho2007.txt``).
-WHO publishes no weight-for-age reference beyond 10 years, so older patients get no
-percentile.
+* WHO Growth Reference (2007), weight-for-age, 5–10 years, by month (``wfawho2007.txt``);
+* CDC 2000 growth charts, weight-for-age, 2–20 years, by half month (``wtage.csv``), used
+  only beyond 10 years: WHO publishes no weight-for-age reference there. Optional: without
+  it, patients over 10 years get no percentile.
 
 z-scores use the LMS method with WHO's restricted extension beyond ±3 SD (WHO 2006
 technical report, chapter 7): weight-for-age is skewed, so beyond +3/-3 SD the distance
@@ -30,6 +31,7 @@ SOURCES = {
                      "master/data-raw/growthstandards/weianthro.txt",
     "wfawho2007.txt": "https://raw.githubusercontent.com/WorldHealthOrganization/anthroplus/"
                       "main/data-raw/growthstandards/wfawho2007.txt",
+    "wtage.csv": "https://www.cdc.gov/growthcharts/data/zscore/wtage.csv",
 }
 NOTICE = """WHO weight-for-age tables, downloaded by `dosetrail growth install` on {date}.
 
@@ -37,12 +39,16 @@ weianthro.txt  WHO Child Growth Standards (2006), 0-5 years, by day. Source:
                {weianthro}
 wfawho2007.txt WHO Growth Reference (2007), 5-10 years, by month. Source:
                {wfawho2007}
+wtage.csv      CDC 2000 growth charts, 2-20 years, by half month; used beyond 10 years
+               only. Source: {wtage}
 
-These are WHO data, published by WHO in its GitHub repositories (WorldHealthOrganization/
-anthro and /anthroplus). They are not part of DoseTrail and are not redistributed with it;
-check WHO's terms of use before redistributing them.
+The WHO data are published by WHO in its GitHub repositories (WorldHealthOrganization/
+anthro and /anthroplus); the CDC data by the US Centers for Disease Control and
+Prevention. They are not part of DoseTrail and are not redistributed with it; check the
+publishers' terms before redistributing them.
 """
 DAYS_PER_MONTH = 30.4375
+CHILD_DAYS = 6575  # 18 years: DRL weight exclusions apply to children only
 EXCLUDE_BELOW, EXCLUDE_ABOVE = 5.0, 95.0  # DRL statistics (survey plan)
 IMPLAUSIBLE_BELOW, IMPLAUSIBLE_ABOVE = 1.0, 99.0  # data quality (survey plan)
 
@@ -83,18 +89,49 @@ def _read(path: Path) -> dict[tuple[int, int], LMS]:
     return out
 
 
+def _read_cdc(path: Path) -> dict[int, list[tuple[float, LMS]]]:
+    """CDC weight-for-age: sex -> [(age in months, LMS)] sorted by age."""
+    out: dict[int, list[tuple[float, LMS]]] = {}
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        for r in csv.DictReader(fh):
+            if not (r.get("Sex") or "").strip().isdigit():
+                continue  # the file repeats its header line
+            out.setdefault(int(r["Sex"]), []).append(
+                (float(r["Agemos"]), LMS(float(r["L"]), float(r["M"]), float(r["S"]))))
+    for rows in out.values():
+        rows.sort(key=lambda x: x[0])
+    return out
+
+
+def _interp(rows: list[tuple[float, LMS]], months: float) -> LMS | None:
+    if not rows or not rows[0][0] <= months <= rows[-1][0]:
+        return None
+    for (a0, x), (a1, y) in zip(rows, rows[1:], strict=False):
+        if a0 <= months <= a1:
+            f = (months - a0) / (a1 - a0) if a1 > a0 else 0.0
+            return LMS(x.l + f * (y.l - x.l), x.m + f * (y.m - x.m), x.s + f * (y.s - x.s))
+    return rows[-1][1]
+
+
 class GrowthTables:
-    def __init__(self, by_day: dict, by_month: dict):
-        self.by_day, self.by_month = by_day, by_month
+    def __init__(self, by_day: dict, by_month: dict, cdc: dict | None = None):
+        self.by_day, self.by_month, self.cdc = by_day, by_month, cdc or {}
         self.max_day = max(a for _, a in by_day)
         self.month_range = (min(a for _, a in by_month), max(a for _, a in by_month))
 
     @classmethod
     def load(cls, directory: Path) -> GrowthTables | None:
         d, m = directory / "weianthro.txt", directory / "wfawho2007.txt"
+        c = directory / "wtage.csv"
         if not (d.is_file() and m.is_file()):
             return None
-        return cls(_read(d), _read(m))
+        return cls(_read(d), _read(m), _read_cdc(c) if c.is_file() else None)
+
+    @property
+    def max_months(self) -> float:
+        """Oldest age covered (months): 240 with the CDC table, else 120 (WHO)."""
+        cdc = [rows[-1][0] for rows in self.cdc.values() if rows]
+        return min(cdc) if cdc else self.month_range[1]
 
     def lms(self, sex: str | None, age_days: int | None) -> LMS | None:
         code = {"M": 1, "F": 2}.get((sex or "").upper())
@@ -104,8 +141,8 @@ class GrowthTables:
             return self.by_day.get((code, age_days))
         months = age_days / DAYS_PER_MONTH
         lo_m, hi_m = self.month_range
-        if months > hi_m:
-            return None  # no WHO weight-for-age beyond 10 years
+        if months > hi_m:  # no WHO weight-for-age beyond 10 years: CDC 2000, if installed
+            return _interp(self.cdc.get(code, []), months)
         lo = max(int(months), lo_m)
         hi = min(lo + 1, hi_m)
         a, b = self.by_month.get((code, lo)), self.by_month.get((code, hi))
@@ -126,7 +163,10 @@ class GrowthTables:
         p = percentile(z)
         exclusion = ("weight < P5 for age" if p < EXCLUDE_BELOW
                      else "weight > P95 for age" if p > EXCLUDE_ABOVE else None)
+        source = "CDC" if age_days > self.max_day and \
+            age_days / DAYS_PER_MONTH > self.month_range[1] else "WHO"
         return {"z": round(z, 2), "percentile": round(p, 1), "exclusion": exclusion,
+                "source": source,
                 "implausible": p < IMPLAUSIBLE_BELOW or p > IMPLAUSIBLE_ABOVE}
 
 
@@ -154,15 +194,18 @@ def install(directory: Path, sources: dict[str, str] = SOURCES, timeout: float =
             body = r.read()
         tmp = directory / f".{name}.part"
         tmp.write_bytes(body)
-        rows = _read(tmp)
-        if len(rows) < 100 or {s for s, _ in rows} != {1, 2}:
+        rows = _read_cdc(tmp) if name.endswith(".csv") else _read(tmp)
+        n = sum(len(v) for v in rows.values()) if name.endswith(".csv") else len(rows)
+        sexes = set(rows) if name.endswith(".csv") else {s for s, _ in rows}
+        if n < 100 or sexes != {1, 2}:
             tmp.unlink()
             raise ValueError(f"{name}: unexpected content from {url}")
         tmp.replace(directory / name)
-        report.append(f"{name}: {len(rows)} rows")
+        report.append(f"{name}: {n} rows")
     (directory / "SOURCE.txt").write_text(NOTICE.format(
         date=dt.date.today().isoformat(), weianthro=sources["weianthro.txt"],
-        wfawho2007=sources["wfawho2007.txt"]), encoding="utf-8")
+        wfawho2007=sources["wfawho2007.txt"], wtage=sources.get("wtage.csv", "-")),
+        encoding="utf-8")
     _CACHE.pop(directory, None)
     return report
 
@@ -179,7 +222,7 @@ def apply_exclusions(session, study_ids=None) -> dict:
     if g is None:
         return {**stats, "error": "growth tables not installed (dosetrail growth install)"}
     q = (select(Study, Patient.sex).outerjoin(Patient, Patient.id == Study.patient_id)
-         .where(Study.weight_kg.is_not(None), Study.age_days < 3653))
+         .where(Study.weight_kg.is_not(None), Study.age_days < CHILD_DAYS))
     if study_ids is not None:
         q = q.where(Study.id.in_(list(study_ids)))
     for s, sex in session.execute(q):

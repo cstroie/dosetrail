@@ -65,3 +65,29 @@ def test_apply_exclusions_keeps_other_reasons(session, tables, tmp_path, monkeyp
     assert small.drl_exclusion == "weight < P5 for age"
     assert normal.drl_exclusion is None and stats["cleared"] == 1
     assert manual.drl_exclusion == "premature"  # a person's reason is kept
+
+
+# real CDC 2000 coefficients (boys and girls, 12.5 / 13.5 years; first rows of the file)
+CDC = ("Sex,Agemos,L,M,S\n"
+       "1,24,-0.20615245,12.6707633,0.108125811\n"
+       "1,149.5,-0.773426,40.4389,0.199458\n1,150.5,-0.770879,40.9431,0.199109\n"
+       "1,240,-0.16194,70.6,0.1474\n"
+       "Sex,Agemos,L,M,S\n"  # the file repeats its header
+       "2,24,-0.73533,12.0532,0.1071\n"
+       "2,161.5,-1.20484,47.1063,0.18646\n2,162.5,-1.20484,47.5101,0.18465\n"
+       "2,240,-1.51336,58.219,0.16664\n")
+
+
+def test_cdc_beyond_ten_years(tmp_path):
+    (tmp_path / "weianthro.txt").write_text(DAYS)
+    (tmp_path / "wfawho2007.txt").write_text(MONTHS)
+    (tmp_path / "wtage.csv").write_text(CDC)
+    g = growth.GrowthTables.load(tmp_path)
+    assert g.max_months == 240
+    boy = int(150 * growth.DAYS_PER_MONTH)
+    a = g.assess("M", boy, 40.9)
+    assert a["source"] == "CDC" and a["percentile"] == pytest.approx(50, abs=2)
+    assert g.assess("M", boy, 25)["exclusion"] == "weight < P5 for age"
+    assert g.assess("F", int(162 * growth.DAYS_PER_MONTH), 90)["implausible"] is True
+    assert g.assess("M", int(120 * growth.DAYS_PER_MONTH), 31.2)["source"] == "WHO"
+    assert g.assess("M", int(21 * 365.25), 70) is None  # beyond 20 y: no table

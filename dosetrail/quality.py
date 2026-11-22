@@ -9,8 +9,8 @@ Rules (severity ``error`` = the value is almost certainly wrong, ``warn`` = chec
   DLP > 15,000 mGy·cm, an exposure DAP > 1,000 Gy·cm² (radiography 50), Ka,r > 20 Gy.
 * ``dose_far_above_drl`` (warn): a study value above 3 × the national DRL of its exam and
   age group. Probably an error, or a case worth reviewing.
-* ``weight_implausible`` (warn): below 0–10 years, outside WHO weight-for-age P1–P99 (when
-  the tables are installed: ``dosetrail growth install``); otherwise outside wide bounds.
+* ``weight_implausible`` (warn): outside weight-for-age P1–P99 (WHO to 10 years, CDC 2000
+  to 20 years; when installed: ``dosetrail growth install``); otherwise wide bounds.
 * ``dap_missing`` (warn): a radiography or fluoroscopy study with exposures but no DAP
   (the unit reported none, or 0: DAP meter absent, off or out of calibration).
 * ``age_missing`` / ``sex_missing`` (warn).
@@ -135,11 +135,11 @@ class Checker:
         if s.weight_kg:
             who = self.growth.assess(p.sex if p else None, s.age_days, s.weight_kg) \
                 if self.growth else None
-            if who is not None:  # WHO weight-for-age, 0-10 years: outside P1-P99
+            if who is not None:  # weight-for-age (WHO, CDC beyond 10 y): outside P1-P99
                 if who["implausible"]:
                     out.append(Finding("weight_implausible",
                                        f"{s.weight_kg:g} kg = P{who['percentile']:g} for age "
-                                       f"(WHO, z {who['z']:+.1f})"))
+                                       f"({who['source']}, z {who['z']:+.1f})"))
             else:
                 lo, hi = weight_bounds(s.age_days) if s.age_days is not None else (0.3, 250.0)
                 if not lo <= s.weight_kg <= hi:
