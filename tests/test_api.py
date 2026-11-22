@@ -285,6 +285,20 @@ def test_drl_dataset_and_summary_downloads(client):
     assert client.get("/api/drl/summary", params={"set": "x"}).status_code == 400
 
 
+def test_operators_report_is_admin_only(client):
+    login(client, "phys", "phys-pass-12")
+    assert client.get("/api/reports/operators").status_code == 403  # staff names
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/reports/operators", params={"year": 2026, "quarter": 3, "q": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["start"] == "2025-10-01" and r.json()["end"] == "2026-09-30"
+    x = client.get("/api/reports/operators", params={"year": 2026, "quarter": 3,
+                                                      "format": "xlsx"})
+    assert x.status_code == 200 and x.content[:2] == b"PK"
+    assert client.get("/api/reports/operators", params={"year": 2026,
+                                                        "quarter": 5}).status_code == 400
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})

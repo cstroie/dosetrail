@@ -1321,6 +1321,40 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return _file(lambda fh: trend.write_xlsx(report, fh, info), "xlsx",
                      f"drl-trend-{year}-T{quarter}", now)
 
+    @app.get("/api/reports/operators")
+    def report_operators(request: Request, year: int | None = None, quarter: int | None = None,
+                         quarters: int = 4, q: str = "origin:local", min_n: int = 20,
+                         format: str = "json", user: User = Depends(admin_user),
+                         session: Session = Depends(db)):
+        """Doses per operator against the department median (exam, age group). Staff names:
+        admin only, audited."""
+        from ..reports import operators, trend
+        from ..reports.insp1255 import quarter_range
+
+        if year is None or quarter is None:
+            year, quarter = trend.default_end(clock().date())
+        if quarter not in (1, 2, 3, 4) or not 1 <= quarters <= 8:
+            raise HTTPException(400, "quarter is 1..4, quarters is 1..8")
+        if format not in ("json", "xlsx"):
+            raise HTTPException(400, "format is json|xlsx")
+        first = trend.quarters_back(year, quarter, quarters)[0]
+        start, _ = quarter_range(*first)
+        _, end = quarter_range(year, quarter)
+        now = clock()
+        conds = [*data.conditions(data.parse(q), now, data.overrides(session)),
+                 Study.study_datetime >= start, Study.study_datetime < end]
+        rep = operators.build(session, conds, start.date(), (end - dt.timedelta(days=1)).date(),
+                              max(min_n, 1))
+        _audit(session, request, user, "report", f"operators:{year}Q{quarter}:{format}",
+               {"q": q, "quarters": quarters})
+        session.commit()
+        if format == "json":
+            return rep
+        info = {"Generat": now.isoformat(sep=" ", timespec="seconds"),
+                "De": user.display_name or user.username, "Selecție": q or "(toate)"}
+        return _file(lambda fh: operators.write_xlsx(rep, fh, info), "xlsx",
+                     f"operatori-{year}-T{quarter}", now)
+
     @app.get("/api/reports/insp1255")
     def report_insp1255(request: Request, year: int, quarter: int, q: str = "origin:local",
                         format: str = "json", user: User = Depends(current_user),

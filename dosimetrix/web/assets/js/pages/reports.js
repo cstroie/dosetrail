@@ -7,7 +7,7 @@ import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
-import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl } from '../core/api.js';
+import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
@@ -20,14 +20,14 @@ const Q_KEYS = { 'DAP mediu': 'dap', 'DLP mediu': 'dlp', 'Doza medie în punctul
 const qLabel = (q) => (Q_KEYS[q.label] ? t(`rep.q.${Q_KEYS[q.label]}`) : q.label);
 
 // One report at a time, chosen by whom it goes to (the choice is kept between visits).
-const TARGETS = ['insp', 'trend', 'grid', 'survey'];
+const TARGETS = ['insp', 'trend', 'operators', 'grid', 'survey'];
 const fromUrl = new URLSearchParams(location.search).get('r');
 state.target = TARGETS.includes(fromUrl) ? fromUrl : (TARGETS.includes(prefs.get('reports.target')) ? prefs.get('reports.target') : 'insp');
 
 function render() {
   const years = [];
   for (let y = today.getFullYear(); y >= today.getFullYear() - 8; y -= 1) years.push(y);
-  const reload = () => ({ insp: load, trend: loadTrend, grid: loadGrid })[state.target]?.();
+  const reload = () => ({ insp: load, trend: loadTrend, grid: loadGrid, operators: loadOperators })[state.target]?.();
   const targetSel = h('select', { class: 'input', 'aria-label': t('rep.target'), onchange: (e) => {
     state.target = e.target.value;
     prefs.set('reports.target', state.target);
@@ -56,6 +56,12 @@ function render() {
         xlsx(() => drlTrendUrl({ year: state.year, quarter: state.quarter })),
         h('span', { class: 'muted small' }, t('rep.trend.hint'))),
       h('div', { id: 'trend' })],
+    operators: () => [
+      h('div', { class: 'toolbar' }, yearSel, qSel,
+        h('button', { class: 'btn primary', type: 'button', onclick: loadOperators }, t('rep.preview')),
+        xlsx(() => operatorReportUrl({ year: state.year, quarter: state.quarter })),
+        h('span', { class: 'muted small' }, t('rep.operators.hint'))),
+      h('div', { id: 'operators' })],
     grid: () => [
       h('div', { class: 'toolbar' }, yearSel, qSel,
         h('button', { class: 'btn primary', type: 'button', onclick: loadGrid }, t('rep.grid.btn')),
@@ -93,6 +99,42 @@ async function loadTrend() {
       h('td', { class: 'r' }, `${smart(x.reference)} ${x.unit}`), x.quarters.map(cell),
       h('td', { class: 'r' }, `${x.quarters_above}/${x.quarters_with_data}`),
       h('td', { class: 'r' }, x.trend_pct_per_quarter == null ? '' : `${x.trend_pct_per_quarter > 0 ? '+' : ''}${num(x.trend_pct_per_quarter, 0)} %/q`)))))))); 
+}
+
+async function loadOperators() {
+  const host = document.getElementById('operators');
+  clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
+  let r;
+  try { r = await operatorReport({ year: state.year, quarter: state.quarter }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
+  const pct = (x) => `${num(x * 100, 0)} %`;
+  const share = r.studies ? r.studies_with_operator / r.studies : 0;
+  const tone = (o) => (o.flag ? 'alert' : o.median_ratio >= 1.15 ? 'warn' : 'ok');
+  clear(host).append(
+    h('p', { class: 'muted small' }, t('rep.operators.about')
+      .replace('{start}', r.start).replace('{end}', r.end).replace('{n}', r.min_n)
+      .replace('{ratio}', num(r.ratio_flag, 1)).replace('{p95}', pct(r.p95_flag))),
+    h('div', { class: 'kpis drl-kpis' },
+      h('div', { class: 'kpi' }, h('span', { class: 'code' }, t('rep.operators.k.cov')), h('span', { class: 'v' }, pct(share)),
+        h('span', { class: 'm' }, `${num(r.studies_with_operator)} / ${num(r.studies)}`)),
+      h('div', { class: 'kpi' }, h('span', { class: 'code' }, t('rep.operators.k.ops')), h('span', { class: 'v' }, num(r.operators.filter((o) => o.enough).length)),
+        h('span', { class: 'm' }, t('rep.operators.k.ops.m').replace('{n}', r.min_n))),
+      h('div', { class: 'kpi' }, h('span', { class: 'code' }, t('rep.operators.k.flag')), h('span', { class: 'v' }, num(r.operators.filter((o) => o.flag).length)),
+        h('span', { class: 'm' }, t('rep.operators.k.flag.m')))));
+  const body = h('tbody', {}, r.operators.map((o) => h('tr', { class: o.enough ? '' : 'muted' },
+    h('td', {}, o.operator), h('td', { class: 'r' }, num(o.n)), h('td', { class: 'r' }, num(o.studies)),
+    h('td', { class: 'r' }, o.enough ? h('span', { class: `tag ${tone(o)}` }, `${num(o.median_ratio, 2)}×`) : `${num(o.median_ratio, 2)}×`),
+    h('td', { class: 'r' }, pct(o.share_p95)),
+    h('td', { class: 'small' }, o.exams.slice(0, 3).map((x) => `${x.exam} ${x.band} ${num(x.median_ratio, 2)}× (${x.n})`).join(' · ')),
+    h('td', { class: 'small muted' }, o.devices.join(', ')))));
+  if (!r.operators.length) body.append(h('tr', {}, h('td', { colspan: 7, class: 'empty' }, t('rep.operators.none'))));
+  append(host, [h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-5)' } }, t('rep.operators.table')),
+    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
+      h('thead', {}, h('tr', {}, t('rep.operators.cols').split('|').map((c, i) => h('th', { class: i >= 1 && i <= 4 ? 'r' : '' }, c)))), body))),
+    h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-5)' } }, t('rep.operators.coverage')),
+    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
+      h('thead', {}, h('tr', {}, t('rep.operators.covcols').split('|').map((c, i) => h('th', { class: i ? 'r' : '' }, c)))),
+      h('tbody', {}, r.coverage.map((c) => h('tr', {}, h('td', {}, c.device), h('td', { class: 'r' }, num(c.studies)),
+        h('td', { class: 'r' }, num(c.with_operator)), h('td', { class: 'r' }, pct(c.share))))))))]);
 }
 
 async function loadGrid() {

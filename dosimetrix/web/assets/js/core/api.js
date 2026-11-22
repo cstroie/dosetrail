@@ -381,6 +381,17 @@ export function alertRules() {
 }
 export const updateAlertRule = (id, patch) => send('PATCH', `/api/alert-rules/${id}`, patch);
 
+/** GET /api/reports/operators?year=&quarter=&quarters=4 (doses per operator; admin only) */
+export function operatorReport(params = {}) {
+  return isSample ? serverOnly('Reports') : remote('/api/reports/operators', params);
+}
+export function operatorReportUrl(params = {}) {
+  if (isSample) return null;
+  const u = new URL('/api/reports/operators', MODE);
+  for (const [k, v] of Object.entries({ ...params, format: 'xlsx' })) if (v != null) u.searchParams.set(k, String(v));
+  return u.href;
+}
+
 /** GET /api/reports/drl-trend?year=&quarter=&quarters=6&set= (quarterly means vs DRL) */
 export function drlTrend(params = {}) {
   return isSample ? serverOnly('Reports') : remote('/api/reports/drl-trend', params);
