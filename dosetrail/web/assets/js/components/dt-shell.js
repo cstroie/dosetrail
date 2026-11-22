@@ -15,7 +15,7 @@ const NAV = [
   ['charts', 'charts.html', 'charts'],
   ['drl', 'drl.html', 'drl'],
   ['reports', 'reports.html', 'reports'],
-  ['alerts', 'index.html#alerts', 'alerts'],
+  ['alerts', 'alerts.html', 'alerts'],
   ['admin', 'devices.html', 'admin'],
 ];
 

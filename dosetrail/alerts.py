@@ -204,6 +204,38 @@ def evaluate_range(session: Session, start: dt.datetime | None = None,
     return total
 
 
+def counts(session: Session, status: str | None = None, **filters) -> dict:
+    """Total and per rule / level / modality for the filtered alerts."""
+    base = (select(AlertRule.key, AlertRule.name, Alert.severity, Study.modality, func.count())
+            .select_from(Alert).join(AlertRule, AlertRule.id == Alert.rule_id)
+            .join(Study, Study.id == Alert.study_id))
+    rows = session.execute(_filtered(base, status, **filters)
+                           .group_by(AlertRule.key, AlertRule.name, Alert.severity,
+                                     Study.modality)).all()
+    by_rule: dict[str, dict] = {}
+    by_level: Counter = Counter()
+    by_mod: Counter = Counter()
+    for key, name, sev, mod, n in rows:
+        r = by_rule.setdefault(key, {"rule": key, "name": name, "n": 0})
+        r["n"] += n
+        by_level[sev] += n
+        by_mod[mod] += n
+    return {"total": sum(by_level.values()), "by_rule": sorted(by_rule.values(),
+                                                                key=lambda x: -x["n"]),
+            "by_level": dict(by_level), "by_modality": dict(by_mod)}
+
+
+def acknowledge(session: Session, ids: list[int], username: str, note: str | None,
+                when: dt.datetime) -> int:
+    n = 0
+    for a in session.scalars(select(Alert).where(Alert.id.in_(ids), Alert.status == "open")):
+        a.status, a.ack_by, a.ack_at = "acknowledged", username, when
+        a.ack_note = (note or "")[:1024] or None
+        n += 1
+    session.flush()
+    return n
+
+
 def open_count(session: Session) -> int:
     return session.scalar(select(func.count()).select_from(Alert)
                           .where(Alert.status == "open")) or 0
@@ -222,14 +254,30 @@ def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
     return _fmt(v, a.unit), f"≥ {_fmt(a.limit_value or r.threshold, a.unit)}"
 
 
-def listing(session: Session, status: str | None = "open", limit: int = 50,
-            names: dict[int, str] | None = None) -> list[dict]:
-    """Alerts for the UI, newest study first (shape of the overview alert queue)."""
-    q = (select(Alert, AlertRule, Study).join(AlertRule, AlertRule.id == Alert.rule_id)
-         .join(Study, Study.id == Alert.study_id))
+def _filtered(q, status=None, rule=None, level=None, since=None, until=None, modality=None):
     if status:
         q = q.where(Alert.status == status)
-    q = q.order_by(Alert.study_datetime.desc(), Alert.id.desc()).limit(limit)
+    if rule:
+        q = q.where(AlertRule.key == rule)
+    if level:
+        q = q.where(Alert.severity == level)
+    if since:
+        q = q.where(Alert.study_datetime >= since)
+    if until:
+        q = q.where(Alert.study_datetime < until)
+    if modality:
+        q = q.where(Study.modality == modality)
+    return q
+
+
+def listing(session: Session, status: str | None = "open", limit: int = 50,
+            names: dict[int, str] | None = None, offset: int = 0, **filters) -> list[dict]:
+    """Alerts for the UI, newest study first (shape of the overview alert queue).
+    Filters: rule (key), level, since/until (datetime), modality."""
+    q = (select(Alert, AlertRule, Study).join(AlertRule, AlertRule.id == Alert.rule_id)
+         .join(Study, Study.id == Alert.study_id))
+    q = _filtered(q, status, **filters)
+    q = q.order_by(Alert.study_datetime.desc(), Alert.id.desc()).offset(offset).limit(limit)
     names = names or {d.id: d.display_name or f"Device {d.id}"
                       for d in session.scalars(select(Device))}
     kinds = {"threshold": None, "drl_ratio": "> DRL", "cumulative": "CUMUL.", "count": "REPEAT"}
@@ -251,6 +299,6 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
             "value": value, "limit": limit,
             "message": a.message, "status": a.status, "ack_by": a.ack_by,
             "ack_at": a.ack_at.isoformat(timespec="minutes") if a.ack_at else None,
-            "ack_note": a.ack_note,
+            "ack_note": a.ack_note, "modality": s.modality, "severity": a.severity,
         })
     return out

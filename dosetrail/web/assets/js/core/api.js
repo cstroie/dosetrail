@@ -318,3 +318,14 @@ export const createUser = (u) => send('POST', '/api/users', u);
 export const updateUser = (username, patch) => send('PATCH', `/api/users/${encodeURIComponent(username)}`, patch);
 /** GET /api/audit?limit=&action=&user_name=&text=&since=&before_id= → { rows, actions, more } */
 export function auditLog(params = {}) { return isSample ? serverOnly('Audit log') : remote('/api/audit', params); }
+
+/** GET /api/alerts/summary?status=&rule=&level=&since=&until=&modality= → { total, by_rule, by_level, by_modality } */
+export function alertSummary(params = {}) {
+  return isSample ? serverOnly('Alerts') : remote('/api/alerts/summary', params);
+}
+/** GET /api/alerts with filters and paging (offset, limit) */
+export function alertList(params = {}) {
+  return isSample ? sample('overview.json').then((o) => o.alerts) : remote('/api/alerts', params);
+}
+/** POST /api/alerts/ack {ids, note} (audit-logged) */
+export const ackAlerts = (ids, note) => send('POST', '/api/alerts/ack', { ids, note });

@@ -44,7 +44,8 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "devices.html": "devices.html", "drl.html": "drl.html", "review.html": "review.html",
          "reports.html": "reports.html", "quality.html": "quality.html",
          "rules.html": "rules.html", "dicom.html": "dicom.html",
-         "users.html": "users.html", "audit.html": "audit.html"}
+         "users.html": "users.html", "audit.html": "audit.html",
+         "alerts.html": "alerts.html"}
 
 
 class LoginIn(BaseModel):
@@ -94,6 +95,11 @@ class NodeIn(BaseModel):
 
 
 class AckIn(BaseModel):
+    note: str | None = None
+
+
+class AckManyIn(BaseModel):
+    ids: list[int]
     note: str | None = None
 
 
@@ -467,13 +473,52 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     # ------------------------------------------------------------------ alerts
 
+    def _alert_filters(rule, level, since, until, modality):
+        import datetime as _dt
+
+        try:
+            return {"rule": rule or None, "level": level or None, "modality": modality or None,
+                    "since": _dt.datetime.fromisoformat(since) if since else None,
+                    "until": (_dt.datetime.fromisoformat(until) + _dt.timedelta(days=1))
+                    if until else None}
+        except ValueError as e:
+            raise HTTPException(400, "since/until are YYYY-MM-DD") from e
+
     @app.get("/api/alerts")
-    def alert_list(status: str = "open", limit: int = 50, user: User = Depends(current_user),
+    def alert_list(status: str = "open", limit: int = 50, offset: int = 0,
+                   rule: str | None = None, level: str | None = None,
+                   since: str | None = None, until: str | None = None,
+                   modality: str | None = None, user: User = Depends(current_user),
                    session: Session = Depends(db)):
         from .. import alerts
 
         return alerts.listing(session, None if status == "all" else status,
-                              min(max(limit, 1), 500), names=data.device_names(session))
+                              min(max(limit, 1), 500), names=data.device_names(session),
+                              offset=max(offset, 0),
+                              **_alert_filters(rule, level, since, until, modality))
+
+    @app.get("/api/alerts/summary")
+    def alert_summary(status: str = "open", rule: str | None = None, level: str | None = None,
+                      since: str | None = None, until: str | None = None,
+                      modality: str | None = None, user: User = Depends(current_user),
+                      session: Session = Depends(db)):
+        from .. import alerts
+
+        return alerts.counts(session, None if status == "all" else status,
+                             **_alert_filters(rule, level, since, until, modality))
+
+    @app.post("/api/alerts/ack")
+    def alert_ack_many(body: AckManyIn, request: Request, user: User = Depends(current_user),
+                       session: Session = Depends(db)):
+        from .. import alerts
+
+        if not body.ids or len(body.ids) > 1000:
+            raise HTTPException(400, "1 to 1000 alert ids")
+        n = alerts.acknowledge(session, body.ids, user.username, body.note, clock())
+        _audit(session, request, user, "alert.ack", f"alerts:{n}",
+               {"ids": body.ids[:50], "note": body.note})
+        session.commit()
+        return {"acknowledged": n}
 
     @app.post("/api/alerts/{alert_id}/ack")
     def alert_ack(alert_id: int, body: AckIn, request: Request,
