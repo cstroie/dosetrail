@@ -135,3 +135,20 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
   example the modality worklist's): the HIS may keep a single session per account.
 - National IDs alone (offline, no HIS): `dosetrail cnp backfill` shows what would change;
   add `--apply` to write it.
+
+## Docker
+
+An alternative to the plain install: one image for every role, plus MariaDB.
+
+```sh
+cp deploy/docker/dosetrail.toml deploy/docker/dosetrail.local.toml   # edit: password, [pacs]
+printf 'MARIADB_PASSWORD=...\nMARIADB_ROOT_PASSWORD=...\n' > .env         # same password as the toml
+docker compose up -d db web receive
+docker compose run --rm web user set admin --roles viewer,exporter,pid,importer,admin
+docker compose --profile qr up -d qr     # query/retrieve every hour (needs [pacs])
+docker compose --profile his up -d his   # HIS worker (needs a HIS server)
+```
+- `web` migrates and seeds on start, then serves on 127.0.0.1:8104 (put an HTTPS reverse proxy in front). `receive` listens on 11112.
+- The volume `dosetrail-data` holds the site secret, the spool and the growth tables (`docker compose run --rm web growth install`). Back it up together with `dosetrail-db`.
+- The image build has not been tested here (no Docker on the development host); the same install steps were checked in a clean virtual environment.
+

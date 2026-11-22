@@ -1,0 +1,11 @@
+.git
+.venv
+var
+reference
+design-inbox
+docs/local
+tests
+**/__pycache__
+*.sqlite3
+.env
+deploy/docker/*.local.toml

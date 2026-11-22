@@ -1,0 +1,72 @@
+# DoseTrail with MariaDB. Before the first start:
+#   cp deploy/docker/dosetrail.toml deploy/docker/dosetrail.local.toml   # edit it
+#   create a .env file with MARIADB_PASSWORD=... and MARIADB_ROOT_PASSWORD=...
+#   docker compose up -d db web receive
+#   docker compose run --rm web user set admin --roles viewer,exporter,pid,importer,admin
+# Optional: "qr" (query/retrieve from the PACS, needs [pacs]) and "his" (HIS worker).
+x-dosetrail: &dosetrail
+  build: .
+  image: dosetrail:latest
+  restart: unless-stopped
+  volumes:
+    - dosetrail-data:/var/lib/dosetrail
+    - ./deploy/docker/dosetrail.local.toml:/etc/dosetrail/dosetrail.toml:ro
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: dosetrail
+      MARIADB_USER: dosetrail
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?set MARIADB_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?set MARIADB_ROOT_PASSWORD in .env}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - dosetrail-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      retries: 10
+
+  web:
+    <<: *dosetrail
+    command: ["serve"]
+    ports:
+      - "127.0.0.1:8104:8104"   # behind an HTTPS reverse proxy on the host
+
+  receive:
+    <<: *dosetrail
+    command: ["receive"]
+    environment:
+      DOSETRAIL_SKIP_MIGRATE: "1"
+    ports:
+      - "11112:11112"
+    depends_on:
+      - web
+
+  qr:
+    <<: *dosetrail
+    command: ["sh", "-c", "while true; do dosetrail qr --days 2; sleep 3600; done"]
+    entrypoint: []
+    environment:
+      DOSETRAIL_SKIP_MIGRATE: "1"
+    depends_on:
+      - web
+    profiles: ["qr"]
+
+  his:
+    <<: *dosetrail
+    command: ["his", "run"]
+    environment:
+      DOSETRAIL_SKIP_MIGRATE: "1"
+    depends_on:
+      - web
+    profiles: ["his"]
+
+volumes:
+  dosetrail-data:
+  dosetrail-db:

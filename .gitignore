@@ -21,3 +21,7 @@ spool/
 var/
 design-inbox/
 /reference/
+
+# Docker local config
+.env
+deploy/docker/*.local.toml
