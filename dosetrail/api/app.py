@@ -38,6 +38,7 @@ from . import admin, data, review
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 LOGIN_HTML = Path(__file__).resolve().parent / "login.html"
+SETUP_HTML = Path(__file__).resolve().parent / "setup.html"
 COOKIE = "dt_session"
 PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.html",
          "study.html": "study.html", "charts.html": "charts.html",
@@ -52,6 +53,22 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
 class LoginIn(BaseModel):
     username: str
     password: str
+
+
+class TokenIn(BaseModel):
+    token: str
+
+
+class SetupAdminIn(BaseModel):
+    token: str
+    username: str
+    password: str
+    name: str | None = None
+
+
+class SiteIn(BaseModel):
+    name: str
+    code: str | None = None
 
 
 class DevicePatch(BaseModel):
@@ -178,6 +195,96 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     def clock() -> dt.datetime:
         return app.state.fixed_now or dt.datetime.now()
+
+    # ------------------------------------------------------------------ first-run setup
+
+    from .. import setup as first_run
+
+    app.state.setup_token = None
+
+    def setup_token(session: Session) -> str | None:
+        """The one-time token while no account exists (issued at start, or lazily)."""
+        if not first_run.needs_admin(session):
+            return None
+        if app.state.setup_token is None:
+            app.state.setup_token = first_run.issue_token(settings.data_dir)
+        return app.state.setup_token
+
+    with maker() as _s:
+        setup_token(_s)
+
+    def optional_user(request: Request, session: Session) -> User | None:
+        uid = read_session(secret, request.cookies.get(COOKIE))
+        user = session.get(User, uid) if uid else None
+        return user if user is not None and user.is_active else None
+
+    def setup_guard(request: Request, session: Session) -> User | None:
+        """No account yet: open (the token protects the first write). Else: admin only."""
+        if first_run.needs_admin(session):
+            return None
+        user = optional_user(request, session)
+        if user is None:
+            raise HTTPException(401, "login required")
+        if "admin" not in user.role_set():
+            raise HTTPException(403, "the admin role is required")
+        return user
+
+    def _setup(fn):
+        try:
+            return fn()
+        except first_run.SetupError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/setup/status")
+    def setup_status(request: Request, session: Session = Depends(db)):
+        setup_guard(request, session)
+        return first_run.status(session, settings)
+
+    @app.post("/api/setup/database")
+    def setup_database(body: TokenIn, session: Session = Depends(db)):
+        """Fresh install only (no account yet; token): create the schema, load seeds."""
+        _setup(lambda: first_run.check_token(setup_token(session), body.token))
+        report = first_run.prepare_database(session, settings)
+        session.commit()
+        return {"report": report}
+
+    @app.post("/api/setup/admin")
+    def setup_admin(body: SetupAdminIn, request: Request, response: Response,
+                    session: Session = Depends(db)):
+        _setup(lambda: first_run.check_token(setup_token(session), body.token))
+        user = _setup(lambda: first_run.create_admin(session, body.model_dump()))
+        _audit(session, request, user, "setup.admin", user.username)
+        session.commit()
+        app.state.setup_token = None
+        response.set_cookie(COOKIE, sign_session(secret, user.id, settings.session_hours),
+                            httponly=True, samesite="strict",
+                            secure=settings.secure_cookies or request.url.scheme == "https",
+                            max_age=int(settings.session_hours * 3600), path="/")
+        return _me(user)
+
+    @app.post("/api/setup/site")
+    def setup_site(body: SiteIn, request: Request, user: User = Depends(admin_user),
+                   session: Session = Depends(db)):
+        out = _setup(lambda: first_run.save_site(session, body.model_dump()))
+        _audit(session, request, user, "setup.site", out["code"], out)
+        session.commit()
+        return out
+
+    @app.post("/api/setup/growth")
+    def setup_growth(request: Request, user: User = Depends(admin_user),
+                     session: Session = Depends(db)):
+        report = _setup(lambda: first_run.install_growth(settings))
+        _audit(session, request, user, "setup.growth", "install", {"report": report})
+        session.commit()
+        return {"report": report}
+
+    @app.post("/api/setup/finish")
+    def setup_finish(request: Request, user: User = Depends(admin_user),
+                     session: Session = Depends(db)):
+        first_run.finish(session, settings)
+        _audit(session, request, user, "setup.finish", None)
+        session.commit()
+        return {"done": True}
 
     # ------------------------------------------------------------------ auth
 
@@ -1003,8 +1110,20 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     # ------------------------------------------------------------------ pages
 
     @app.get("/login", response_class=HTMLResponse)
-    def login_page():
+    def login_page(session: Session = Depends(db)):
+        if first_run.needs_admin(session):
+            return RedirectResponse("/setup", status_code=303)
         return FileResponse(LOGIN_HTML)
+
+    @app.get("/setup", response_class=HTMLResponse)
+    def setup_page(request: Request, session: Session = Depends(db)):
+        if not first_run.needs_admin(session):
+            user = optional_user(request, session)
+            if user is None:
+                return RedirectResponse("/login", status_code=303)
+            if "admin" not in user.role_set():
+                raise HTTPException(403, "the admin role is required")
+        return FileResponse(SETUP_HTML, headers={"Cache-Control": "no-store"})
 
     @app.get("/{page:path}", response_class=HTMLResponse)
     def pages(page: str, request: Request, session: Session = Depends(db)):
@@ -1012,7 +1131,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(404)
         uid = read_session(secret, request.cookies.get(COOKIE))
         if not uid or session.get(User, uid) is None:
-            return RedirectResponse("/login", status_code=303)
+            return RedirectResponse("/setup" if first_run.needs_admin(session) else "/login",
+                                    status_code=303)
         html = (WEB / PAGES[page]).read_text(encoding="utf-8")
         origin = str(request.base_url).rstrip("/")
         html = re.sub(r"<html(\s|>)", f'<html data-api="{origin}"\\1', html, count=1)

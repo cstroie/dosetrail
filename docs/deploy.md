@@ -20,6 +20,9 @@ Give InnoDB enough memory to hold the working set — at least the size of the d
 is the difference between 25 ms and 10 s per page of results.
 
 ## 3. Install
+
+**First-run wizard.** On an empty database every page leads to `/setup`. The web service prints a one-time setup token to its log and writes it to `<data_dir>/setup-token` (0600); entering it proves access to the server. The wizard checks the installation, can create the schema and load the seed data, creates the first administrator (all roles, signed in at once), and then asks for the site name, a PACS node (with C-ECHO) and the growth tables. An admin can open `/setup` again later. The manual steps below do the same from the command line.
+
 ```sh
 python3.12 -m venv /opt/dosetrail/.venv
 /opt/dosetrail/.venv/bin/pip install dosetrail        # or: pip install -e <checkout>
@@ -145,7 +148,7 @@ An alternative to the plain install: one image for every role, plus MariaDB.
 cp deploy/docker/dosetrail.toml deploy/docker/dosetrail.local.toml   # edit: password, [pacs]
 printf 'MARIADB_PASSWORD=...\nMARIADB_ROOT_PASSWORD=...\n' > .env         # same password as the toml
 docker compose up -d db web receive
-docker compose run --rm web user set admin --roles viewer,exporter,pid,importer,admin
+docker compose logs web | grep 'setup token'   # then open /setup (first-run wizard)
 docker compose --profile qr up -d qr     # query/retrieve every hour (needs [pacs])
 docker compose --profile his up -d his   # HIS worker (needs a HIS server)
 ```

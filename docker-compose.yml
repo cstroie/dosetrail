@@ -2,7 +2,7 @@
 #   cp deploy/docker/dosetrail.toml deploy/docker/dosetrail.local.toml   # edit it
 #   create a .env file with MARIADB_PASSWORD=... and MARIADB_ROOT_PASSWORD=...
 #   docker compose up -d db web receive
-#   docker compose run --rm web user set admin --roles viewer,exporter,pid,importer,admin
+#   docker compose logs web | grep 'setup token'   then open /setup (first-run wizard)
 # Optional: "qr" (query/retrieve from the PACS, needs [pacs]) and "his" (HIS worker).
 x-dosetrail: &dosetrail
   build: .
