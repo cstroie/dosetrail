@@ -140,6 +140,18 @@ class Store:
         if not obj.study.get("study_uid"):
             self._record(obj, None, "failed", "no Study Instance UID", seen)
             return self._count(Result("failed", message="no Study Instance UID"))
+        if obj.kind == "staff":  # names only: fill the blanks of a study we already have
+            study = self.session.scalar(select(Study).filter_by(study_uid=obj.study["study_uid"]))
+            if study is None:
+                self._record(obj, None, "ignored", "staff header for an unknown study", seen)
+                return self._count(Result("ignored", message="study not known"))
+            for f in ("operator_name", "performing_physician"):
+                if not getattr(study, f) and obj.study.get(f):
+                    setattr(study, f, obj.study[f])
+            self.session.flush()
+            self._record(obj, study.id, "imported", "staff names", seen)
+            self.stats["staff_headers"] += 1
+            return self._count(Result("imported", study.id))
 
         device = self.device(obj.device)
         patient = self.patient(obj.patient)
@@ -332,4 +344,8 @@ def update_study_totals(session: Session, study: Study) -> None:
     study.n_localizer = sum(1 for e in events if e.is_localizer)
     cts = [e.ctdivol for e in events if e.ctdivol is not None and not e.is_localizer]
     study.ctdivol_max = max(cts) if cts else None
+    mbq = [(e.extra_json or {}).get("activity_mbq") for e in events
+           if e.event_type == "radiopharmaceutical"]
+    mbq = [v for v in mbq if v]
+    study.admin_activity_mbq = sum(mbq) if mbq else None
     session.flush()

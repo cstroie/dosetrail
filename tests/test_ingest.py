@@ -169,3 +169,42 @@ def test_measurement_without_a_number():
     root.ValueType, root.ContentSequence = "CONTAINER", [item]
     root.ConceptNameCodeSequence = [cn]
     assert tree(root).num("113738", "Gy") is None
+
+
+# ------------------------------------------------------------------- staff, NM / PET
+
+
+def test_operator_from_the_dose_report_participants():
+    p = parse(f.ct_rdsr(staff=[("TECH^ANA", "113851"), ("DOC^ION", "113850")]))
+    assert p.study["operator_name"] == "TECH^ANA"
+    assert p.study["performing_physician"] == "DOC^ION"
+    assert parse(f.ct_rdsr()).study["operator_name"] is None
+
+
+def test_ct_image_header_fills_the_staff_of_a_known_study(session):
+    store = Store(session, SECRET)
+    assert store.store(parse(f.ct_image(study_uid="9.9.1", sop_uid="9.9.1.1"))).status \
+        == "ignored"  # a study we do not have
+    store.store(parse(f.ct_rdsr()))
+    r = store.store(parse(f.ct_image()))
+    assert r.status == "imported"
+    s = session.scalar(select(Study).filter_by(study_uid="1.2.3.100"))
+    assert (s.operator_name, s.performing_physician) == ("RAD^ANA", "DOC^ION")
+    assert s.n_events == 2  # no events from an image header
+    # names already there are kept
+    store.store(parse(f.ct_image(sop_uid="1.2.3.100.8", operator="OTHER^ONE")))
+    assert s.operator_name == "RAD^ANA"
+    assert parse(f.ct_image(operator=None, physician=None)).kind == "ignored"
+
+
+def test_pet_header_administered_activity(session):
+    p = parse(f.pet_image())
+    assert p.kind == "nm_header" and p.study["modality"] == "PT"
+    (ev,) = p.events
+    assert ev["protocol"] == "Fluorodeoxyglucose" and ev["comment"] == "^18^Fluorine"
+    assert ev["extra_json"]["activity_mbq"] == pytest.approx(185.0)
+    store = Store(session, SECRET)
+    store.store(p)
+    store.store(parse(f.pet_image(sop_uid="1.2.3.500.2")))  # another image, same injection
+    s = session.scalar(select(Study).filter_by(study_uid="1.2.3.500"))
+    assert s.n_events == 1 and s.admin_activity_mbq == pytest.approx(185.0)

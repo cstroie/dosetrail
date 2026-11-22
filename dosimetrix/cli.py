@@ -890,8 +890,15 @@ def _cmd_qr(args: argparse.Namespace) -> int:
         done = set() if args.redo else qr.done_days(session)
     day = end
     while day >= start:  # newest first
-        if day.isoformat() in done and day < today - dt.timedelta(days=1):
+        if (day.isoformat() in done and day < today - dt.timedelta(days=1)
+                and not args.staff):
             report(f"{day}: already done")
+        elif args.staff:  # known CT studies: one image header each for the staff names
+            stats = qr.QRStats()
+            if not args.dry_run:
+                qr.staff_backfill(node, day, worker.spool, drain, maker, stats, args.pause,
+                                  progress=report)
+            report(f"{day}: {dict(stats.counts)}; imported {worker.stats}", force=True)
         else:
             stats = qr.QRStats()
             qr.run_day(node, day, worker.spool, drain, maker, stats, mods or configured,
@@ -1138,6 +1145,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="C-GET (default) or C-MOVE to our AE title")
     q.add_argument("--dry-run", action="store_true", help="query only, retrieve nothing")
     q.add_argument("--redo", action="store_true", help="also re-run days already done")
+    q.add_argument("--staff", action="store_true",
+                   help="only CT studies already imported without operator / physician: "
+                        "fetch one image header each")
     q.add_argument("--pause", type=float, default=0.2, help="seconds between studies")
     q.add_argument("--workers", type=int, default=1,
                    help="studies retrieved in parallel (mind the PACS load)")

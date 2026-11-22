@@ -45,7 +45,7 @@ class Settings:
     pacs_retrieve: str = "get"  # get | move
     pacs_move_destination: str | None = None  # AE the PACS moves to (default: dicom_aet)
     pacs_modalities: list[str] = field(
-        default_factory=lambda: ["CT", "DX", "CR", "RF", "XA", "MG", "SR"])
+        default_factory=lambda: ["CT", "DX", "CR", "RF", "XA", "MG", "NM", "PT", "SR"])
     pacs_max_results: int | None = None  # the PACS C-FIND cap, if any
     source: Path | None = None
     notify: dict = field(default_factory=dict)  # [notify] table, see dosimetrix/notify.py

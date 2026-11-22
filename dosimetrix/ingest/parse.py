@@ -5,13 +5,18 @@ Supported:
   content (document title 113701 + template) whatever the SOP class: some scanners send the
   dose report inside a Secondary Capture object;
 * DX / CR / MG / RF / XA image headers (one event per image, event UID = SOP Instance UID,
-  as OpenREM did, so re-sent images match imported history).
+  as OpenREM did, so re-sent images match imported history);
+* NM / PET image headers: one event per radiopharmaceutical administration (activity,
+  agent, radionuclide), the same for every image of the administration;
+* CT image headers carry no dose but name the staff: they only fill the operator and the
+  performing physician of a study already known (kind ``staff``).
 Everything else (text reports, examination reports, images of other modalities) is ignored.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 from dataclasses import dataclass, field
 
 from ..dicom.sr import Node, code_in, parse_dt, tree
@@ -27,6 +32,10 @@ HEADER_SOP = {
     "1.2.840.10008.5.1.4.1.1.12.1": "XA",
     "1.2.840.10008.5.1.4.1.1.12.2": "RF",
 }
+CT_IMAGE_SOP = {"1.2.840.10008.5.1.4.1.1.2", "1.2.840.10008.5.1.4.1.1.2.1",
+                "1.2.840.10008.5.1.4.1.1.2.2"}
+NM_SOP = {"1.2.840.10008.5.1.4.1.1.20": "NM", "1.2.840.10008.5.1.4.1.1.128": "PT",
+          "1.2.840.10008.5.1.4.1.1.128.1": "PT", "1.2.840.10008.5.1.4.1.1.130": "PT"}
 FOR_PROCESSING = {"1.2.840.10008.5.1.4.1.1.1.1.1", "1.2.840.10008.5.1.4.1.1.1.2.1"}
 
 CT_TYPES = [
@@ -44,7 +53,7 @@ PROJ_ACQ = ({"113611", "113612", "113613"},
 
 @dataclass
 class ParsedObject:
-    kind: str  # ct_rdsr | proj_rdsr | header | ignored
+    kind: str  # ct_rdsr | proj_rdsr | header | nm_header | staff | ignored
     sop_instance_uid: str
     sop_class_uid: str
     reason: str = ""
@@ -160,6 +169,27 @@ def _observer(root: Node, device: dict) -> None:
             device["station_name"] = name[:64]
 
 
+# TID 1020 person participant roles (DCM 113850 / 113851)
+AUTHORIZING, ADMINISTERING = "113850", "113851"
+
+
+def _staff(root: Node, study: dict) -> None:
+    """Who gave the dose, when the header names nobody: the dose report's person participant
+    in the role "Irradiation Administering" (else its person observer) is the operator; the
+    one "Irradiation Authorizing" is the performing physician."""
+    for p in (n for n in root.iter() if n.code == "113870" and n.value):
+        role = p.coded("113875")
+        name = str(p.value).strip()[:255]
+        if role and role[0] == ADMINISTERING and not study.get("operator_name"):
+            study["operator_name"] = name
+        elif role and role[0] == AUTHORIZING and not study.get("performing_physician"):
+            study["performing_physician"] = name
+    if not study.get("operator_name"):
+        observer = root.text("121008")
+        if observer:
+            study["operator_name"] = observer[:255]
+
+
 def _patient_characteristics(root: Node, study: dict) -> None:
     """RDSR patient characteristics: weight (LOINC 29463-7) and height (8302-2)."""
     pc = root.find("121118")
@@ -189,7 +219,52 @@ def parse(ds) -> ParsedObject:
         return parse_ct(ds, root) if is_ct else parse_projection(ds, root)
     if sop_class in HEADER_SOP:
         return parse_header(ds)
+    if sop_class in NM_SOP:
+        return parse_nm(ds)
+    if sop_class in CT_IMAGE_SOP:
+        study, _patient, _device = _header(ds)
+        staff = {k: study[k] for k in ("study_uid", "operator_name", "performing_physician")}
+        if staff["operator_name"] or staff["performing_physician"]:
+            return ParsedObject("staff", sop_uid, sop_class, study=staff)
     return ParsedObject("ignored", sop_uid, sop_class, reason="no dose information")
+
+
+# ------------------------------------------------------------------- NM / PET headers
+
+
+def parse_nm(ds) -> ParsedObject:
+    """Radiopharmaceutical Information Sequence (0054,0016): one event per administration.
+    The event UID is derived from the administration (start, agent, activity), so every
+    image and series of it lands on the same event."""
+    study, patient, device = _header(ds)
+    study["modality"] = study["modality"] or NM_SOP[str(ds.SOPClassUID)]
+    events = []
+    for rp in ds.get("RadiopharmaceuticalInformationSequence") or []:
+        bq = _f(rp.get("RadionuclideTotalDose"))
+        start = parse_dt(_s(rp.get("RadiopharmaceuticalStartDateTime"))) or _datetime(
+            ds.get("StudyDate") or ds.get("SeriesDate"), rp.get("RadiopharmaceuticalStartTime"))
+        nuclide = None
+        if rp.get("RadionuclideCodeSequence"):
+            nuclide = _s(rp.RadionuclideCodeSequence[0].get("CodeMeaning"), 64)
+        agent = _s(rp.get("Radiopharmaceutical")) or (
+            _s(rp.RadiopharmaceuticalCodeSequence[0].get("CodeMeaning"))
+            if rp.get("RadiopharmaceuticalCodeSequence") else None)
+        if not bq and not agent:
+            continue
+        key = f"{study['study_uid']}|{start}|{agent}|{bq}"
+        events.append({
+            "event_uid": "rp-" + hashlib.sha1(key.encode()).hexdigest()[:40],
+            "event_datetime": start, "event_type": "radiopharmaceutical",
+            "protocol": agent, "comment": nuclide,
+            "extra_json": {"source": "header", "activity_mbq": bq / 1e6 if bq else None,
+                           "half_life_s": _f(rp.get("RadionuclideHalfLife")),
+                           "route": _s(rp.get("RadiopharmaceuticalRoute"), 64)},
+        })
+    if not events:
+        return ParsedObject("ignored", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
+                            reason="NM/PET image without radiopharmaceutical information")
+    return ParsedObject("nm_header", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
+                        study=study, patient=patient, device=device, events=events)
 
 
 # ------------------------------------------------------------------------------- CT RDSR
@@ -206,6 +281,7 @@ def _ct_type(node: Node) -> str | None:
 def parse_ct(ds, root: Node) -> ParsedObject:
     study, patient, device = _header(ds)
     _observer(root, device)
+    _staff(root, study)
     _patient_characteristics(root, study)
     study["modality"] = "CT"
     events = []
@@ -275,6 +351,7 @@ def _filters(ev: Node) -> tuple[float | None, float | None]:
 def parse_projection(ds, root: Node) -> ParsedObject:
     study, patient, device = _header(ds)
     _observer(root, device)
+    _staff(root, study)
     _patient_characteristics(root, study)
     events = []
     for ev in root.find_all("113706"):

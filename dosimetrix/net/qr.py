@@ -4,7 +4,10 @@ Selection per study (OpenREM's proven order, adapted):
 1. skip studies without X-ray modalities (US, MR…) and studies already in the database;
 2. retrieve the SR series first and import them;
 3. for projection radiography (DX/CR/MG/RF/XA) retrieve the image series only if no dose
-   report covered the study – their headers carry the dose; CT images are never fetched.
+   report covered the study – their headers carry the dose;
+4. NM / PET: one image per series (its header holds the administered activity);
+5. CT: one image of the smallest series, only for its header – the operator and the
+   performing physician, which most CT dose reports leave out. Other CT images never.
 
 Queries go one day and one modality at a time: some PACS cap the number of studies a
 C-FIND returns. When a query hits the configured cap (max_results), the day is split into
@@ -58,7 +61,8 @@ log = logging.getLogger("dosimetrix.qr")
 
 XRAY = {"CT", "DX", "CR", "MG", "RF", "XA", "SR", "NM", "PT", "IO", "PX"}
 # SR finds studies that hold only a dose report
-DEFAULT_MODALITIES = ["CT", "DX", "CR", "RF", "XA", "MG", "SR"]
+DEFAULT_MODALITIES = ["CT", "DX", "CR", "RF", "XA", "MG", "NM", "PT", "SR"]
+NM_IMAGES = {"NM", "PT"}
 PROJECTION_IMAGES = {"DX", "CR", "MG", "RF", "XA"}
 SR_CLASSES = [
     "1.2.840.10008.5.1.4.1.1.88.11", "1.2.840.10008.5.1.4.1.1.88.22",
@@ -73,6 +77,10 @@ IMAGE_CLASSES = [
     "1.2.840.10008.5.1.4.1.1.1.3", "1.2.840.10008.5.1.4.1.1.1.3.1",
     "1.2.840.10008.5.1.4.1.1.12.1", "1.2.840.10008.5.1.4.1.1.12.2",
     "1.2.840.10008.5.1.4.1.1.13.1.3",  # breast tomosynthesis
+    "1.2.840.10008.5.1.4.1.1.2", "1.2.840.10008.5.1.4.1.1.2.1",  # CT (staff names only)
+    "1.2.840.10008.5.1.4.1.1.20",  # NM
+    "1.2.840.10008.5.1.4.1.1.128", "1.2.840.10008.5.1.4.1.1.128.1",
+    "1.2.840.10008.5.1.4.1.1.130",  # PET
 ]
 DONE_KEY = "qr.backfill.done_days"
 
@@ -220,6 +228,29 @@ def find_series(node: Node, study_uid: str) -> list[dict]:
     return out
 
 
+def first_instance(node: Node, study_uid: str, series_uid: str) -> str | None:
+    """The SOP Instance UID of the series' lowest-numbered image."""
+    q = Dataset()
+    q.QueryRetrieveLevel = "IMAGE"
+    q.StudyInstanceUID = study_uid
+    q.SeriesInstanceUID = series_uid
+    q.SOPInstanceUID = ""
+    q.InstanceNumber = ""
+    assoc = _assoc_find(node)
+    try:
+        rows = _find(assoc, q)
+    finally:
+        assoc.release()
+
+    def number(r) -> int:
+        try:
+            return int(r.get("InstanceNumber"))
+        except (TypeError, ValueError):
+            return 1 << 30
+    rows = [r for r in rows if r.get("SOPInstanceUID")]
+    return str(min(rows, key=number).SOPInstanceUID) if rows else None
+
+
 # ---------------------------------------------------------------------------- C-GET
 
 
@@ -239,7 +270,19 @@ def _get_ae(node: Node) -> tuple[AE, list]:
     return ae, roles
 
 
-def move_series(node: Node, study_uid: str, series_uids: list[str]) -> dict:
+def _level(q: Dataset, study_uid: str, uid: str, instances: dict[str, str] | None) -> None:
+    """Series level, or image level for a series given with one instance."""
+    q.StudyInstanceUID = study_uid
+    q.SeriesInstanceUID = uid
+    if instances and uid in instances:
+        q.QueryRetrieveLevel = "IMAGE"
+        q.SOPInstanceUID = instances[uid]
+    else:
+        q.QueryRetrieveLevel = "SERIES"
+
+
+def move_series(node: Node, study_uid: str, series_uids: list[str],
+                instances: dict[str, str] | None = None) -> dict:
     """C-MOVE the series to our AE; the receiver writes them to the spool."""
     ae = AE(ae_title=node.calling_aet)
     ae.acse_timeout = ae.dimse_timeout = ae.network_timeout = node.timeout
@@ -251,9 +294,7 @@ def move_series(node: Node, study_uid: str, series_uids: list[str]) -> dict:
     try:
         for uid in series_uids:
             q = Dataset()
-            q.QueryRetrieveLevel = "SERIES"
-            q.StudyInstanceUID = study_uid
-            q.SeriesInstanceUID = uid
+            _level(q, study_uid, uid, instances)
             last = None
             for status, _ident in assoc.send_c_move(q, node.move_destination
                                                     or node.calling_aet, MOVE):
@@ -272,10 +313,13 @@ def move_series(node: Node, study_uid: str, series_uids: list[str]) -> dict:
     return {"delivered": claimed, "claimed": claimed, "failed": failed}
 
 
-def retrieve(node: Node, study_uid: str, series_uids: list[str], spool: Spool) -> dict:
-    """C-GET or C-MOVE, with one retry after a timeout or a dropped association."""
-    fn = (lambda: move_series(node, study_uid, series_uids)) if node.retrieve == "move" \
-        else (lambda: get_series(node, study_uid, series_uids, spool))
+def retrieve(node: Node, study_uid: str, series_uids: list[str], spool: Spool,
+             instances: dict[str, str] | None = None) -> dict:
+    """C-GET or C-MOVE, with one retry after a timeout or a dropped association.
+    ``instances``: series UID -> the one SOP instance to fetch from it."""
+    fn = (lambda: move_series(node, study_uid, series_uids, instances)) \
+        if node.retrieve == "move" \
+        else (lambda: get_series(node, study_uid, series_uids, spool, instances))
     try:
         return fn()
     except (TimeoutError, ConnectionError, RuntimeError) as first:
@@ -287,7 +331,8 @@ def retrieve(node: Node, study_uid: str, series_uids: list[str], spool: Spool) -
             raise RuntimeError(f"retrieve failed twice ({first}; {second})") from second
 
 
-def get_series(node: Node, study_uid: str, series_uids: list[str], spool: Spool) -> dict:
+def get_series(node: Node, study_uid: str, series_uids: list[str], spool: Spool,
+               instances: dict[str, str] | None = None) -> dict:
     """C-GET the series into the spool; returns delivered/claimed counts."""
     delivered = 0
 
@@ -307,9 +352,7 @@ def get_series(node: Node, study_uid: str, series_uids: list[str], spool: Spool)
     try:
         for uid in series_uids:
             q = Dataset()
-            q.QueryRetrieveLevel = "SERIES"
-            q.StudyInstanceUID = study_uid
-            q.SeriesInstanceUID = uid
+            _level(q, study_uid, uid, instances)
             if not assoc.is_established:
                 raise ConnectionError("the PACS dropped the association (timeout)")
             last = None
@@ -338,6 +381,39 @@ def has_dose_report(session: Session, study_uid: str) -> bool:
     return bool(st and st.source_kind in ("ct_rdsr", "proj_rdsr") and st.n_events)
 
 
+def needs_staff(session: Session, study_uid: str) -> bool:
+    """A CT study we have whose operator and performing physician are both unknown."""
+    return session.scalar(select(Study.id).where(
+        Study.study_uid == study_uid, Study.modality == "CT",
+        Study.operator_name.is_(None), Study.performing_physician.is_(None))) is not None
+
+
+def one_per_series(node: Node, study_uid: str, series: list[dict], spool: Spool,
+                   stats: QRStats, key: str) -> int:
+    """Retrieve the first image of each series (its header is all we read)."""
+    instances = {}
+    for s in series:
+        sop = first_instance(node, study_uid, s["uid"])
+        if sop:
+            instances[s["uid"]] = sop
+    if not instances:
+        return 0
+    r = retrieve(node, study_uid, list(instances), spool, instances)
+    stats.add(key, r["delivered"])
+    return r["delivered"]
+
+
+def fetch_staff(node: Node, study_uid: str, series: list[dict], spool: Spool,
+                drain: Callable[[], int], stats: QRStats) -> None:
+    """One image of the smallest CT series: its header names the operator and physician."""
+    ct = [s for s in series if s["modality"] == "CT"]
+    if not ct:
+        return
+    ct.sort(key=lambda s: s["instances"] if s["instances"] else 1 << 30)
+    if one_per_series(node, study_uid, ct[:1], spool, stats, "ct_staff_headers"):
+        drain()
+
+
 def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], int],
                    session_factory, stats: QRStats, max_images: int = 50) -> None:
     series = find_series(node, hit.uid)
@@ -348,8 +424,14 @@ def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], 
         if r["claimed"] > r["delivered"]:
             stats.add("not_delivered", r["claimed"] - r["delivered"])
         drain()
+    nm = [s for s in series if s["modality"] in NM_IMAGES][:4]
+    if nm and one_per_series(node, hit.uid, nm, spool, stats, "nm_headers"):
+        drain()
     with session_factory() as session:
         covered = has_dose_report(session, hit.uid)
+        staff = needs_staff(session, hit.uid)
+    if staff:
+        fetch_staff(node, hit.uid, series, spool, drain, stats)
     if covered:
         stats.add("studies_by_dose_report")
         return
@@ -414,6 +496,32 @@ def run_day(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
         for i, _ in enumerate(pool.map(one, todo), 1):
             if i % 25 == 0:
                 progress(f"{day}: {i}/{len(todo)}")
+
+
+def staff_backfill(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
+                   session_factory, stats: QRStats, pause: float = 0.2,
+                   progress: Callable[[str], None] = print) -> None:
+    """CT studies of the day already in the database without operator or physician: fetch
+    one image header each (studies of local devices only)."""
+    from ..db.models import Device
+
+    lo = dt.datetime.combine(day, dt.time())
+    with session_factory() as session:
+        uids = list(session.scalars(
+            select(Study.study_uid).join(Device, Device.id == Study.device_id)
+            .where(Study.modality == "CT", Device.is_local.is_(True),
+                   Study.operator_name.is_(None), Study.performing_physician.is_(None),
+                   Study.study_datetime >= lo,
+                   Study.study_datetime < lo + dt.timedelta(days=1))))
+    progress(f"{day}: {len(uids)} CT studies without staff names")
+    for uid in uids:
+        try:
+            fetch_staff(node, uid, find_series(node, uid), spool, drain, stats)
+            stats.add("staff_studies")
+        except Exception as e:  # keep going
+            stats.add("study_errors")
+            log.warning("staff for %s failed: %s", uid, e)
+        time.sleep(pause)
 
 
 def done_days(session: Session) -> set[str]:

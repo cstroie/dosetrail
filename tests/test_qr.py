@@ -205,7 +205,7 @@ def test_partial_modality_run_does_not_finish_the_day(tmp_path, monkeypatch):
             "--to", "2025-11-06"]
     assert cli.main(base + ["--modalities", "CT"]) == 0
     assert cli.main(base) == 0  # still runs: the CT-only run did not finish the day
-    assert calls == [{"CT"}, {"CT", "DX", "CR", "RF", "XA", "MG", "SR"}]
+    assert calls == [{"CT"}, {"CT", "DX", "CR", "RF", "XA", "MG", "NM", "PT", "SR"}]
     with make_sessionmaker(make_engine(url))() as s:
         assert qr.done_days(s) == {"2025-11-06"}
 

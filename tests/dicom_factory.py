@@ -36,6 +36,8 @@ def item(vt, concept, value=None, unit=None, children=None, rel="CONTAINS"):
         it.UID = value
     elif vt == "DATETIME":
         it.DateTime = value
+    elif vt == "PNAME":
+        it.PersonName = value
     elif vt == "CONTAINER":
         it.ContinuityOfContent = "SEPARATE"
     if children:
@@ -65,7 +67,8 @@ def header(ds, *, study_uid, sop_uid, modality, patient_id="P1", birth="20180101
 
 
 def ct_rdsr(study_uid="1.2.3.100", sop_uid="1.2.3.100.1", events=None, sop_class=RDSR,
-            dlp_unit="mGy.cm", alert_raised=False, observer_uid="9.9.9"):
+            dlp_unit="mGy.cm", alert_raised=False, observer_uid="9.9.9", staff=()):
+    """``staff``: (name, role code) person participants, in the first acquisition."""
     ds = header(Dataset(), study_uid=study_uid, sop_uid=sop_uid,
                 modality="SR" if sop_class == RDSR else "CT")
     ds.SOPClassUID = sop_class
@@ -79,6 +82,9 @@ def ct_rdsr(study_uid="1.2.3.100", sop_uid="1.2.3.100.1", events=None, sop_class
         ("e2", "P5-08001", "Spiral Acquisition", "Head routine", 45.0, 820.0),
     ]
     acqs = []
+    people = [item("PNAME", ("113870", "Person Name"), name, children=[
+        item("CODE", ("113875", "Person Role in Procedure"), (role, role))])
+        for name, role in staff]
     for uid, tcode, tmean, proto, ctdi, dlp in events:
         dose_children = [
             item("NUM", ("113830", "Mean CTDIvol"), ctdi, "mGy"),
@@ -105,6 +111,7 @@ def ct_rdsr(study_uid="1.2.3.100", sop_uid="1.2.3.100.1", events=None, sop_class
                 ]),
             ]),
             item("CONTAINER", ("113829", "CT Dose"), children=dose_children),
+            *(people if not acqs else []),
         ]))
     ds.ContentSequence = Sequence([
         item("CODE", ("121058", "Procedure reported"),
@@ -181,4 +188,32 @@ def text_report(study_uid="1.2.3.400", sop_uid="1.2.3.400.1"):
     ds.ValueType = "CONTAINER"
     ds.ConceptNameCodeSequence = Sequence([code("18748-4", "Radiology Report", "LN")])
     ds.ContentSequence = Sequence([item("TEXT", ("121060", "History"), "no findings")])
+    return ds
+
+
+CT_IMAGE = "1.2.840.10008.5.1.4.1.1.2"
+PET = "1.2.840.10008.5.1.4.1.1.128"
+
+
+def ct_image(study_uid="1.2.3.100", sop_uid="1.2.3.100.7", operator="RAD^ANA",
+             physician="DOC^ION"):
+    ds = header(Dataset(), study_uid=study_uid, sop_uid=sop_uid, modality="CT")
+    ds.SOPClassUID = CT_IMAGE
+    if operator:
+        ds.OperatorsName = operator
+    if physician:
+        ds.PerformingPhysicianName = physician
+    return ds
+
+
+def pet_image(study_uid="1.2.3.500", sop_uid="1.2.3.500.1", mbq=185.0, agent="Fluorodeoxyglucose"):
+    ds = header(Dataset(), study_uid=study_uid, sop_uid=sop_uid, modality="PT")
+    ds.SOPClassUID = PET
+    rp = Dataset()
+    rp.Radiopharmaceutical = agent
+    rp.RadiopharmaceuticalStartDateTime = "20251106093000"
+    rp.RadionuclideTotalDose = str(mbq * 1e6)
+    rp.RadionuclideHalfLife = "6586.2"
+    rp.RadionuclideCodeSequence = Sequence([code("C-111A1", "^18^Fluorine", "SRT")])
+    ds.RadiopharmaceuticalInformationSequence = Sequence([rp])
     return ds
