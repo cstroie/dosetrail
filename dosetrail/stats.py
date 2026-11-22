@@ -21,7 +21,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, case, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from .db.models import (
@@ -32,6 +32,7 @@ from .db.models import (
     Event,
     GroupScheme,
     Patient,
+    SizeSource,
     Study,
 )
 from .patient_age import Band, band_for_age, band_for_weight
@@ -166,8 +167,12 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
             system: str | None = None, exams: list[str] | None = None,
             age_scheme: str = "ro-drl-age", weight_scheme: str = "ext-body-weight",
             bins: int = 0, min_n: int = 1, physical: dict[int, int] | None = None,
-            names: dict[int, str] | None = None, limit_rows: int = 3_000_000) -> dict:
-    """Aggregate ``metric`` over the studies matching ``conds`` (SQL conditions on Study)."""
+            names: dict[int, str] | None = None, limit_rows: int = 3_000_000,
+            estimated_weights: bool = True) -> dict:
+    """Aggregate ``metric`` over the studies matching ``conds`` (SQL conditions on Study).
+
+    ``estimated_weights=False``: weights estimated from the growth charts count as unknown
+    in the weight groups (``weight_band``, ``ref_group``)."""
     if metric not in METRICS:
         raise StatsError(f"unknown metric {metric!r}; one of {', '.join(METRICS)}")
     bad = [g for g in group_by if g not in DIMENSIONS]
@@ -179,7 +184,10 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
     need_exam = "exam" in group_by or "ref_group" in group_by or bool(exams)
 
     cols = [m.column.label("value"), Study.id.label("sid"), Study.study_datetime,
-            Study.device_id, Study.modality, Study.age_days, Study.weight_kg]
+            Study.device_id, Study.modality, Study.age_days,
+            (Study.weight_kg if estimated_weights else case(
+                (Study.weight_source == SizeSource.estimated_reference, None),
+                else_=Study.weight_kg)).label("weight_kg")]
     q = select(*cols).select_from(Study)
     if on_events:
         q = q.join(Event, Event.study_id == Study.id).where(Event.is_localizer.is_not(True))

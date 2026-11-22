@@ -86,21 +86,25 @@ def _status(median: float, ref: float | None, n: int, min_n: int) -> str | None:
 
 
 def build(session: Session, conds: list, start: dt.datetime, end: dt.datetime,
-          min_n: int = 10) -> dict:
+          min_n: int = 10, estimated: bool = True) -> dict:
+    """``estimated=False``: body exams with a weight estimated from the growth charts go
+    to "Weight unknown" instead of a weight group (measured / reported weights only)."""
     grid = Grid(session)
     edrl = _edrl(session)
     period = [Study.study_datetime >= start, Study.study_datetime < end]
     rows = []
     for mods, metric, quantity, unit in PARTS:
         base = [*conds, *period, Study.modality.in_(mods)]
-        every = compute(session, base, metric, ["exam", "ref_group"], system=NATIONAL)
+        every = compute(session, base, metric, ["exam", "ref_group"], system=NATIONAL,
+                        estimated_weights=estimated)
         kept = compute(session, [*base, Study.drl_exclusion.is_(None)], metric,
-                       ["exam", "ref_group"], system=NATIONAL)
+                       ["exam", "ref_group"], system=NATIONAL, estimated_weights=estimated)
         kept_by = {(g["key"]["exam"], g["key"]["ref_group"]): g for g in kept["groups"]}
         est = compute(session, [*base, Study.drl_exclusion.is_(None),
                                 Study.weight_source == SizeSource.estimated_reference],
                       metric, ["exam", "ref_group"], system=NATIONAL)
-        est_by = {(g["key"]["exam"], g["key"]["ref_group"]): g["n"] for g in est["groups"]}
+        est_by = {(g["key"]["exam"], g["key"]["ref_group"]): g["n"] for g in est["groups"]} \
+            if estimated else {}
         for g in every["groups"]:
             exam, group = g["key"]["exam"], g["key"]["ref_group"]
             if exam is None:
@@ -126,7 +130,7 @@ def build(session: Session, conds: list, start: dt.datetime, end: dt.datetime,
     n_body_unknown = sum(r["n_all"] for r in rows if r["group"] == "weight:?")
     n_body_est = sum(r["estimated"] for r in rows if r["parameter"] == "weight")
     return {"grid": LABEL, "start": start.date().isoformat(), "end": end.date().isoformat(),
-            "min_n": min_n, "rows": rows,
+            "min_n": min_n, "estimated_weights": estimated, "rows": rows,
             "notes": {"body_values": n_body, "body_weight_unknown": n_body_unknown,
                       "body_weight_estimated": n_body_est}}
 
@@ -145,9 +149,13 @@ def write_xlsx(report: dict, target: IO, info: dict[str, object]) -> None:
                      ("Limite", "intervale semi-deschise: la limita exactă, grupa superioară"),
                      ("Valori corp fără greutate", f"{n['body_weight_unknown']} din "
                                                    f"{n['body_values']}"),
-                     ("Valori corp cu greutate estimată", f"{n['body_weight_estimated']} din "
-                      f"{n['body_values']} (mediana pentru vârstă și sex: OMS până la 10 ani, "
-                      "CDC 2000 până la 20 ani; greutăți lipsă sau în afara P1–P99)"),
+                     ("Valori corp cu greutate estimată", (
+                         f"{n['body_weight_estimated']} din {n['body_values']} (mediana "
+                         "pentru vârstă și sex: OMS până la 10 ani, CDC 2000 până la 20 ani; "
+                         "greutăți lipsă sau în afara P1–P99)")
+                      if report.get("estimated_weights", True) else
+                      "neincluse: valorile fără greutate raportată sunt la «greutate "
+                      "necunoscută»"),
                      ("Notă", "CT: DLP și CTDIvol pe secvență; radiografie: DAP pe expunere; "
                               "radioscopie: DAP al studiului. Statisticile exclud studiile "
                               "cu greutate sub P5 / peste P95 OMS pentru vârstă și "

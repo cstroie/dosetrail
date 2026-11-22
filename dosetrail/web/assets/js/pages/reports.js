@@ -10,7 +10,7 @@ import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport
 const page = document.getElementById('page');
 const today = new Date();
 const lastQuarter = Math.floor(today.getMonth() / 3) || 4;
-const state = { year: lastQuarter === 4 && today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear(), quarter: lastQuarter };
+const state = { year: lastQuarter === 4 && today.getMonth() < 3 ? today.getFullYear() - 1 : today.getFullYear(), quarter: lastQuarter, estimated: true };
 
 function render() {
   const years = [];
@@ -40,10 +40,13 @@ function render() {
     h('div', { class: 'toolbar' },
       h('button', { class: 'btn primary', type: 'button', onclick: loadGrid }, 'Show the selected quarter'),
       h('button', { class: 'btn', type: 'button', onclick: () => {
-        const href = gridReportUrl({ year: state.year, quarter: state.quarter });
+        const href = gridReportUrl({ year: state.year, quarter: state.quarter, estimated: state.estimated });
         if (!href) { toast('Reports need the server'); return; }
         h('a', { href, download: '' }).click();
       } }, 'Download XLSX'),
+      h('label', { class: 'row', title: 'Missing or implausible weights replaced by the median weight for age and sex (WHO to 10 y, CDC 2000 to 20 y). Off: those body exams count as "Weight unknown".' },
+        h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; loadGrid(); } }),
+        'Include estimated weights (WHO / CDC median)'),
       h('span', { class: 'muted small' }, 'Head exams by age (0–<3 mo, 3 mo–<1 y, 1–<6 y, 6–<18 y, ≥18 y), body exams by weight (<5 … ≥110 kg). Median vs RP 185 EDRL where it exists.')),
     h('div', { id: 'grid' }),
     h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Studiul național de dozimetrie pediatrică (plan draft)'),
@@ -77,13 +80,13 @@ async function loadGrid() {
   const host = document.getElementById('grid');
   clear(host).append(h('p', { class: 'muted' }, 'Loading…'));
   let r;
-  try { r = await gridReport({ year: state.year, quarter: state.quarter }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
+  try { r = await gridReport({ year: state.year, quarter: state.quarter, estimated: state.estimated }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
   const tone = { below: 'ok', above: 'warn', well_above: 'alert', insufficient: '' };
   const label = { below: '≤ EDRL', above: '≤ 1.5×', well_above: '> 1.5×', insufficient: `n < ${r.min_n}` };
   const n = r.notes;
   clear(host).append(h('p', { class: 'muted small' }, `${r.start} – ${r.end} · body values: ${num(n.body_values)}, of which weight estimated (median for age and sex, WHO / CDC) ${num(n.body_weight_estimated || 0)}, no weight ${num(n.body_weight_unknown)}`
     + (n.body_values && n.body_weight_unknown / n.body_values > 0.5 ? ' — the weight grid needs weights (RIS or entered at the modality).' : '')
-    + '. Estimated weights fill the weight groups; they are never measured values.'));
+    + (r.estimated_weights ? '. Estimated weights fill the weight groups; they are never measured values.' : '. Estimated weights left out: only reported weights place body exams in a group.')));
   for (const [param, title] of [['age', 'Head examinations · by age'], ['weight', 'Body examinations · by weight']]) {
     const rows = r.rows.filter((x) => x.parameter === param);
     let last = null;

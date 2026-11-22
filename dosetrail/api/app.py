@@ -949,7 +949,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/api/reports/grid")
     def report_grid(request: Request, year: int, quarter: int, q: str = "origin:local",
-                    format: str = "json", min_n: int = 10,
+                    format: str = "json", min_n: int = 10, estimated: bool = True,
                     user: User = Depends(current_user), session: Session = Depends(db)):
         """The second grid: ICRP 135 / RP 185 groups (head by age, body by weight)."""
         from ..reports import grid
@@ -964,8 +964,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(400, "format is json|xlsx")
         now = clock()
         conds = data.conditions(data.parse(q), now, data.overrides(session))
-        report = grid.build(session, conds, start, end, max(min_n, 1))
-        _audit(session, request, user, "report", f"grid:{year}Q{quarter}:{format}", {"q": q})
+        report = grid.build(session, conds, start, end, max(min_n, 1), estimated)
+        _audit(session, request, user, "report", f"grid:{year}Q{quarter}:{format}",
+               {"q": q, "estimated": estimated})
         session.commit()
         if format == "json":
             return report

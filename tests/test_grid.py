@@ -107,3 +107,21 @@ def test_rp185_head_groups_stop_at_18(session):
     assert ref.for_series(codes, int(10 * 365.25), None)["dlp"] == 650.0
     assert ref.for_series(codes, int(25 * 365.25), None)["dlp"] is None
     assert Grid(session).group("ro-nom-ct", "CT-CR", int(25 * 365.25), None) == "age:18y+"
+
+
+def test_report_without_estimated_weights(session, studies):
+    from dosetrail.db.models import SizeSource
+
+    est = session.query(Study).filter_by(study_uid="g.3").one()
+    est.weight_kg, est.weight_source = 18.5, SizeSource.estimated_reference
+    session.flush()
+    span = (T - dt.timedelta(days=1), T + dt.timedelta(days=1))
+    on = grid_report.build(session, [], *span, min_n=1)
+    rows = {(x["exam"], x["group"], x["quantity"]): x for x in on["rows"]}
+    assert rows[("CT-TORACE", "weight:15-30kg", "dlp")]["n_all"] == 2
+    assert rows[("CT-TORACE", "weight:15-30kg", "dlp")]["estimated"] == 1
+    off = grid_report.build(session, [], *span, min_n=1, estimated=False)
+    rows = {(x["exam"], x["group"], x["quantity"]): x for x in off["rows"]}
+    assert rows[("CT-TORACE", "weight:15-30kg", "dlp")]["n_all"] == 1
+    assert rows[("CT-TORACE", "weight:?", "dlp")]["n_all"] == 1
+    assert off["notes"]["body_weight_estimated"] == 0 and not off["estimated_weights"]

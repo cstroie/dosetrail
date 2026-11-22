@@ -289,10 +289,10 @@ export function gridReport(params) {
   return isSample ? serverOnly('Reports') : remote('/api/reports/grid', params);
 }
 
-export function gridReportUrl({ year, quarter, q = 'origin:local' }) {
+export function gridReportUrl({ year, quarter, q = 'origin:local', estimated = true }) {
   if (isSample) return null;
   const u = new URL('/api/reports/grid', MODE);
-  for (const [k, v] of Object.entries({ year, quarter, q, format: 'xlsx' })) u.searchParams.set(k, String(v));
+  for (const [k, v] of Object.entries({ year, quarter, q, estimated, format: 'xlsx' })) u.searchParams.set(k, String(v));
   return u.href;
 }
 
