@@ -1,0 +1,81 @@
+"""RDSR export: stored study -> dose SR -> our parser reads back the same values."""
+
+import io
+
+import pydicom
+import pytest
+
+from dosetrail.db.models import SizeSource, Study
+from dosetrail.export import rdsr
+from dosetrail.ingest.parse import parse
+from dosetrail.ingest.store import Store
+from tests import dicom_factory as f
+
+SECRET = b"r" * 32
+
+
+def _store(session, ds):
+    r = Store(session, SECRET).store(parse(ds))
+    return session.get(Study, r.study_id)
+
+
+def _ordered(st):
+    import datetime as dt
+
+    return sorted(st.events, key=lambda e: (e.event_datetime or dt.datetime.min, e.id))
+
+
+def _roundtrip(ds):
+    buf = io.BytesIO()
+    rdsr.write(ds, buf)
+    buf.seek(0)
+    back = pydicom.dcmread(buf)
+    assert back.file_meta.TransferSyntaxUID == pydicom.uid.ExplicitVRLittleEndian
+    return back, parse(back)
+
+
+FIELDS_CT = ("event_type", "protocol", "ctdivol", "dlp", "ct_phantom_cm", "scan_length_mm",
+             "pitch", "kvp", "exposure_time_s")
+FIELDS_PROJ = ("event_type", "plane", "protocol", "dap", "rp_dose", "kvp", "filter_cu_mm",
+               "fluoro_time_s")
+
+
+def test_ct_roundtrip_anonymised(session):
+    st = _store(session, f.ct_rdsr(study_uid="5.1.1", sop_uid="5.1.1.1"))
+    ds = rdsr.build(st, SECRET)
+    back, p = _roundtrip(ds)
+    assert p.kind == "ct_rdsr" and len(p.events) == len(st.events)
+    for o, ev in zip(_ordered(st), p.events, strict=True):
+        for k in FIELDS_CT:
+            want = "localizer" if k == "event_type" and o.is_localizer else getattr(o, k)
+            got = ev[k]
+            assert got == pytest.approx(want) if isinstance(want, float) else got == want, k
+    # anonymised: no clear identifiers, stable derived UIDs
+    assert back.PatientID == st.patient.pseudo_id and back.PatientName == ""
+    assert back.AccessionNumber == "" and back.PatientIdentityRemoved == "YES"
+    assert back.StudyInstanceUID != st.study_uid
+    assert rdsr.build(st, SECRET).SOPInstanceUID == ds.SOPInstanceUID
+    assert p.device["manufacturer"] == st.device.manufacturer
+
+
+def test_projection_roundtrip_identified(session):
+    st = _store(session, f.proj_rdsr(study_uid="5.2.1", sop_uid="5.2.1.1"))
+    back, p = _roundtrip(rdsr.build(st, SECRET, identified=True))
+    assert p.kind == "proj_rdsr" and back.StudyInstanceUID == st.study_uid
+    assert back.PatientID == st.patient.patient_id
+    for o, ev in zip(_ordered(st), p.events, strict=True):
+        for k in FIELDS_PROJ:
+            want, got = getattr(o, k), ev[k]
+            assert got == pytest.approx(want) if isinstance(want, float) else got == want, k
+    assert p.study["modality"] == st.modality
+
+
+def test_header_study_and_estimated_weight(session, tmp_path):
+    st = _store(session, f.dx_image(study_uid="5.3.1", sop_uid="5.3.1.1"))
+    st.weight_kg, st.weight_source = 25.0, SizeSource.estimated_reference
+    session.flush()
+    paths = rdsr.write_studies(session, [st.id], tmp_path, SECRET)
+    back = pydicom.dcmread(paths[0])
+    p = parse(back)
+    assert p.kind == "proj_rdsr" and p.events[0]["dap"] == pytest.approx(st.events[0].dap)
+    assert "PatientWeight" not in back and p.study["weight_kg"] is None

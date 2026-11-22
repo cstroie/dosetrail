@@ -580,6 +580,40 @@ def _cmd_sizes(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_rdsr(args: argparse.Namespace) -> int:
+    """Write dose SRs (IHE REM) of stored studies as files. Never sends them anywhere."""
+    import datetime as dt
+    import getpass
+
+    from sqlalchemy import select
+
+    from .api.data import conditions, overrides, parse
+    from .db.models import AuditLog, Event, Study
+    from .db.session import make_engine, make_sessionmaker
+    from .export import rdsr
+
+    with make_sessionmaker(make_engine(args.url or load_settings().database_url))() as session:
+        ids = list(args.study or [])
+        if args.query is not None:
+            conds = conditions(parse(args.query), dt.datetime.now(), overrides(session))
+            has_events = select(Event.id).where(Event.study_id == Study.id).exists()
+            ids += list(session.scalars(select(Study.id).where(*conds, has_events)
+                                        .order_by(Study.study_datetime).limit(args.limit)))
+        if not ids:
+            print("no studies: give --study ID or --query", file=sys.stderr)
+            return 2
+        paths = rdsr.write_studies(session, ids, args.out, _secret(),
+                                   identified=args.identified)
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="export",
+                             target="rdsr", detail={"q": args.query, "studies": len(ids),
+                                                    "files": len(paths),
+                                                    "identified": args.identified}))
+        session.commit()
+    print(f"{len(paths)} dose SR files -> {args.out}"
+          + ("" if args.identified else " (anonymised)"))
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -895,6 +929,17 @@ def build_parser() -> argparse.ArgumentParser:
     gr.add_argument("action", choices=["install", "check", "status"])
     gr.add_argument("--url")
     gr.set_defaults(func=_cmd_growth)
+
+    rd = sub.add_parser("rdsr", help="write dose SRs (IHE REM RDSR) of stored studies to "
+                                     "files (anonymised unless --identified); no sending")
+    rd.add_argument("--study", type=int, action="append", help="study id (repeatable)")
+    rd.add_argument("--query", help="query, e.g. 'modality:CT date:30d'")
+    rd.add_argument("--limit", type=int, default=1000)
+    rd.add_argument("--out", required=True, help="output folder")
+    rd.add_argument("--identified", action="store_true",
+                    help="keep patient ID, name, birth date, accession and UIDs")
+    rd.add_argument("--url")
+    rd.set_defaults(func=_cmd_rdsr)
 
     sz = sub.add_parser("sizes", help="import patient weight / height from a CSV file "
                                       "(study UID, accession, or patient ID + date)")

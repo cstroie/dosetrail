@@ -773,7 +773,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         """Run ``write(fh)`` into a temporary file, then stream it as a download."""
         import tempfile
 
-        media = {"csv": "text/csv", "json": "application/json",
+        media = {"csv": "text/csv", "json": "application/json", "dcm": "application/dicom",
                  "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
         # closed by the streaming generator once the file has been sent
         tmp = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)  # noqa: SIM115
@@ -789,6 +789,26 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return StreamingResponse(chunks(), media_type=media[fmt], headers={
             "Content-Disposition": f'attachment; filename="{fname}"',
             "Cache-Control": "no-store"})
+
+    @app.get("/api/studies/{study_id}/rdsr")
+    def study_rdsr(study_id: int, request: Request, pid: bool = False,
+                   user: User = Depends(current_user), session: Session = Depends(db)):
+        """The study's dose SR (IHE REM) as a download; anonymised unless pid=1 (pid role).
+        A file download only: DoseTrail does not send dose SRs anywhere."""
+        from ..export import rdsr
+
+        _exporter(user)
+        if pid and "pid" not in user.role_set():
+            raise HTTPException(403, "the pid role is required to export patient identifiers")
+        st = session.get(Study, study_id)
+        if st is None:
+            raise HTTPException(404, "study not found")
+        if not st.events:
+            raise HTTPException(400, "the study has no dose events")
+        ds = rdsr.build(st, app.state.secret, identified=pid)
+        _audit(session, request, user, "export", f"rdsr:study:{study_id}", {"pid": pid})
+        session.commit()
+        return _file(lambda fh: rdsr.write(ds, fh), "dcm", f"rdsr-{study_id}", clock())
 
     @app.get("/api/drl/dataset")
     def drl_dataset(request: Request, q: str = "origin:local", format: str = "xlsx",

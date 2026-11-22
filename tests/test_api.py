@@ -479,3 +479,18 @@ def test_sizes_import_csv(client):
         "weight_kg"] == 86
     assert client.post("/api/import/sizes", content=b"x\n1\n",
                        headers={"content-type": "text/csv"}).status_code == 400
+
+
+def test_study_rdsr_download(client):
+    import io
+
+    import pydicom
+
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/studies/1/rdsr").status_code == 403
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/studies/1/rdsr")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/dicom"
+    ds = pydicom.dcmread(io.BytesIO(r.content))
+    assert ds.PatientID == "P-ABCDE-12345" and ds.PatientName == ""
+    assert client.get("/api/studies/1/rdsr?pid=1").status_code == 403

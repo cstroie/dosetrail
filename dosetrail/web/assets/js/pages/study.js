@@ -10,7 +10,7 @@ import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mmss, clock, DAP_UNITS } from '../core/format.js';
-import { study, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
+import { rdsrUrl, study, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
 import { renderStudy } from './study-generic.js';
 import { prefs } from '../core/prefs.js';
 
@@ -150,7 +150,9 @@ export function revealButton(s, identity) {
       btn.remove();
     } catch (err) { toast(err.message.includes('pid') ? 'Your account does not have the identified-data (pid) role.' : err.message); }
   });
-  return btn;
+  const sr = rdsrUrl(s.id);
+  return h('span', { class: 'row no-print', style: { display: 'inline-flex' } }, btn,
+    sr ? h('a', { class: 'btn xs ghost', href: sr, download: '', title: 'Dose SR (IHE REM RDSR) of this study, anonymised (exporter role)' }, 'Dose SR') : null);
 }
 
 async function render() {
