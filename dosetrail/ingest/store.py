@@ -186,10 +186,19 @@ class Store:
         study = self.session.scalar(select(Study).filter_by(study_uid=s["study_uid"]))
         new = study is None
         if new:
-            study = Study(study_uid=s["study_uid"], modality=s.get("modality") or "OT",
-                          institution_id=self.institution_id, source_kind=obj.kind,
-                          n_events=0)
-            self.session.add(study)
+            try:  # another process (receiver / qr) may create the same study concurrently
+                with self.session.begin_nested():
+                    study = Study(study_uid=s["study_uid"], modality=s.get("modality") or "OT",
+                                  institution_id=self.institution_id, source_kind=obj.kind,
+                                  n_events=0)
+                    self.session.add(study)
+            except IntegrityError:
+                # a locking read sees the row the other transaction committed
+                study = self.session.scalar(select(Study).filter_by(study_uid=s["study_uid"])
+                                            .with_for_update())
+                if study is None:
+                    raise
+                new = False
         for f in STUDY_FIELDS:
             if getattr(study, f) is None and s.get(f) is not None:
                 setattr(study, f, s[f])

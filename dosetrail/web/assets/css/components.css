@@ -93,7 +93,7 @@ dt-chart { display: block; min-width: 0; }
 .queue .m { font-size: var(--fs-xs); color: var(--muted); }
 .queue .v { font-family: var(--font-mono); text-align: right; }
 .queue .acts { grid-column: 2 / 4; display: flex; gap: 6px; }
-.feed { display: grid; grid-template-columns: minmax(120px, 1fr) repeat(7, 22px) 104px; gap: 4px; padding: 10px 12px; align-items: center; font-size: var(--fs-sm); }
+.feed { display: grid; grid-template-columns: minmax(120px, 1fr) repeat(7, 30px) 104px; gap: 4px; padding: 10px 12px; align-items: center; font-size: var(--fs-sm); }
 .feed .hd { font-size: 10px; color: var(--muted); text-align: center; }
 .feed .c { height: 16px; border-radius: 2px; background: var(--seq); }
 .feed .c.zero { background: none; border: 1px dashed var(--warn); }

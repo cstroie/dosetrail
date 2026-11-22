@@ -157,3 +157,59 @@ def test_forget_studies_for_refetch(session):
     assert session.scalar(select(func.count()).select_from(Study)) == 1
     assert session.scalar(select(func.count()).select_from(Event)) == 0
     assert session.get(AppSetting, DONE_KEY).value == ["2026-09-02"]
+
+
+def test_concurrent_duplicate_is_retried_not_failed(rx, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    from dosetrail.ingest import store as store_mod
+
+    _, worker, spool, _, port = rx
+    _send(port, [f.dx_image(study_uid="1.2.8.1", sop_uid="1.2.8.1.1")])
+
+    def dup(self, obj):
+        raise IntegrityError("INSERT", {}, Exception("Duplicate entry for key 'study_uid'"))
+
+    monkeypatch.setattr(store_mod.Store, "store", dup)
+    worker.drain()
+    assert len(spool.pending()) == 1 and not list(spool.failed.iterdir())
+    monkeypatch.undo()
+    worker.drain()
+    assert worker.stats["imported"] == 1 and not spool.pending()
+
+
+def test_study_created_by_another_session_is_reused(tmp_path):
+    from sqlalchemy import select
+
+    from dosetrail.db.migrate import upgrade
+    from dosetrail.db.models import Study
+    from dosetrail.db.session import make_engine, make_sessionmaker
+    from dosetrail.ingest.parse import parse
+    from dosetrail.ingest.store import Store
+
+    url = f"sqlite:///{tmp_path / 'race.sqlite3'}"
+    upgrade(url)
+    maker = make_sessionmaker(make_engine(url))
+    with maker() as other:  # another worker committed the study a moment ago
+        other.add(Study(study_uid="1.2.9.1", modality="DX", source_kind="header", n_events=0))
+        other.commit()
+    obj = parse(f.dx_image(study_uid="1.2.9.1", sop_uid="1.2.9.1.1"))
+    with maker() as s1:
+        store = Store(s1, b"k" * 32)
+        real = s1.scalar
+        missed = {"done": False}
+
+        def lookup(stmt):
+            # ... but this worker's first lookup ran before that commit and missed it
+            if not missed["done"] and "FROM study" in str(stmt) and "FOR UPDATE" not in \
+                    str(stmt.compile()).upper():
+                missed["done"] = True
+                return None
+            return real(stmt)
+
+        s1.scalar = lookup
+        r = store.store(obj)
+        s1.scalar = real
+        s1.commit()
+        assert missed["done"] and r.status == "imported"
+        assert len(list(s1.scalars(select(Study).filter_by(study_uid="1.2.9.1")))) == 1

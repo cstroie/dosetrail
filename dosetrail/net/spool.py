@@ -17,7 +17,7 @@ import threading
 import time
 from pathlib import Path
 
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..ingest.files import read
@@ -163,6 +163,8 @@ class SpoolWorker(threading.Thread):
                 r = store.store(parse(ds))
             return r.status, r.message
         except OperationalError as e:  # database unavailable/locked: not the object's fault
+            return "retry", f"{type(e).__name__}: {e}"
+        except IntegrityError as e:  # a concurrent import created the same row: try again
             return "retry", f"{type(e).__name__}: {e}"
         except Exception as e:
             return "failed", f"{type(e).__name__}: {e}"

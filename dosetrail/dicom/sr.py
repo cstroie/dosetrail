@@ -106,8 +106,8 @@ def _node(it) -> Node:
              value_type=vt)
     if vt == "NUM" and it.get("MeasuredValueSequence"):
         mv = it.MeasuredValueSequence[0]
-        try:
-            n.number = float(mv.NumericValue)
+        try:  # a measurement may carry no number (with a Numeric Value Qualifier instead)
+            n.number = float(mv.NumericValue) if "NumericValue" in mv else None
         except (TypeError, ValueError):
             n.number = None
         units = mv.get("MeasurementUnitsCodeSequence")

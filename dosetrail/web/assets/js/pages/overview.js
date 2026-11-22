@@ -73,7 +73,11 @@ function alertQueue(alerts, now, total) {
 }
 
 function feedHealth(feeds, now) {
-  const days = feeds[0]?.days.map((d) => new Date(`${d.date}T12:00`).toLocaleDateString(document.documentElement.lang, { weekday: 'short' }).slice(0, 2)) || [];
+  const today = (now || '').slice(0, 10);
+  const days = feeds[0]?.days.map((d) => {
+    const wd = new Date(`${d.date}T12:00`).toLocaleDateString(document.documentElement.lang, { weekday: 'short' }).slice(0, 2);
+    return d.date === today ? `${wd} ${d.date.slice(8)}*` : `${wd} ${d.date.slice(8)}`;
+  }) || [];
   const stale = feeds.filter((f) => f.status !== 'ok').length;
   const grid = h('div', { class: 'feed', role: 'table', 'aria-label': 'Studies received per device, last 7 days' },
     h('span', { class: 'hd', role: 'columnheader', style: { 'text-align': 'left' } }, t('overview.device')),
@@ -82,14 +86,14 @@ function feedHealth(feeds, now) {
   for (const f of feeds) {
     const max = Math.max(1, ...f.days.map((d) => d.n));
     append(grid, [h('span', { role: 'rowheader' }, f.name),
-      f.days.map((d) => h('i', { class: `c ${d.n ? '' : 'zero'}`, role: 'cell', title: `${d.date}: ${d.n} studies`,
-        style: { opacity: d.n ? (0.25 + (d.n / max) * 0.75).toFixed(2) : '1' } })),
+      f.days.map((d) => h('i', { class: `c ${d.n ? '' : 'zero'}`, role: 'cell', title: `${d.date}: ${d.n} studies${d.date === today ? ' so far today' : ''}`,
+        style: { opacity: d.n ? (0.45 + (d.n / max) * 0.55).toFixed(2) : '1' } })),
       h('span', { class: 'last', role: 'cell', style: { color: `var(--${f.status === 'ok' ? 'text' : f.status})` } },
         f.status === 'ok' ? dateTime(f.last_study).slice(11) : `${ago(f.last_study, now)} · ${t('overview.stale')}`)]);
   }
   return h('section', { class: 'panel', 'aria-labelledby': 'h-f' },
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-f' }, t('overview.feeds')), stale ? h('span', { class: 'tag warn' }, `${stale} ${t('overview.stale')}`) : null),
-    grid, h('p', { class: 'muted', style: { 'font-size': '11px', padding: '0 12px 10px' } }, t('overview.feed.hint')));
+    grid, h('p', { class: 'muted', style: { 'font-size': '11px', padding: '0 12px 10px' } }, `${t('overview.feed.hint')} * today, still filling.`));
 }
 
 function lookupPanel() {

@@ -148,3 +148,24 @@ def test_glued_vendor_dose_units():
     assert normalise_unit("Gym2") == "gy.m2" and normalise_unit("mGycm") == "mgy.cm"
     assert convert(0.00000129, "Gym2", "Gy.cm2") == pytest.approx(0.0129)
     assert normalise_unit("mGy") == "mgy" and normalise_unit("Gy") == "gy"
+
+
+def test_measurement_without_a_number():
+    from pydicom.dataset import Dataset
+
+    from dosetrail.dicom.sr import tree
+
+    item = Dataset()
+    item.ValueType, item.RelationshipType = "NUM", "CONTAINS"
+    cn = Dataset()
+    cn.CodeValue, cn.CodingSchemeDesignator, cn.CodeMeaning = "113738", "DCM", "Dose (RP)"
+    item.ConceptNameCodeSequence = [cn]
+    mv = Dataset()  # no NumericValue: a Numeric Value Qualifier explains why
+    u = Dataset()
+    u.CodeValue, u.CodingSchemeDesignator, u.CodeMeaning = "Gy", "UCUM", "Gy"
+    mv.MeasurementUnitsCodeSequence = [u]
+    item.MeasuredValueSequence = [mv]
+    root = Dataset()
+    root.ValueType, root.ContentSequence = "CONTAINER", [item]
+    root.ConceptNameCodeSequence = [cn]
+    assert tree(root).num("113738", "Gy") is None
