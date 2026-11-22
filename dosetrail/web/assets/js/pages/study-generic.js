@@ -5,6 +5,7 @@
 
 import '../components/dt-data-grid.js';
 import { h, toast } from '../core/dom.js';
+import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, clock } from '../core/format.js';
 
@@ -124,6 +125,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
           (s.exams || []).length ? s.exams.map((x) => h('div', { class: 'readout' }, h('span', { class: 'l' }, SYSTEMS[x.system] || x.system),
             h('span', { class: 'sub' }, h('span', { class: 'mono' }, x.code), ` · ${x.meaning}`)))
             : h('p', { class: 'muted small', style: { padding: '0 12px' } }, 'No exam code: map this study in Admin › Protocol mappings.')),
+        hisPanel(s),
         alerts.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Alerts')), ...alerts) : null,
         findings.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Data quality')), ...findings) : null),
       h('div', { class: 'main' }, grid,
@@ -142,12 +144,3 @@ function exportRows(s, ct) {
   h('a', { href: URL.createObjectURL(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' })), download: `${s.accession || s.id}-${ct ? 'series' : 'exposures'}.csv` }).click();
 }
 
-// An estimated weight (median for age and sex) is always marked; a replaced report is shown.
-function weightNote(p) {
-  if (!p.weight_estimated) return null;
-  const why = p.weight_reported != null
-    ? `reported ${p.weight_reported} kg is implausible for age and sex (outside P1–P99); `
-    : 'no weight reported; ';
-  return h('span', { class: 'tag', style: { 'margin-left': '6px' }, title: `${why}estimate = median weight for age and sex (WHO to 10 y, CDC 2000 to 20 y)` },
-    p.weight_reported != null ? `est. (reported ${p.weight_reported})` : 'est.');
-}

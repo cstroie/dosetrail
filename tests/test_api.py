@@ -386,6 +386,10 @@ def test_his_server_endpoints(client):
                             json={"his_policy": "patient"}).status_code == 200
         assert client.patch(f"/api/devices/{dev['id']}",
                             json={"his_policy": "maybe"}).status_code == 400
+        sid_study = client.get("/api/studies").json()["rows"][0]["id"]
+        r = client.post(f"/api/studies/{sid_study}/his")
+        assert r.status_code == 200 and r.json()["status"] == "pending"
+        assert client.get(f"/api/studies/{sid_study}").json()["his"]["status"] == "pending"
         assert client.delete(f"/api/his/servers/{sid}").json() == {"deleted": "HIS"}
     finally:
         stub.close()

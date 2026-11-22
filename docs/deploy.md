@@ -106,5 +106,16 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
   date is treated as another person's (for example, a baby registered under a parent's ID)
   and not used.
 - Try it without writing: `dosetrail his run --dry-run --limit 20`.
+- History: `dosetrail his backfill --since 2026-01-01 [--until …] [--device ID]` shows how
+  many studies would be queued and roughly how long it takes; `--apply` queues them. The
+  worker runs history only within the server's backfill hours (e.g. 22-06), children first,
+  after the day's new studies.
+- The study page shows the matched request (ward, requester, indication, guideline
+  decision) and where the weight came from; admins can queue a study for another lookup.
+  Data quality flags HIS lookups that found no patient (`his_unmatched`) and disagreements
+  between CNP, HIS and DICOM (`demographic_conflict`). The survey export carries the
+  request's indication as free text (`indication_text`): review it before sending.
+- Use a HIS account of its own for DoseTrail, not one another service already uses (for
+  example the modality worklist's): the HIS may keep a single session per account.
 - National IDs alone (offline, no HIS): `dosetrail cnp backfill` shows what would change;
   add `--apply` to write it.

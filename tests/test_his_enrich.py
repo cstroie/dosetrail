@@ -170,3 +170,44 @@ def test_a_broken_his_session_pauses_instead_of_marking_not_found(session, stub,
     assert e.value.kind == "retry"
     assert session.get(HisLookup, st.id).status == "pending"
     assert session.get(HisLookup, st.id).attempts == 0
+
+
+def test_outputs_study_summary_quality_and_survey(session, stub, his):
+    from dosetrail import quality
+    from dosetrail.api import data
+    from dosetrail.export import survey
+    from dosetrail.seeds.loader import load_all
+
+    load_all(session)
+    stub.patients[GIRL] = his_stub.patient("77", GIRL)
+    stub.requests["77"] = [his_stub.request("R9", "2025-11-06T09:30:00", national_id=GIRL,
+                                            weight="20")]
+    st = _ingest(session, "1.9.95")
+    lost = _ingest(session, "1.9.96", pid="P-NOBODY")
+    for hours in (0, 1, 3, 30):  # three retries, then "not found" is final
+        enrich.run_batch(session, SECRET, now=NOW + dt.timedelta(hours=hours),
+                         sleep=lambda s: None)
+    assert session.get(HisLookup, lost.id).status == "no_patient"
+    summary = data.his_summary(session, st.id)
+    assert summary["status"] == "matched" and summary["request"]["indication"] == "cough, fever"
+    assert "national_id" not in str(summary) and GIRL not in str(summary)
+    q = quality.run(session, [Study.id.in_([st.id, lost.id])])
+    assert q["rules"]["his_unmatched"]["count"] == 1
+    assert q["devices"][0]["share"]["request"] == 0.5
+    [row] = [r for r in survey.rows(session, [Study.id == st.id], SECRET)]
+    assert row["indication_text"] == "cough, fever" and row["weight_source"] == "chart_same_day"
+
+
+def test_backfill_queues_history_children_first(session, stub, his):
+    old_adult = _ingest(session, "1.9.97", pid="P-AD", birth="19700101")
+    old_child = _ingest(session, "1.9.98", pid="P-CH", birth="20200101")
+    session.query(HisLookup).delete()
+    ids, counts = enrich.backfill_candidates(session, None, None)
+    assert set(ids) >= {old_adult.id, old_child.id} and counts["children"] >= 1
+    enrich.enqueue(session, ids)
+    later = NOW + dt.timedelta(days=30)
+    his.backfill_hours = f"{later.hour}-{(later.hour + 1) % 24}"
+    first = enrich.due(session, his, later, 1)[0]
+    assert first.study_id == old_child.id
+    his.backfill_hours = f"{(later.hour + 2) % 24}-{(later.hour + 3) % 24}"
+    assert enrich.due(session, his, later, 5) == []  # history waits for its hours

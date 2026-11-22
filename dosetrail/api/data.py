@@ -306,10 +306,35 @@ def study(session: Session, study_id: int) -> dict | None:
         },
         "thresholds": XA_THRESHOLDS if s.modality in ("RF", "XA") else None,
         "alerts": _alerts(session, s.id),
+        "his": his_summary(session, s.id),
         "exams": _exams(session, s.id),
         "previous": _previous(session, s) if p else [],
         "events": _with_references(session, s, events,
                                    [_event(i + 1, e) for i, e in enumerate(events)]),
+    }
+
+
+def his_summary(session: Session, study_id: int) -> dict | None:
+    """The HIS lookup outcome and the matched request (no patient identifiers)."""
+    from ..db.models import HisLookup, StudyRequest
+
+    lk = session.get(HisLookup, study_id)
+    if lk is None:
+        return None
+    d = lk.detail or {}
+    r = session.get(StudyRequest, study_id)
+    return {
+        "status": lk.status, "attempts": lk.attempts, "score": lk.match_score,
+        "next_try": iso_min(lk.next_try_at), "checked": iso_min(lk.fetched_at),
+        "written": d.get("written") or [], "rejected": d.get("rejected") or [],
+        "error": d.get("error"), "skipped": d.get("why"),
+        "other_person": bool(d.get("rejected_patient") or d.get("rejected_request")),
+        "request": None if r is None else {
+            "id": r.request_id, "ordered": iso_min(r.authored_on), "ward": r.ward,
+            "requester": r.requester, "priority": r.priority, "procedure": r.procedure,
+            "region": r.region, "indication": r.indication, "guideline": r.guideline,
+            "prior_imaging": r.prior_imaging, "pregnant": r.pregnant,
+            "weight_kg": r.weight_kg, "height_m": r.height_m},
     }
 
 

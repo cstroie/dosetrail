@@ -28,7 +28,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from .. import demographics
@@ -50,6 +50,7 @@ RETRY_AFTER = (dt.timedelta(minutes=15), dt.timedelta(hours=2), dt.timedelta(hou
 # History studies get one more try a day later: "not found" can also be a passing HIS fault.
 RECENT = dt.timedelta(days=3)  # newer studies are retried and never wait for backfill hours
 NOT_FOUND_RECHECK = 5  # consecutive "patient not found" answers before re-verifying the login
+CHILD_DAYS = 6575  # 18 years: history lookups do children first
 
 RANK = {None: 0, SizeSource.estimated_reference: 1, SizeSource.estimated_visual: 1,
         SizeSource.his_chart_undated: 2, SizeSource.dicom_unknown: 3, SizeSource.imported: 3,
@@ -333,10 +334,45 @@ def due(session: Session, server: HisServer, now: dt.datetime, limit: int) -> li
     rows = list(session.scalars(base.where(Study.study_datetime >= now - RECENT)
                                 .order_by(Study.study_datetime.desc()).limit(limit)))
     if len(rows) < limit and _in_hours(server.backfill_hours, now):
+        child = case((Study.age_days < CHILD_DAYS, 0), else_=1)  # children first
         rows += list(session.scalars(
             base.where((Study.study_datetime < now - RECENT) | Study.study_datetime.is_(None))
-            .order_by(Study.study_datetime.desc()).limit(limit - len(rows))))
+            .order_by(child, Study.study_datetime.desc()).limit(limit - len(rows))))
     return rows
+
+
+def backfill_candidates(session: Session, since: dt.datetime | None, until: dt.datetime | None,
+                        device_ids: list[int] | None = None) -> tuple[list[int], Counter]:
+    """History studies worth a HIS lookup (clear patient ID, not a test patient, device
+    policy not 'none', not yet looked up); returns (study ids, counts)."""
+    counts: Counter = Counter()
+    q = (select(Study.id, Study.age_days, Patient.patient_id, Patient.is_test,
+                Device.his_policy, HisLookup.study_id)
+         .outerjoin(Patient, Patient.id == Study.patient_id)
+         .outerjoin(Device, Device.id == Study.device_id)
+         .outerjoin(HisLookup, HisLookup.study_id == Study.id))
+    if since:
+        q = q.where(Study.study_datetime >= since)
+    if until:
+        q = q.where(Study.study_datetime < until)
+    if device_ids:
+        q = q.where(Study.device_id.in_(device_ids))
+    ids = []
+    for sid, age, pid, test, policy, queued in session.execute(q):
+        counts["studies"] += 1
+        if queued is not None:
+            counts["already_queued"] += 1
+        elif not pid:
+            counts["no_clear_id"] += 1  # e.g. hashed IDs never linked to a clear one
+        elif test:
+            counts["test_patient"] += 1
+        elif policy == "none":
+            counts["device_off"] += 1
+        else:
+            ids.append(sid)
+            counts["to_queue"] += 1
+            counts["children"] += age is not None and age < CHILD_DAYS
+    return ids, counts
 
 
 def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool = False,

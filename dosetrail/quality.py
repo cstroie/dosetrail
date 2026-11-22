@@ -16,9 +16,13 @@ Rules (severity ``error`` = the value is almost certainly wrong, ``warn`` = chec
 * ``age_missing`` / ``sex_missing`` (warn).
 * ``possible_duplicate`` (warn): another study of the same patient on the same device
   within 2 minutes, with a different Study UID.
+* ``demographic_conflict`` (warn): the national ID, the HIS and the DICOM header disagree on
+  the patient's sex or birth date (the CNP wins; see demographics.py).
+* ``his_unmatched`` (warn): the HIS lookup found no patient, or failed.
 
 Completeness KPIs per device: the share of studies with an exam code, age, measured or
-charted weight, and sex.
+charted weight (request form), a weight from the undated HIS record, sex, and a matched HIS
+request.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from .db.models import (
     CodeSystem,
     Device,
     Event,
+    HisLookup,
     Patient,
     ReferenceSet,
     ReferenceValue,
@@ -54,7 +59,11 @@ RULES = {
     "age_missing": ("warn", "No age"),
     "sex_missing": ("warn", "No sex"),
     "possible_duplicate": ("warn", "Another study of the patient on the device within 2 min"),
+    "demographic_conflict": ("warn", "Sex or birth date differ between CNP, HIS and DICOM"),
+    "his_unmatched": ("warn", "HIS lookup found no patient (or failed)"),
 }
+SHARES = ("exam_code", "age", "weight", "weight_measured", "weight_his_undated", "sex",
+          "request")
 MEASURED = {SizeSource.measured, SizeSource.chart_same_day, SizeSource.chart_72h}
 HEAD_EXAMS = {"CT-CAP", "CT-SINUS"}
 ABSURD = {"ctdivol": 300.0, "dlp": 15000.0, "dap_rx": 50.0, "dap": 1000.0, "kar": 20.0}
@@ -269,12 +278,13 @@ def run(session: Session, conds: list, flagged_limit: int = 200,
         coded = set(session.scalars(select(Classification.study_id).where(
             Classification.event_id.is_(None), Classification.study_id.in_(chunk))))
         dups = _duplicates(session, [s for s, _ in studies])
+        his = dict(session.execute(select(HisLookup.study_id, HisLookup.status)
+                                   .where(HisLookup.study_id.in_(chunk))).all())
         for s, p in sorted(studies, key=lambda x: x[0].study_datetime or dt.datetime.min,
                            reverse=True):
             dev = physical.get(s.device_id, s.device_id) if s.device_id else None
             d = per_device.setdefault(dev, {"device": dev, "device_name": names.get(dev),
-                                            "studies": 0, "exam_code": 0, "age": 0,
-                                            "weight": 0, "weight_measured": 0, "sex": 0,
+                                            "studies": 0, **dict.fromkeys(SHARES, 0),
                                             "flagged": 0, "rules": Counter()})
             d["studies"] += 1
             d["exam_code"] += s.id in coded
@@ -282,8 +292,14 @@ def run(session: Session, conds: list, flagged_limit: int = 200,
             d["weight"] += bool(s.weight_kg)
             d["weight_measured"] += bool(s.weight_kg) and s.weight_source in MEASURED
             d["sex"] += bool(p and p.sex and p.sex.upper() in ("M", "F"))
+            d["weight_his_undated"] += s.weight_source == SizeSource.his_chart_undated
+            d["request"] += his.get(s.id) == "matched"
             found = checker.study(s, p, events.get(s.id, []), national.get(s.id, {}))
             found += [Finding("possible_duplicate", f"study {o}") for o in dups.get(s.id, [])]
+            if p is not None and p.demo_conflict:
+                found.append(Finding("demographic_conflict", p.demo_conflict))
+            if his.get(s.id) in ("no_patient", "error"):
+                found.append(Finding("his_unmatched", his[s.id].replace("_", " ")))
             rules = {f.rule for f in found} - {"age_missing", "sex_missing"}
             for f in found:
                 rule_counts[f.rule] += 1
@@ -302,8 +318,7 @@ def run(session: Session, conds: list, flagged_limit: int = 200,
         n = d["studies"] or 1
         devices.append({**{k: v for k, v in d.items() if k != "rules"},
                         "rules": dict(d["rules"]),
-                        "share": {k: round(d[k] / n, 4) for k in
-                                  ("exam_code", "age", "weight", "weight_measured", "sex")}})
+                        "share": {k: round(d[k] / n, 4) for k in SHARES}})
     devices.sort(key=lambda x: -x["studies"])
     return {"studies": len(ids), "rules": {k: {"severity": v[0], "title": v[1],
                                                 "count": rule_counts.get(k, 0)}

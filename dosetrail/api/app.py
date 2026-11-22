@@ -294,6 +294,18 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         out["quality"] = quality.study_findings(session, study_id)
         return out
 
+    @app.post("/api/studies/{study_id}/his")
+    def study_his_requery(study_id: int, request: Request, user: User = Depends(admin_user),
+                          session: Session = Depends(db)):
+        from ..his import enrich
+
+        if session.get(Study, study_id) is None:
+            raise HTTPException(404, "study not found")
+        enrich.enqueue(session, [study_id], reset=True)
+        _audit(session, request, user, "his.requery", f"study:{study_id}", None)
+        session.commit()
+        return data.his_summary(session, study_id)
+
     @app.get("/api/studies/{study_id}/skin")
     def study_skin(study_id: int, user: User = Depends(current_user),
                    session: Session = Depends(db)):

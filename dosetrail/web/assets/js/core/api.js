@@ -348,6 +348,8 @@ export const createHisServer = (s) => send('POST', '/api/his/servers', s);
 export const updateHisServer = (id, patch) => send('PATCH', `/api/his/servers/${id}`, patch);
 export const deleteHisServer = (id) => send('DELETE', `/api/his/servers/${id}`);
 export const checkHisServer = (id) => send('POST', `/api/his/servers/${id}/check`);
+/** POST /api/studies/{id}/his → queue the study for another HIS lookup (admin) */
+export const requeryHis = (id) => send('POST', `/api/studies/${id}/his`);
 
 /** POST /api/studies/{id}/identify → { name, id, birth_date } (pid role; audit-logged) */
 export function identifyStudy(id) {

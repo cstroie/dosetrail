@@ -14,9 +14,11 @@ MS-CNCAN-SDNP-2026-001, v1.0, March 2026). The layout is versioned so the plan c
   * ``check_dlp``: CTDIvol × scan length vs DLP within ±10 %;
   * ``check_phantom``: a head exam measured with the 32 cm phantom;
   * ``weight_missing``.
-* **Not collected yet:** clinical indication, reconstruction method, Ka,e and WHO
-  weight-for-age percentiles. Their columns are present and empty, and the dictionary says
-  so.
+* **Clinical indication:** the free text of the matched HIS request (``indication_text``);
+  free text can name people or places, so review it before sending. The coded
+  ``indication`` column stays empty until requests are coded.
+* **Not collected yet:** reconstruction method and Ka,e. Their columns are present and
+  empty, and the dictionary says so.
 """
 
 from __future__ import annotations
@@ -28,7 +30,16 @@ from collections.abc import Iterator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db.models import Classification, Code, CodeSystem, Device, Event, Patient, Study
+from ..db.models import (
+    Classification,
+    Code,
+    CodeSystem,
+    Device,
+    Event,
+    Patient,
+    Study,
+    StudyRequest,
+)
 from ..patient_age import band_for_age, band_for_weight
 from ..stats import load_bands
 from .drl_dataset import (
@@ -62,14 +73,17 @@ DICTIONARY: list[tuple[str, str, str]] = [
     ("head_age_group", "", "RP 185 head group: 0-3mo, 3mo-1y, 1-6y, 6y+ (= 6-<18 y)"),
     ("weight_kg", "kg", "Patient weight"),
     ("weight_source", "",
-     "measured / chart_same_day / chart_72h / dicom_unknown / imported / "
+     "measured / chart_same_day / chart_72h (HIS request form) / his_chart_undated (HIS "
+     "record, date unknown) / dicom_unknown / imported / "
      "estimated_reference (median for age and sex)"),
     ("weight_reported_kg", "kg", "Reported weight replaced by the estimate (outside P1-P99)"),
     ("weight_group", "", "RP 185 body group (with 80-110kg, 110kg+)"),
     ("weight_percentile", "%", "Weight-for-age percentile (WHO to 10 y, CDC 2000 to 20 y)"),
     ("drl_exclusion", "", "Reason to leave the study out of DRL statistics (e.g. weight < P5)"),
     ("height_m", "m", "Patient height"),
-    ("indication", "", "Clinical indication code (not collected yet)"),
+    ("indication", "", "Clinical indication code (not coded yet)"),
+    ("indication_text", "",
+     "Indication as written on the HIS request (free text: review before sending)"),
     ("exam_code", "", "Local nomenclator code"),
     ("edrl_exam", "", "RP 185 exam code"),
     ("ndrl_exam", "", "National DRL exam code (OMS 838/2025)"),
@@ -136,6 +150,9 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
                        Code.code).join(Code, Code.id == Classification.code_id)
                 .join(CodeSystem).where(Classification.study_id.in_(chunk))):
             (study_codes[sid] if eid is None else event_codes[eid]).setdefault(system, code)
+        indications = dict(session.execute(
+            select(StudyRequest.study_id, StudyRequest.indication)
+            .where(StudyRequest.study_id.in_(chunk))).all())
         events: dict[int, list[Event]] = defaultdict(list)
         for e in session.scalars(select(Event).where(Event.study_id.in_(chunk),
                                                      Event.is_localizer.is_not(True))
@@ -160,7 +177,8 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
                 "weight_source": s.weight_source.value if s.weight_source else None,
         "weight_reported_kg": s.weight_reported_kg,
                 "weight_group": wb.key if wb else None, "height_m": s.height_m,
-                "indication": None, "contrast": s.contrast_mode,
+                "indication": None, "indication_text": indications.get(s.id),
+                "contrast": s.contrast_mode,
                 "reconstruction": None, "kae": None,
                 "weight_missing": not s.weight_kg,
                 "weight_percentile": (who or {}).get("percentile"),

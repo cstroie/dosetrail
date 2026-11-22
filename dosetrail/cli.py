@@ -273,7 +273,41 @@ def _cmd_his(args: argparse.Namespace) -> int:
             return 1 if bad else 0
         if args.action == "run":
             return _his_run(session, secret, args)
+        if args.action == "backfill":
+            return _his_backfill(session, args)
     return 2
+
+
+def _his_backfill(session, args) -> int:
+    """Queue history for the worker (it runs history only in the server's backfill hours)."""
+    import datetime as dt
+    import getpass
+
+    from .db.models import AuditLog
+    from .his import enrich, servers
+
+    def day(v):
+        return dt.datetime.fromisoformat(v) if v else None
+
+    ids, counts = enrich.backfill_candidates(session, day(args.since), day(args.until),
+                                             [args.device] if args.device else None)
+    srv = (servers.active(session) or [None])[0]
+    pause = srv.min_interval_s if srv else 2.0
+    hours = len(ids) * 3 * (pause + 2) / 3600  # ~3 calls per study, ~2 s per HIS page
+    print(dict(counts))
+    print(f"~{hours:.0f} h of lookups at {pause:g} s between calls"
+          + (f", run only in backfill hours {srv.backfill_hours}" if srv and srv.backfill_hours
+             else ""))
+    if not args.apply:
+        print("dry run: --apply queues them")
+        return 0
+    n = enrich.enqueue(session, ids)
+    session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="his.backfill",
+                         target=f"{args.since or '…'}..{args.until or '…'}",
+                         detail={**counts, "queued": n}))
+    session.commit()
+    print(f"queued {n} studies; the dosetrail-his service works through them")
+    return 0
 
 
 def _his_run(session, secret, args) -> int:
@@ -839,8 +873,12 @@ def build_parser() -> argparse.ArgumentParser:
     cn.set_defaults(func=_cmd_cnp)
 
     hs = sub.add_parser("his", help="HIS / RIS: check the servers' login; run the lookup "
-                                    "worker (patient, weight, height, request)")
-    hs.add_argument("action", choices=["check", "run"])
+                                    "worker (patient, weight, height, request); queue history")
+    hs.add_argument("action", choices=["check", "run", "backfill"])
+    hs.add_argument("--since", help="backfill: studies from this date (YYYY-MM-DD)")
+    hs.add_argument("--until", help="backfill: studies before this date")
+    hs.add_argument("--device", type=int, help="backfill: one device id")
+    hs.add_argument("--apply", action="store_true", help="backfill: queue (default: dry run)")
     hs.add_argument("--once", action="store_true", help="run: one batch, then exit")
     hs.add_argument("--limit", type=int, default=20, help="run: studies per batch")
     hs.add_argument("--dry-run", action="store_true",

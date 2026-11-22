@@ -7,6 +7,7 @@ import '../components/dt-data-grid.js';
 import '../components/dt-chart.js';
 import { baseOption } from '../components/dt-chart.js';
 import { h, toast } from '../core/dom.js';
+import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mmss, clock, DAP_UNITS } from '../core/format.js';
 import { study, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
@@ -221,6 +222,7 @@ async function render() {
             h('dt', {}, 'Device'), h('dd', {}, `${s.device.name}${s.device.biplane ? ' (biplane)' : ''}`),
             h('dt', {}, 'Physician'), h('dd', {}, s.physician))),
         h('section', { class: 'panel', 'aria-labelledby': 'h-ro' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ro' }, t('study.readouts'))), readoutBox),
+        hisPanel(s),
         cumHost),
       h('div', { class: 'main' },
         h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
@@ -293,12 +295,3 @@ function exportEvents(s) {
 
 render().catch((err) => page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'), h('span', { class: 'muted mono' }, err.message))));
 
-// An estimated weight (median for age and sex) is always marked; a replaced report is shown.
-function weightNote(p) {
-  if (!p.weight_estimated) return null;
-  const why = p.weight_reported != null
-    ? `reported ${p.weight_reported} kg is implausible for age and sex (outside P1–P99); `
-    : 'no weight reported; ';
-  return h('span', { class: 'tag', style: { 'margin-left': '6px' }, title: `${why}estimate = median weight for age and sex (WHO to 10 y, CDC 2000 to 20 y)` },
-    p.weight_reported != null ? `est. (reported ${p.weight_reported})` : 'est.');
-}

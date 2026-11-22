@@ -13,6 +13,7 @@ const page = document.getElementById('page');
 let q = prefs.get('quality.q') || 'origin:local date:90d';
 
 function pct(x) {
+  if (x == null) return h('span', { class: 'muted' }, '—');
   const v = Math.round(x * 1000) / 10;
   const cls = v >= 95 ? 'ok' : v >= 80 ? 'warn' : 'alert';
   return h('span', { class: `tag ${cls}` }, `${v} %`);
@@ -40,11 +41,11 @@ async function load() {
     h('p', { class: 'muted small' }, `${num(r.studies)} studies checked`),
     h('h2', { class: 'section-title' }, 'Completeness per device'),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
-      h('thead', {}, h('tr', {}, ['Device', 'Studies', 'Exam code', 'Age', 'Weight', 'Weight measured', 'Sex', 'Flagged']
+      h('thead', {}, h('tr', {}, ['Device', 'Studies', 'Exam code', 'Age', 'Weight', 'Weight measured', 'Weight HIS record', 'Sex', 'HIS request', 'Flagged']
         .map((c, i) => h('th', { class: i ? 'r' : '' }, c)))),
       h('tbody', {}, r.devices.map((d) => h('tr', {},
         h('td', {}, d.device_name || '(no device)'), h('td', { class: 'r' }, num(d.studies)),
-        ['exam_code', 'age', 'weight', 'weight_measured', 'sex'].map((k) => h('td', { class: 'r' }, pct(d.share[k]))),
+        ['exam_code', 'age', 'weight', 'weight_measured', 'weight_his_undated', 'sex', 'request'].map((k) => h('td', { class: 'r' }, pct(d.share[k]))),
         h('td', { class: 'r' }, num(d.flagged)))))))),
     h('h2', { class: 'section-title' }, 'Studies with findings (most recent first)'));
   const body = h('tbody', {}, r.flagged.map((f) => h('tr', {},
