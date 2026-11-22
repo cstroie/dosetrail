@@ -462,3 +462,20 @@ def test_grid_report_endpoint(client):
     assert s.status_code == 200 and "ref_group" in s.json()["orders"]
     login(client, "viewer", "viewer-pass-1")
     assert client.get("/api/reports/grid", params={"year": 2026, "quarter": 4}).status_code == 403
+
+
+def test_sizes_import_csv(client):
+    login(client, "viewer", "viewer-pass-1")
+    csv = b"accession,weight_kg,source\nA1,86,measured\n"
+    assert client.post("/api/import/sizes", content=csv,
+                       headers={"content-type": "text/csv"}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    r = client.post("/api/import/sizes", content=csv, headers={"content-type": "text/csv"})
+    assert r.status_code == 200 and r.json()["counts"]["studies_updated"] == 1
+    assert client.get("/api/studies/1").json()["patient"]["weight_kg"] == 88  # dry run
+    r = client.post("/api/import/sizes?apply=1", content=csv,
+                    headers={"content-type": "text/csv"})
+    assert r.json()["applied"] and client.get("/api/studies/1").json()["patient"][
+        "weight_kg"] == 86
+    assert client.post("/api/import/sizes", content=b"x\n1\n",
+                       headers={"content-type": "text/csv"}).status_code == 400

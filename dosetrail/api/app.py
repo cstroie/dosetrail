@@ -16,7 +16,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -305,6 +305,29 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         _audit(session, request, user, "his.requery", f"study:{study_id}", None)
         session.commit()
         return data.his_summary(session, study_id)
+
+    @app.post("/api/import/sizes")
+    def import_sizes(request: Request, apply: bool = False,
+                     body: bytes = Body(..., media_type="text/csv"),
+                     user: User = Depends(admin_user), session: Session = Depends(db)):
+        """Weight / height CSV (raw body). Dry run unless ?apply=1; see sizes_import."""
+        from .. import sizes_import
+
+        try:
+            text = body.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = body.decode("cp1250")
+        try:
+            res = sizes_import.run(session, text, apply=apply)
+        except sizes_import.RowError as e:
+            session.rollback()
+            raise HTTPException(400, str(e)) from e
+        if apply:
+            _audit(session, request, user, "sizes.import", "csv", res["counts"])
+            session.commit()
+        else:
+            session.rollback()
+        return res
 
     @app.get("/api/studies/{study_id}/skin")
     def study_skin(study_id: int, user: User = Depends(current_user),

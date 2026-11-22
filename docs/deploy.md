@@ -74,6 +74,15 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
 - They are WHO and CDC data under their publishers' terms (see `SOURCE.txt` there), so they are not shipped with DoseTrail. `dosetrail growth status` shows whether they are installed.
 - With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Missing or implausible weights (outside P1–P99) are replaced by the median weight for age and sex (`weight_source = estimated_reference`; an implausible reported value is kept in `weight_reported_kg` and still reported by data quality). Estimates are marked on the study page, in exports and in the second-grid report; patients over 20 years, or without age or sex, keep no weight. Run `dosetrail growth check` after importing weights, e.g. from the RIS (a reported weight replaces an estimate); new studies are estimated and checked as they arrive.
 
+## Weight / height from a CSV file
+
+`dosetrail sizes FILE.csv` reads weights and heights from any export (RIS, ward records, a spreadsheet) and prints what it would change; `--apply` writes them (audited), then recomputes estimates, DRL exclusions and alerts for the changed studies. Admins can do the same on Admin → Data quality ("Import weight / height").
+
+- Key per row: `study_uid`, or `accession` (also matches the hashed accessions of legacy imports), or `patient_id` + `date` (every study of the patient that day; add `modality` to narrow it).
+- Values: `weight_kg`, `height_m` or `height_cm`. `,` or `;` separated; decimal commas are accepted.
+- Provenance: `source` (`measured`, `chart_same_day`, `chart_72h`, `imported`) or `measured_at` (a date: same day as the exam → chart_same_day, within 72 h → chart_72h). Neither → `imported`.
+- A value replaces the stored one only when its source ranks higher (measured > same day > 72 h > imported/DICOM > HIS chart > estimate), and only when plausible for age and sex.
+
 ## DICOM nodes
 - Remote AEs are managed in Admin → Integration:
   - **query/retrieve** nodes are the PACS that `dosetrail qr` pulls from;

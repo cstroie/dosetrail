@@ -549,6 +549,37 @@ def _cmd_user(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_sizes(args: argparse.Namespace) -> int:
+    """Patient weight / height from a CSV file (dry run unless --apply)."""
+    import getpass
+    import json
+
+    from . import sizes_import
+    from .db.models import AuditLog
+    from .db.session import make_engine, make_sessionmaker
+
+    with open(args.file, encoding=args.encoding, newline="") as fh:
+        text = fh.read()
+    with make_sessionmaker(make_engine(args.url or load_settings().database_url))() as session:
+        try:
+            res = sizes_import.run(session, text, apply=args.apply)
+        except sizes_import.RowError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        for k, v in sorted(res["counts"].items()):
+            print(f"{k}: {v}")
+        for i in res["issues"][: args.show]:
+            print(f"  row {i['row']}: {i['outcome']} {i['detail']}")
+        if args.apply:
+            session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="sizes.import",
+                                 target=args.file.rsplit("/", 1)[-1],
+                                 detail=json.loads(json.dumps(res["counts"]))))
+            session.commit()
+        else:
+            print("dry run: --apply writes")
+    return 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -864,6 +895,15 @@ def build_parser() -> argparse.ArgumentParser:
     gr.add_argument("action", choices=["install", "check", "status"])
     gr.add_argument("--url")
     gr.set_defaults(func=_cmd_growth)
+
+    sz = sub.add_parser("sizes", help="import patient weight / height from a CSV file "
+                                      "(study UID, accession, or patient ID + date)")
+    sz.add_argument("file")
+    sz.add_argument("--apply", action="store_true", help="write (default: dry run)")
+    sz.add_argument("--encoding", default="utf-8-sig")
+    sz.add_argument("--show", type=int, default=20, help="row issues to list")
+    sz.add_argument("--url")
+    sz.set_defaults(func=_cmd_sizes)
 
     cn = sub.add_parser("cnp", help="national IDs (CNP): fill or correct sex and birth date, "
                                     "recompute exact ages (offline)")

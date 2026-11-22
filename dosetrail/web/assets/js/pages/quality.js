@@ -6,7 +6,7 @@ import { adminTabs } from '../components/admin-tabs.js';
 import '../components/dt-query-bar.js';
 import { h, clear, append } from '../core/dom.js';
 import { num } from '../core/format.js';
-import { quality, studyHref } from '../core/api.js';
+import { quality, studyHref, importSizes } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
 const page = document.getElementById('page');
@@ -24,7 +24,7 @@ function render() {
   qb.addEventListener('query-change', (e) => { q = e.detail; prefs.set('quality.q', q); load(); });
   clear(page).append(
     adminTabs('quality.html'),
-    qb, h('div', { id: 'qa' }));
+    qb, h('div', { id: 'qa' }), sizesPanel());
   load();
 }
 
@@ -55,6 +55,32 @@ async function load() {
   if (!r.flagged.length) body.append(h('tr', {}, h('td', { colspan: 5, class: 'empty' }, 'No findings for this query.')));
   append(host, [h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
     h('thead', {}, h('tr', {}, ['Date', 'Mod.', 'Device', 'Description', 'Findings'].map((c) => h('th', {}, c)))), body)))]);
+}
+
+// Weight / height from a CSV file (RIS export, ward records). Check = dry run; Apply writes.
+function sizesPanel() {
+  const file = h('input', { type: 'file', accept: '.csv,.txt,text/csv' });
+  const out = h('div', {});
+  const run = async (apply) => {
+    if (!file.files.length) { clear(out).append(h('p', { class: 'muted' }, 'Choose a CSV file first.')); return; }
+    clear(out).append(h('p', { class: 'muted' }, apply ? 'Writing…' : 'Checking…'));
+    let r;
+    try { r = await importSizes(file.files[0], apply); } catch (e) { clear(out).append(h('p', { class: 'error' }, e.message)); return; }
+    clear(out).append(
+      h('p', {}, h('span', { class: `tag ${r.applied ? 'ok' : 'warn'}` }, r.applied ? 'applied' : 'dry run — nothing written'),
+        ' ', Object.entries(r.counts).map(([k, v]) => `${k.replaceAll('_', ' ')}: ${num(v)}`).join(' · ')),
+      r.issues.length ? h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
+        h('thead', {}, h('tr', {}, ['Row', 'Outcome', 'Detail'].map((c) => h('th', {}, c)))),
+        h('tbody', {}, r.issues.map((i) => h('tr', {}, h('td', {}, String(i.row)), h('td', {}, i.outcome.replaceAll('_', ' ')), h('td', {}, i.detail)))))) : '');
+  };
+  return h('div', {},
+    h('h2', { class: 'section-title' }, 'Import weight / height (CSV)'),
+    h('div', { class: 'panel' },
+      h('p', { class: 'muted small' }, 'Columns: a key (study_uid, accession, or patient_id + date [+ modality]), weight_kg and/or height_m / height_cm, optionally source (measured, chart_same_day, chart_72h, imported) or measured_at. A value replaces only a lower-ranked source, and only when plausible for age and sex.'),
+      h('div', { class: 'row' }, file,
+        h('button', { class: 'btn', onclick: () => run(false) }, 'Check'),
+        h('button', { class: 'btn primary', onclick: () => { if (confirm('Write these weights / heights?')) run(true); } }, 'Apply')),
+      out));
 }
 
 render();

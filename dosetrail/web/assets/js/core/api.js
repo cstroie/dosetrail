@@ -57,6 +57,17 @@ export const splitDevice = (id) => send('POST', `/api/devices/${id}/split`);
 /** POST /api/devices/merge-suggestions/dismiss  {record_ids} */
 export const dismissMerge = (recordIds) => send('POST', '/api/devices/merge-suggestions/dismiss', { record_ids: recordIds });
 
+/** POST /api/import/sizes  raw CSV body; a dry run unless apply (admin, audited). */
+export async function importSizes(file, apply = false) {
+  const r = await fetch(new URL(`/api/import/sizes${apply ? '?apply=1' : ''}`, MODE).href, {
+    method: 'POST', headers: { 'Content-Type': 'text/csv', Accept: 'application/json' }, body: file,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || data.detail || `${r.status} ${r.statusText}`);
+  cache.clear();
+  return data;
+}
+
 /** "Now" for relative times: the sample data was generated at a fixed moment. */
 export async function now() {
   if (!isSample) return new Date().toISOString().slice(0, 16);
