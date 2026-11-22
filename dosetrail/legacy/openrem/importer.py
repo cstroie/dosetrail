@@ -159,6 +159,16 @@ def laterality(v: str | None) -> str | None:
 # ----------------------------------------------------------------------------- importer
 
 
+def phantom_cm(meaning: str | None) -> int | None:
+    """OpenREM's CTDIw phantom (a code meaning) -> 16 / 32 cm. OpenREM writes "IEC Head
+    Dosimetry Phantom" / "IEC Body Dosimetry Phantom", without the size."""
+    m = (meaning or "").casefold()
+    if "head" in m or "16" in m:
+        return 16
+    if "body" in m or "32" in m:
+        return 32
+    return None
+
 @dataclass
 class Stats:
     studies_read: int = 0
@@ -420,7 +430,7 @@ class OpenREMImporter:
             e.update(
                 event_type=etype, anatomy=s(r.get("target_region"), 128),
                 ctdivol=num(r.get("mean_ctdivol")), dlp=num(r.get("dlp")),
-                ct_phantom_cm=16 if "16" in phantom else 32 if "32" in phantom else None,
+                ct_phantom_cm=phantom_cm(phantom),
                 scan_length_mm=num(r.get("scanning_length")),
                 pitch=num(r.get("pitch_factor")),
                 collimation_mm=num(r.get("nominal_total_collimation_width")),

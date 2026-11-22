@@ -92,3 +92,40 @@ def pending(session: Session) -> Counter:
             if fix.name not in ((extra or {}).get("fixes") or []):
                 out[fix.name] += 1
     return out
+
+
+def backfill_ct_phantom(session: Session, dump_dir, username: str | None = None,
+                        apply: bool = True) -> dict:
+    """Fill ``event.ct_phantom_cm`` of OpenREM-imported CT series from the dump.
+
+    Earlier imports read the phantom size from digits in OpenREM's code meaning, which has
+    none ("IEC Body Dosimetry Phantom"), so the field stayed empty. Only empty values are
+    filled (idempotent); events are matched by irradiation event UID."""
+    from pathlib import Path
+
+    from .importer import phantom_cm, rows
+
+    want: dict[str, int | None] = {}
+    for r in rows(Path(dump_dir) / "ct_events.csv.gz"):
+        if r.get("irradiation_event_uid"):
+            want[r["irradiation_event_uid"][:64]] = phantom_cm(r.get("phantom"))
+    q = (select(Event).join(Study, Study.id == Event.study_id)
+         .where(Study.source_kind == "openrem", Study.modality == "CT",
+                Event.ct_phantom_cm.is_(None), Event.event_uid.is_not(None)))
+    counts: Counter = Counter()
+    for ev in session.scalars(q):
+        if ev.event_uid not in want:
+            counts["not_in_dump"] += 1
+            continue
+        cm = want[ev.event_uid]
+        if cm is None:
+            counts["no_phantom_in_dump"] += 1
+            continue
+        counts[f"{cm}cm"] += 1
+        if apply:
+            ev.ct_phantom_cm = cm
+    if apply and (counts["16cm"] or counts["32cm"]):
+        session.add(AuditLog(username=username, action="openrem.fix",
+                             target="ct-phantom-backfill", detail=dict(counts)))
+    session.flush()
+    return dict(counts)

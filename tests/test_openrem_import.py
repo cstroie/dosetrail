@@ -82,7 +82,7 @@ def make_dump(tmp_path):
         dict(orem_study_id=5, irradiation_event_uid="c1", acquisition_type="Constant Angle "
              "Acquisition", dlp="5", mean_ctdivol="0.2"),
         dict(orem_study_id=5, irradiation_event_uid="c2", acquisition_type="Spiral Acquisition",
-             phantom="IEC Head Dosimetry Phantom 16 cm", dlp="500", mean_ctdivol="40"),
+             phantom="IEC Head Dosimetry Phantom", dlp="500", mean_ctdivol="40"),
     ])
     _write(tmp_path / "object_uids.csv.gz", ["sop_instance_uid", "orem_study_id"],
            [{"sop_instance_uid": "9.9.1", "orem_study_id": 1}])
@@ -142,7 +142,17 @@ def test_import(session, tmp_path):
     assert ct.n_events == 2 and ct.total_dlp == 505
     loc = session.scalar(select(Event).filter_by(event_uid="c1"))
     assert loc.is_localizer and loc.event_type == "localizer"
-    assert session.scalar(select(Event).filter_by(event_uid="c2")).ct_phantom_cm == 16
+    c2 = session.scalar(select(Event).filter_by(event_uid="c2"))
+    assert c2.ct_phantom_cm == 16
+    # earlier imports left it empty: the dump backfill fills it, once
+    from dosetrail.legacy.openrem.fixes import backfill_ct_phantom
+
+    c2.ct_phantom_cm = None
+    session.flush()
+    assert backfill_ct_phantom(session, tmp_path, apply=False)["16cm"] == 1
+    assert c2.ct_phantom_cm is None
+    assert backfill_ct_phantom(session, tmp_path)["16cm"] == 1 and c2.ct_phantom_cm == 16
+    assert "16cm" not in backfill_ct_phantom(session, tmp_path)
 
     _lines, ok = reconcile(session, tmp_path)
     assert not ok  # per-modality view shows the relabelling; informational only
