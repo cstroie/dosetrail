@@ -221,3 +221,15 @@ window_days = 28
 severity = "warn"
 notify = false
 note = "Median per device, national exam code and age group, in each of the last two weeks, against the 12 weeks before (≥ 10 values a week, ≥ 30 before): a protocol change, software update, detector or AEC fault. CT DLP and fluoroscopy DAP per study, radiography DAP per projection. 2025–2026: 19 episodes (about 10 a year), all radiography, most of them on one room."
+
+[[rule]]
+key = "ct-ssde-50"
+name = "CT: SSDE ≥ 50 mGy in a series"
+kind = "threshold"
+modality = "CT"
+metric = "ssde"
+threshold = 50.0
+unit = "mGy"
+severity = "warn"
+notify = false
+note = "Size-specific dose estimate (AAPM 204/220): unlike CTDIvol it follows the patient's size, so one value suits children and adults; 50 mGy is the AAPM adult body CTDIvol notification value. Reported by the scanner, else calculated; most scanners here report none (2025–2026: 7 child studies have it)."

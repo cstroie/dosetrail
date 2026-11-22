@@ -36,6 +36,8 @@ from .db.models import (
 from .stats import METRICS
 
 STUDY_METRICS = {k: m.column for k, m in METRICS.items() if m.level == "study"}
+# per-series / per-exposure metrics: a threshold rule takes the study's highest value
+EVENT_VALUE = {"ssde": lambda e: e.ssde if e.ssde is not None else e.ssde_calc}
 UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "s": "s"}
 BATCH = 1000
 DEVICE_KINDS = ("device_silent", "device_drift")
@@ -56,6 +58,22 @@ def _applies(rule: AlertRule, s: Study) -> bool:
         return False
     return not (rule.max_age_days is not None
                 and (s.age_days is None or s.age_days >= rule.max_age_days))
+
+
+def _metric_value(metric: str | None, s: Study, events: list[Event]) -> tuple:
+    """(value, where): a study metric, or the highest value of a per-event metric over the
+    study's events (localizers left out), with the series it came from."""
+    m = METRICS.get(metric or "")
+    if m is None:
+        return None, ""
+    if m.level == "study":
+        return getattr(s, m.column.key), ""
+    get = EVENT_VALUE.get(metric) or (lambda e: getattr(e, m.column.key))
+    best = max(((v, e) for e in events if not e.is_localizer
+                for v in (get(e),) if v is not None), default=None, key=lambda x: x[0])
+    if best is None:
+        return None, ""
+    return best[0], f" ({best[1].protocol})" if best[1].protocol else ""
 
 
 class Evaluator:
@@ -127,12 +145,11 @@ class Evaluator:
                 continue
             hit = None
             if rule.kind == "threshold":
-                col = STUDY_METRICS.get(rule.metric)
-                v = getattr(s, col.key) if col is not None else None
+                v, where = _metric_value(rule.metric, s, events)
                 if v is not None and v >= rule.threshold:
                     hit = (v, rule.threshold, rule.unit,
                            f"{METRICS[rule.metric].label} {_fmt(v, rule.unit)} ≥ "
-                           f"{_fmt(rule.threshold, rule.unit)}")
+                           f"{_fmt(rule.threshold, rule.unit)}{where}")
             elif rule.kind == "drl_ratio":
                 r = self._drl_ratio(s, events, national)
                 if r and r[0] >= rule.threshold:
@@ -321,7 +338,7 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
     for a, r, s in session.execute(q):
         kind = kinds.get(r.kind) or {"kar_total": "KA,R", "dap_total": "DAP",
                                      "fluoro_time": "FLUORO", "ctdivol_max": "CTDI",
-                                     "dlp_total": "DLP", "psd": "PSD"}.get(
+                                     "dlp_total": "DLP", "psd": "PSD", "ssde": "SSDE"}.get(
             r.metric or "", "DOSE")
         acc = None if s.accession_is_hashed else s.accession
         value, limit = _value_limit(a, r)

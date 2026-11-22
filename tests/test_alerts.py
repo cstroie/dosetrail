@@ -259,3 +259,21 @@ def test_device_drift(session, world):
     # not again for the same device, exam and age group within 28 days
     assert alerts.evaluate_devices(session, NOW + dt.timedelta(days=1))["new"] == 0
     assert alerts.listing(session)[0]["kind"] == "DRIFT"
+
+
+def test_ssde_takes_the_highest_series(session, world):
+    dev, kid = world
+    s = _study(session, dev, kid, "ss.1", NOW, modality="CT", age_days=4000)
+    s.events = [Event(protocol="Topogram", is_localizer=True, ssde=90.0),
+                Event(protocol="Abdomen", ssde=30.0),
+                Event(protocol="Abdomen late", ssde_calc=55.0)]  # no reported SSDE
+    low = _study(session, dev, kid, "ss.2", NOW - dt.timedelta(days=9), modality="CT",
+                 age_days=3990)
+    low.events = [Event(protocol="Head", ssde=40.0, ssde_calc=70.0)]  # reported wins
+    session.flush()
+    alerts.evaluate(session, [s.id, low.id])
+    got = _alerts(session, s)["ct-ssde-50"]
+    assert got.value == 55.0
+    assert got.message == "SSDE per series (reported, else calculated) 55 mGy ≥ 50 mGy " \
+                          "(Abdomen late)"
+    assert "ct-ssde-50" not in _alerts(session, low)
