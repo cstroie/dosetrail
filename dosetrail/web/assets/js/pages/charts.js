@@ -25,9 +25,9 @@ const DEFAULT_Q = 'date:2026-07-01..2026-11-21 origin:local';
 const DEFAULT_PANELS = [
   { type: 'dots', metric: 'ctdivol', span: 'L' },
   { type: 'box', metric: 'dlp', span: 'S', sort: 'n' },
-  { type: 'trend', metric: 'ctdivol', span: 'M', protocol: 'Abdomen-pelvis', period: 'month', stat: 'median' },
-  { type: 'scatter', metric: 'dlp', span: 'M', protocol: 'Abdomen-pelvis' },
-  { type: 'hist', metric: 'dlp', span: 'M', protocol: 'Head routine' },
+  { type: 'trend', metric: 'ctdivol', span: 'M', period: 'month', stat: 'median' },
+  { type: 'scatter', metric: 'dlp', span: 'M' },
+  { type: 'hist', metric: 'dlp', span: 'M' },
   { type: 'heat', metric: 'ctdivol', span: 'M' },
   { ...defaultsFor('sdrl'), span: 'L' },
   { ...defaultsFor('sbox'), modality: 'DX', metric: 'dap', by: 'exam', series: 'age_band', system: 'ro-drl-ms838-2025', span: 'L' },
@@ -64,6 +64,14 @@ function refRange(metric, protocol) {
   const refs = [...new Set(rows.filter((r) => r.protocol === protocol).map((r) => refOf(r, metric)).filter((v) => v != null))].sort((a, b) => a - b);
   if (!refs.length) return '—';
   return refs.length === 1 ? num(refs[0]) : `${num(refs[0])}–${num(refs[refs.length - 1])}`;
+}
+
+// a saved protocol that is not in the current data (e.g. from the sample data, or a
+// changed query) falls back to the most frequent protocol that has data
+function protoFor(cfg, metric, need = () => true) {
+  const ok = new Set(rows.filter(need).map((r) => r.protocol));
+  if (cfg.protocol && ok.has(cfg.protocol)) return cfg.protocol;
+  return protocolsBy('n', metric).find((p) => ok.has(p)) || protocolsBy('n', metric)[0];
 }
 
 function protocolsBy(sort, metric) {
@@ -145,8 +153,8 @@ function buildDots(cfg) {
       yAxis: [
         { type: 'value', min: -0.5, max: protos.length - 0.5, inverse: true, show: false },
         { type: 'category', data: protos, inverse: true, position: 'left', ...base._axis, axisTick: { show: false }, splitLine: { show: false },
-          axisLabel: { ...base._axis.axisLabel, fontFamily: th.sans, color: th.text, formatter: (p) => `${p}\n{n|n ${num(withRef.filter((r) => r.protocol === p).length)} · DRL ${refRange(cfg.metric, p)} ${metric.unit}}`,
-            rich: { n: { color: th.muted, fontFamily: th.mono, fontSize: 10 } } } },
+          axisLabel: { ...base._axis.axisLabel, fontFamily: th.sans, color: th.text, width: labelWidth(), overflow: 'truncate', lineHeight: 15, formatter: (p) => `${p}\n{n|n ${num(withRef.filter((r) => r.protocol === p).length)} · DRL ${refRange(cfg.metric, p)} ${metric.unit}}`,
+            rich: { n: { color: th.muted, fontFamily: th.mono, fontSize: 10, lineHeight: 14 } } } },
       ],
       series,
     };
@@ -155,8 +163,12 @@ function buildDots(cfg) {
   const missing = rows.length - withRef.length;
   const note = (allProtos.length > TOP ? ` · top ${TOP} of ${allProtos.length} protocols` : '')
     + (missing ? ` · ${num(missing)} of ${num(rows.length)} without an applicable DRL (no exam DRL, or body exam without weight)` : '');
-  return { option, csv, title: `${metric.label} vs applicable DRL, per protocol and device${note}`, summary: summaryRows(cfg.metric) };
+  return { option, csv, title: `${metric.label} vs applicable DRL, per protocol and device${note}`, summary: summaryRows(cfg.metric),
+    height: String(Math.max(320, 44 * protos.length + 110)) };
 }
+
+// y-axis label width: protocol names are truncated (full name in the summary table)
+const labelWidth = () => (matchMedia('(max-width: 700px)').matches ? 110 : 220);
 
 function buildBoxOrBar(cfg) {
   const metric = METRICS[cfg.metric];
@@ -180,21 +192,22 @@ function buildBoxOrBar(cfg) {
     return {
       ...base,
       legend: { ...base.legend, data: [...devIds.map((d) => devices[deviceIndex(d)]?.display_name), 'DRL'] },
-      grid: { left: 8, right: 20, top: 52, bottom: 40, containLabel: true },
+      grid: { left: 8, right: 20, top: 34, bottom: 40, containLabel: true },
       tooltip: { ...base.tooltip, trigger: 'item' },
       xAxis: { type: 'log', name: `${metric.label} ${metric.unit} (log)`, nameLocation: 'middle', nameGap: 24, ...base._axis },
-      yAxis: { type: 'category', data: protos, inverse: true, ...base._axis, axisLabel: { ...base._axis.axisLabel, fontFamily: th.sans, color: th.text } },
+      yAxis: { type: 'category', data: protos, inverse: true, ...base._axis, axisLabel: { ...base._axis.axisLabel, fontFamily: th.sans, color: th.text, width: labelWidth(), overflow: 'truncate' } },
       series,
     };
   };
   const csv = [['protocol', 'device', 'n', 'min', 'q1', 'median', 'mean', 'q3', 'max', 'drl']]
     .concat(sums.map((s) => [s.protocol, s.device, s.n, s.min, s.q1, s.median, s.mean, s.q3, s.max, s.drl ?? '']));
-  return { option, csv, title: `${metric.label} per protocol and device${isBox ? '' : ` · ${stat}`}`, summary: sums };
+  return { option, csv, title: `${metric.label} per protocol and device${isBox ? '' : ` · ${stat}`}`, summary: sums,
+    height: String(Math.max(320, 30 * protos.length + 110)) };
 }
 
 function buildHist(cfg) {
   const metric = METRICS[cfg.metric];
-  const proto = cfg.protocol || protocolsBy('n', cfg.metric)[0];
+  const proto = protoFor(cfg, cfg.metric);
   const vals = rows.filter((r) => r.protocol === proto).map((r) => r[metric.field]);
   const bins = histogram(vals, 16);
   const ref = protoRef(cfg.metric, proto);
@@ -222,7 +235,7 @@ function buildHist(cfg) {
 
 function buildTrend(cfg) {
   const metric = METRICS[cfg.metric];
-  const proto = cfg.protocol || protocolsBy('n', cfg.metric)[0];
+  const proto = protoFor(cfg, cfg.metric);
   const per = cfg.period || 'month';
   const stat = cfg.stat || 'median';
   const rs = rows.filter((r) => r.protocol === proto);
@@ -252,7 +265,7 @@ function buildTrend(cfg) {
 }
 
 function buildScatter(cfg) {
-  const proto = cfg.protocol || protocolsBy('n', 'dlp')[0];
+  const proto = protoFor(cfg, 'dlp', (r) => r.weight && r.dlp);
   const rs = rows.filter((r) => r.protocol === proto && r.weight);
   const option = (th) => {
     const base = baseOption(th);
@@ -269,7 +282,7 @@ function buildScatter(cfg) {
     };
   };
   return { option, csv: [['device', 'weight_kg', 'dlp_mgycm']].concat(rs.map((r) => [r.device, r.weight, r.dlp])),
-    title: `DLP vs patient weight · ${proto} (n ${num(rs.length)} with weight)`, summary: summaryRows('dlp', proto), protocol: proto };
+    title: rs.length ? `DLP vs patient weight · ${proto} (n ${num(rs.length)} with weight)` : "DLP vs patient weight · no acquisitions with a patient weight in this query", summary: summaryRows('dlp', proto), protocol: proto };
 }
 
 function buildHeat() {
@@ -322,7 +335,7 @@ function select(label, value, options, onChange) {
 function renderPanel(cfg, index) {
   const server = cfg.type in SERVER_TYPES;
   const built = server ? null : rows.length ? BUILDERS[cfg.type](cfg) : null;
-  const chart = h('dt-chart', { label: built?.title || 'Chart', height: cfg.type === 'dots' ? '380' : cfg.type === 'sdrl' ? '420' : '320' });
+  const chart = h('dt-chart', { label: built?.title || 'Chart', height: built?.height || (cfg.type === 'sdrl' ? '420' : '320') });
   const update = (patch) => { Object.assign(cfg, patch); saveWs(); renderAll(); };
   const protos = Object.fromEntries(protocolsBy('name', 'ctdivol').map((p) => [p, p]));
   const opts = server ? [select('Type', cfg.type, TYPES, (v) => update({ ...defaultsFor(v), modality: cfg.modality, span: cfg.span, type: v })),

@@ -34,13 +34,21 @@ export function baseOption(th) {
     animation: false,
     textStyle: { fontFamily: th.sans, color: th.text },
     tooltip: { backgroundColor: th.panel, borderColor: th.line2, textStyle: { color: th.text, fontFamily: th.mono, fontSize: 12 } },
-    legend: { textStyle: { color: th.muted }, icon: 'roundRect', itemWidth: 10, itemHeight: 10, top: 0, left: 0 },
+    // one scrolling row: many devices would otherwise wrap over the plot
+    legend: { type: 'scroll', textStyle: { color: th.muted }, icon: 'roundRect', itemWidth: 10, itemHeight: 10, top: 0, left: 0, right: 0,
+      pageIconColor: th.text, pageIconInactiveColor: th.line2, pageTextStyle: { color: th.muted } },
     grid: { left: 56, right: 24, top: 30, bottom: 36, containLabel: false },
     _axis: axis,
   };
 }
 
 class DtChart extends HTMLElement {
+  static get observedAttributes() { return ['height']; }
+
+  attributeChangedCallback(name, _old, value) {
+    if (name === 'height' && this.box) this.box.style.height = `${value || 260}px`;
+  }
+
   connectedCallback() {
     if (this.box) return;
     this.box = h('div', { class: 'chart-box', role: 'img', 'aria-label': this.getAttribute('label') || 'Chart',
