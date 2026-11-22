@@ -215,6 +215,22 @@ export function drlSets() {
 
 /** GET /api/drl/sets/{key} → { key, name, source, notes, values: [{ exam, exam_meaning, modality,
  *  scheme, band, band_label, quantity, value, unit, applies_to }] } */
+/** Local DRLs (localdrl.py): proposal, adoption (admin), review (json / xlsx), deletion. */
+export function localDrlPropose(params) {
+  return isSample ? serverOnly('Local DRLs') : remote('/api/drl/local/propose', params);
+}
+export const adoptLocalDrl = (body) => send('POST', '/api/drl/local', body);
+export const deleteDrlSet = (key) => send('DELETE', `/api/drl/sets/${encodeURIComponent(key)}`);
+export function localDrlReview(params) {
+  return isSample ? serverOnly('Local DRLs') : remote('/api/drl/local/review', params);
+}
+export function localDrlReviewUrl(params) {
+  if (isSample) return null;
+  const u = new URL('/api/drl/local/review', MODE);
+  for (const [k, v] of Object.entries({ ...params, format: 'xlsx' })) if (v != null && v !== '') u.searchParams.set(k, String(v));
+  return u.href;
+}
+
 export function drlSet(key) {
   return isSample ? serverOnly('Reference levels') : remote(`/api/drl/sets/${encodeURIComponent(key)}`);
 }

@@ -47,12 +47,23 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "reports.html": "reports.html", "quality.html": "quality.html",
          "rules.html": "rules.html", "dicom.html": "dicom.html",
          "users.html": "users.html", "audit.html": "audit.html",
-         "alerts.html": "alerts.html"}
+         "alerts.html": "alerts.html", "local-drl.html": "local-drl.html"}
 
 
 class LoginIn(BaseModel):
     username: str
     password: str
+
+
+class LocalDRLIn(BaseModel):
+    name: str
+    grid: str = "national"
+    start: dt.date
+    end: dt.date
+    min_n: int = 10
+    q: str = "origin:local"
+    estimated: bool = True
+    rows: list[dict]
 
 
 class TokenIn(BaseModel):
@@ -372,6 +383,96 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             return drl_mod.reference_values(session, key)
         except drl_mod.DRLError as e:
             raise HTTPException(404, str(e)) from e
+
+    def _period(start: dt.date | None, end: dt.date | None) -> tuple[dt.date, dt.date]:
+        end = end or clock().date()
+        start = start or end - dt.timedelta(days=365)
+        if start > end:
+            raise HTTPException(400, "start is after end")
+        return start, end
+
+    def _period_conds(q: str, start: dt.date, end: dt.date, session: Session) -> list:
+        return [*data.conditions(data.parse(q), clock(), data.overrides(session)),
+                Study.study_datetime >= dt.datetime.combine(start, dt.time()),
+                Study.study_datetime < dt.datetime.combine(end + dt.timedelta(days=1),
+                                                           dt.time())]
+
+    @app.get("/api/drl/local/propose")
+    def local_drl_propose(q: str = "origin:local", start: dt.date | None = None,
+                          end: dt.date | None = None, grid: str = "national",
+                          min_n: int = 10, estimated: bool = True,
+                          user: User = Depends(current_user), session: Session = Depends(db)):
+        """Proposed local DRLs: P75 of the room medians (ICRP 135); see localdrl.py."""
+        from .. import localdrl
+
+        start, end = _period(start, end)
+        try:
+            out = localdrl.propose(session, _period_conds(q, start, end, session), grid,
+                                   max(min_n, 1), estimated)
+        except localdrl.LocalDRLError as e:
+            raise HTTPException(400, str(e)) from e
+        return {**out, "start": start.isoformat(), "end": end.isoformat(), "q": q}
+
+    @app.post("/api/drl/local")
+    def local_drl_adopt(body: LocalDRLIn, request: Request, user: User = Depends(admin_user),
+                        session: Session = Depends(db)):
+        from .. import localdrl
+
+        try:
+            rs = localdrl.adopt(session, body.rows, name=body.name, grid=body.grid,
+                                start=body.start, end=body.end, min_n=body.min_n,
+                                query=body.q + ("" if body.estimated
+                                                else " (estimated weights left out)"),
+                                now=clock())
+        except localdrl.LocalDRLError as e:
+            session.rollback()
+            raise HTTPException(400, str(e)) from e
+        _audit(session, request, user, "drl.local.adopt", rs.key,
+               {"name": rs.name, "values": len(rs.values), "grid": body.grid,
+                "start": body.start.isoformat(), "end": body.end.isoformat()})
+        session.commit()
+        return {"key": rs.key, "name": rs.name, "values": len(rs.values)}
+
+    @app.delete("/api/drl/sets/{key}")
+    def drl_set_delete(key: str, request: Request, user: User = Depends(admin_user),
+                       session: Session = Depends(db)):
+        from .. import localdrl
+
+        try:
+            out = localdrl.delete(session, key)
+        except localdrl.LocalDRLError as e:
+            raise HTTPException(400, str(e)) from e
+        _audit(session, request, user, "drl.local.delete", key, out)
+        session.commit()
+        return out
+
+    @app.get("/api/drl/local/review")
+    def local_drl_review(request: Request, set: str, q: str = "origin:local",
+                         start: dt.date | None = None, end: dt.date | None = None,
+                         min_n: int = 10, format: str = "json",
+                         user: User = Depends(current_user), session: Session = Depends(db)):
+        """An adopted local set against a new period (yearly review); json or xlsx."""
+        from .. import localdrl
+
+        start, end = _period(start, end)
+        if format not in ("json", "xlsx"):
+            raise HTTPException(400, "format is json|xlsx")
+        try:
+            rep = localdrl.review(session, set, _period_conds(q, start, end, session),
+                                  max(min_n, 1))
+        except localdrl.LocalDRLError as e:
+            raise HTTPException(404, str(e)) from e
+        rep = {**rep, "start": start.isoformat(), "end": end.isoformat(), "q": q}
+        if format == "json":
+            return rep
+        _exporter(user)
+        _audit(session, request, user, "report", f"drl.local.review:{set}", {"q": q})
+        session.commit()
+        info = {"Perioada": f"{start.isoformat()} – {end.isoformat()}", "Selecție": q,
+                "Generat": clock().isoformat(sep=" ", timespec="seconds"),
+                "De": user.display_name or user.username}
+        return _file(lambda fh: localdrl.write_review_xlsx(rep, fh, info), "xlsx",
+                     f"revizuire-nrd-local-{end:%Y%m%d}", clock())
 
     @app.get("/api/drl/compare")
     def drl_compare(q: str = "origin:local", set: str = "ro-ms838-2025", by: str = "facility",

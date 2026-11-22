@@ -25,8 +25,9 @@ Local quantities by ``applies_to``:
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, case, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from .db.models import (
@@ -38,6 +39,7 @@ from .db.models import (
     GroupScheme,
     ReferenceSet,
     ReferenceValue,
+    SizeSource,
     Study,
 )
 from .stats import EXPOSURE_EXAM, BandLookup, describe, own_codes
@@ -105,65 +107,33 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
     names = names or {d.id: d.display_name or d.station_name or f"Device {d.id}"
                       for d in session.scalars(select(Device))}
 
-    # one query per quantity: (value, study, device, age, weight, exam code id)
-    by_q: dict[str, list[ReferenceValue]] = defaultdict(list)
-    for rv, *_ in refs:
-        by_q[rv.quantity].append(rv)
-    rows_by_q: dict[str, list] = {}
-    for quantity, rvs in by_q.items():
-        if quantity not in QUANTITY:
-            continue
-        col, _units = QUANTITY[quantity]
-        code_ids = {rv.exam_code_id for rv in rvs}
-        c = aliased(Classification)
-        link = and_(c.study_id == Study.id, c.code_id.in_(code_ids),
-                    or_(c.event_id == Event.id,
-                        and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM),
-                             ~own_codes(Event.id))))
-        q = (select(col, Event.id, Study.id, Study.device_id, Study.age_days, Study.weight_kg,
-                    c.code_id)
-             .select_from(Event).join(Study, Study.id == Event.study_id).join(c, link)
-             .where(col.is_not(None), Event.is_localizer.is_not(True), *conds,
-                    *([] if include_excluded else [Study.drl_exclusion.is_(None)])))
-        rows_by_q[quantity] = session.execute(q).all()
-
+    items = [Item(key=i, exam_code_id=rv.exam_code_id, quantity=rv.quantity, unit=rv.unit,
+                  applies_to=rv.applies_to, scheme=scheme.key if scheme else None,
+                  parameter=scheme.parameter if scheme else None,
+                  band=band.key if band else None)
+             for i, (rv, _code, band, scheme) in enumerate(refs)]
+    collected = collect(session, conds, items, by_device=by_device, physical=physical,
+                        include_excluded=include_excluded)
     bands: dict[str, BandLookup] = {}
     results = []
-    for rv, code, band, scheme in refs:
+    for i, (rv, code, band, scheme) in enumerate(refs):
         item = {"exam": code.code, "exam_meaning": code.meaning,
                 "band": band.key if band else None, "band_label": band.label if band else None,
                 "scheme": scheme.key if scheme else None, "quantity": rv.quantity,
                 "applies_to": rv.applies_to, "reference": rv.value, "unit": rv.unit}
+        if scheme is not None and scheme.key not in bands:
+            bands[scheme.key] = BandLookup(session, scheme.key, scheme.parameter)
         if rv.quantity not in QUANTITY:
             results.append({**item, "status": "unavailable",
                             "reason": UNAVAILABLE.get(rv.quantity, "not supported"),
                             "groups": []})
             continue
-        factor = QUANTITY[rv.quantity][1].get(rv.unit)
-        if factor is None:
+        if QUANTITY[rv.quantity][1].get(rv.unit) is None:
             results.append({**item, "status": "unavailable",
                             "reason": f"unit {rv.unit} not supported", "groups": []})
             continue
-        lookup = None
-        if scheme is not None:
-            lookup = bands.get(scheme.key) or bands.setdefault(
-                scheme.key, BandLookup(session, scheme.key, scheme.parameter))
-        units: dict[tuple, float] = defaultdict(float)  # (unit id, device) -> value
-        for value, eid, sid, did, age, weight, cid in rows_by_q[rv.quantity]:
-            if cid != rv.exam_code_id:
-                continue
-            if lookup is not None:
-                key = lookup(age if lookup.parameter == "age" else weight)
-                if key != band.key:
-                    continue
-            dev = physical.get(did, did) if did is not None else None
-            unit_id = sid if rv.applies_to == "study" else eid
-            units[(unit_id, dev if by_device else None)] += value * factor
-        per_group: dict = defaultdict(list)
-        for (_uid, dev), v in units.items():
-            per_group[dev].append(v)
         groups = []
-        for dev, vals in per_group.items():
+        for dev, vals in collected.get(i, {}).items():
             d = describe(vals)
             groups.append({"device": dev, "device_name": names.get(dev) if dev else None,
                            **d, "ratio": d["median"] / rv.value if rv.value else None,
@@ -174,6 +144,81 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
     results.sort(key=lambda r: (r["exam"], r["quantity"], _band_order(r, bands)))
     return {"set": rs.key, "name": rs.name, "source": rs.source, "notes": rs.notes,
             "by": "device" if by_device else "facility", "min_n": min_n, "rows": results}
+
+
+@dataclass(frozen=True)
+class Item:
+    """What to collect: an exam code, optionally a patient band, a quantity in a unit."""
+    key: object
+    exam_code_id: int
+    quantity: str
+    unit: str
+    applies_to: str  # series / exposure / study
+    scheme: str | None = None
+    parameter: str | None = None  # age / weight
+    band: str | None = None
+
+
+def collect(session: Session, conds: list, items: list[Item], *, by_device: bool = False,
+            physical: dict[int, int] | None = None,
+            include_excluded: bool = False, estimated_weights: bool = True
+            ) -> dict[object, dict[int | None, list[float]]]:
+    """Local values per item and device (None = facility), in the item's unit.
+
+    One query per quantity; every row is bucketed once by (exam code, scheme band), so many
+    items cost about as much as one. ``study`` items sum the study's events of the exam;
+    ``series`` / ``exposure`` items keep one value per event."""
+    physical = physical or {i: (m or i) for i, m in
+                            session.execute(select(Device.id, Device.merged_into_id))}
+    lookups: dict[str, BandLookup] = {}
+    for it in items:
+        if it.scheme and it.scheme not in lookups:
+            lookups[it.scheme] = BandLookup(session, it.scheme, it.parameter)
+    out: dict[object, dict[int | None, list[float]]] = {}
+    by_q: dict[str, list[Item]] = defaultdict(list)
+    for it in items:
+        if it.quantity in QUANTITY and QUANTITY[it.quantity][1].get(it.unit) is not None:
+            by_q[it.quantity].append(it)
+    for quantity, its in by_q.items():
+        col, units_map = QUANTITY[quantity]
+        code_ids = {it.exam_code_id for it in its}
+        schemes = {it.scheme for it in its if it.scheme}
+        c = aliased(Classification)
+        link = and_(c.study_id == Study.id, c.code_id.in_(code_ids),
+                    or_(c.event_id == Event.id,
+                        and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM),
+                             ~own_codes(Event.id))))
+        weight = Study.weight_kg if estimated_weights else case(
+            (Study.weight_source == SizeSource.estimated_reference, None),
+            else_=Study.weight_kg)
+        q = (select(col, Event.id, Study.id, Study.device_id, Study.age_days, weight,
+                    c.code_id)
+             .select_from(Event).join(Study, Study.id == Event.study_id).join(c, link)
+             .where(col.is_not(None), Event.is_localizer.is_not(True), *conds,
+                    *([] if include_excluded else [Study.drl_exclusion.is_(None)])))
+        # (code, scheme|None, band|None, per-study?) -> (unit id, device) -> sum
+        buckets: dict[tuple, dict[tuple, float]] = defaultdict(lambda: defaultdict(float))
+        wanted = {(it.exam_code_id, it.scheme, it.band, it.applies_to == "study")
+                  for it in its}
+        modes = {it.applies_to == "study" for it in its}
+        for value, eid, sid, did, age, weight, cid in session.execute(q):
+            dev = (physical.get(did, did) if did is not None else None) if by_device else None
+            keys = [(cid, None, None)]
+            for sk in schemes:
+                lk = lookups[sk]
+                keys.append((cid, sk, lk(age if lk.parameter == "age" else weight)))
+            for k in keys:
+                for per_study in modes:
+                    if (*k, per_study) in wanted:
+                        buckets[(*k, per_study)][(sid if per_study else eid, dev)] += value
+        for it in its:
+            factor = units_map[it.unit]
+            per_dev: dict[int | None, list[float]] = defaultdict(list)
+            for (_uid, dev), v in buckets.get((it.exam_code_id, it.scheme, it.band,
+                                               it.applies_to == "study"), {}).items():
+                per_dev[dev].append(v * factor)
+            out[it.key] = dict(per_dev)
+    return out
 
 
 def _status(d: dict, ref: float, min_n: int) -> str:

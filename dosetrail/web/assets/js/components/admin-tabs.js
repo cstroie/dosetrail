@@ -3,7 +3,7 @@ import { h } from '../core/dom.js';
 
 export const ADMIN_PAGES = [
   ['Devices', 'devices.html'], ['Integration', 'dicom.html'], ['Protocol mappings', 'review.html'],
-  ['DRLs', 'drl-sets.html'], ['Data quality', 'quality.html'], ['Alert rules', 'rules.html'],
+  ['DRLs', 'drl-sets.html'], ['Local DRLs', 'local-drl.html'], ['Data quality', 'quality.html'], ['Alert rules', 'rules.html'],
   ['Users', 'users.html'], ['Audit log', 'audit.html'],
 ];
 

@@ -23,7 +23,7 @@ const QUANTITY = { dlp: 'DLP', ctdivol: 'CTDIvol', dap: 'DAP', kae: 'Ka,e', mgd:
 
 const state = {
   q: prefs.get('drl.q') || 'origin:local date:365d',
-  set: prefs.get('drl.set') || 'ro-ms838-2025',
+  set: new URLSearchParams(location.search).get('set') || prefs.get('drl.set') || 'ro-ms838-2025',
   by: prefs.get('drl.by') || 'facility',
   minN: prefs.get('drl.minN') || 20,
   showEmpty: false,

@@ -156,3 +156,9 @@ docker compose --profile his up -d his   # HIS worker (needs a HIS server)
 - The volume `dosetrail-data` holds the site secret, the spool and the growth tables (`docker compose run --rm web growth install`). Back it up together with `dosetrail-db`.
 - The image build has not been tested here (no Docker on the development host); the same install steps were checked in a clean virtual environment.
 
+## Local DRLs
+
+Admin → Local DRLs proposes local diagnostic reference levels from the hospital's own data (ICRP 135). For each national DRL examination and patient group, the median of each room (device) with at least *n* values is computed; the local DRL is the P75 of those room medians, or the median when only one room qualifies. CT is per series; radiography, fluoroscopy and mammography per study; DRL exclusions are left out. Groups are the national age groups or the ICRP 135 / RP 185 groups (head by age, body by weight, with or without estimated weights). Each value is shown against the national DRL or the RP 185 EDRL.
+
+Chosen values (editable) are adopted as a reference set `local-…`, which the comparison page, reports and alerts can use like any other set. The yearly review compares an adopted set with a new period: the new value, the change, and the rooms whose median is above the local DRL (XLSX for the file). Adopting and deleting are audited; the bundled sets cannot be deleted.
+
