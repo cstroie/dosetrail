@@ -1,6 +1,6 @@
 /*
  * Dosimetrix design tokens: the "Iodine" palette (direction B, "Console" layout).
- * Violet accent (iodine contrast medium) on warm aubergine-graphite; status stays
+ * A soft violet accent (iodine contrast medium) on near-neutral graphite; status stays
  * green / amber / red. Device series: a validated 8-colour order (CVD-checked, see
  * docs/branding/README.md). Dark is the reference theme; light uses the same names.
  * Themes switch only through [data-theme] on <html>; components never hard-code colours.
@@ -10,23 +10,23 @@
   color-scheme: dark;
 
   /* surfaces */
-  --bg: #121016;
-  --panel: #19161F;
-  --panel-2: #221E2A;
-  --overlay: rgba(10, 6, 14, .6);
+  --bg: #111114;
+  --panel: #18171B;
+  --panel-2: #211F25;
+  --overlay: rgba(8, 8, 10, .6);
   --shadow-pop: 0 16px 40px rgba(0, 0, 0, .5);
 
   /* text and lines */
-  --text: #E7E3EC;
-  --muted: #9A93A6;
-  --line: #2E2938;
-  --line-2: #453E52;
+  --text: #E6E4E9;
+  --muted: #98959F;
+  --line: #2D2B32;
+  --line-2: #43404A;
 
   /* accent / focus */
-  --accent: #B98CF0;
-  --accent-ink: #15101C;
-  --accent-soft: #2C2240;
-  --focus: #D6B8FF;
+  --accent: #AE99D6;
+  --accent-ink: #110D17;
+  --accent-soft: #2B2537;
+  --focus: #D1C1F3;
 
   /* status (always paired with a word or icon) */
   --ok: #4CC38A;    --ok-soft: #10301F;
@@ -42,24 +42,24 @@
   --d5: #d55181; --d6: #0ca30c; --d7: #9085e9; --d8: #e66767;
 
   /* sequential (heat maps) */
-  --seq: #B98CF0;
+  --seq: #AE99D6;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #EEECF1;
+  --bg: #EDEDEF;
   --panel: #FFFFFF;
-  --panel-2: #F5F3F8;
-  --overlay: rgba(23, 19, 28, .35);
+  --panel-2: #F4F4F6;
+  --overlay: rgba(22, 20, 25, .35);
   --shadow-pop: 0 16px 40px rgba(23, 19, 28, .18);
-  --text: #17131C;
-  --muted: #5C5566;
-  --line: #DDD8E3;
-  --line-2: #B9B1C4;
-  --accent: #6B35B8;
+  --text: #161419;
+  --muted: #5A575F;
+  --line: #DBD9DF;
+  --line-2: #B6B3BD;
+  --accent: #674994;
   --accent-ink: #FFFFFF;
-  --accent-soft: #EEE5FA;
-  --focus: #6B35B8;
+  --accent-soft: #EFE9FC;
+  --focus: #674994;
   --ok: #18794E;    --ok-soft: #DDF3E7;
   --warn: #8A5300;  --warn-soft: #FCEFD6;
   --alert: #B3261E; --alert-soft: #FBE6E4;
@@ -67,7 +67,7 @@
   --m-ct: #2a78d6; --m-dx: #1baf7a; --m-rf: #eb6834; --m-mg: #e87ba4; --m-nm: #a87200;
   --d1: #2a78d6; --d2: #eb6834; --d3: #1baf7a; --d4: #eda100;
   --d5: #e87ba4; --d6: #008300; --d7: #6250d6; --d8: #e34948;
-  --seq: #6B35B8;
+  --seq: #674994;
 }
 
 /*

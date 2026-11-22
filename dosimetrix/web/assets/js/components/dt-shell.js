@@ -102,7 +102,7 @@ function userMenu() {
 
 // Palettes (tokens in css/tokens.css); swatch = [background, accent] of the dark theme.
 export const PALETTES = [
-  ['iodine', 'Iodine', '#121016', '#B98CF0'],
+  ['iodine', 'Iodine', '#111114', '#AE99D6'],
   ['cherenkov', 'Cherenkov', '#0A0E13', '#3CC4D8'],
   ['phosphor', 'Phosphor', '#0F110E', '#C4E35A'],
   ['instrument', 'Instrument', '#111111', '#F1ECE2'],
