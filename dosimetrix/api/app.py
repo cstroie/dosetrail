@@ -80,6 +80,11 @@ class InstitutionNameIn(BaseModel):
     name: str | None = None
 
 
+class PasswordIn(BaseModel):
+    current: str
+    new: str
+
+
 class TokenIn(BaseModel):
     token: str
 
@@ -704,6 +709,16 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             return fn(users)
         except users.UserError as e:
             raise HTTPException(400, str(e)) from e
+
+    @app.put("/api/me/password")
+    def my_password(body: PasswordIn, request: Request, user: User = Depends(current_user),
+                    session: Session = Depends(db)):
+        """Change one's own password (the account menu)."""
+        u = session.get(User, user.id)
+        _users(lambda m: m.change_own_password(u, body.current, body.new))
+        _audit(session, request, u, "user.password", f"user:{u.username}")
+        session.commit()
+        return {"ok": True}
 
     @app.get("/api/users")
     def user_list(user: User = Depends(admin_user), session: Session = Depends(db)):

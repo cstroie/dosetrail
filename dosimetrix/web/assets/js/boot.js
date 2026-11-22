@@ -4,5 +4,6 @@
   var p = {};
   try { p = JSON.parse(localStorage.getItem('dosimetrix.prefs') || localStorage.getItem('dosetrail.prefs') || '{}'); } catch (e) { /* ignore */ }
   document.documentElement.dataset.theme = p.theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.palette = /^(iodine|cherenkov|phosphor|instrument)$/.test(p.palette || '') ? p.palette : 'iodine';
   document.documentElement.lang = p.lang === 'ro' ? 'ro' : 'en';
 }());

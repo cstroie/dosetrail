@@ -243,6 +243,9 @@ export function surveyNationalUrl(params) {
   return u.href;
 }
 
+/** PUT /api/me/password {current, new}: one's own password. */
+export const changePassword = (current, next) => send('PUT', '/api/me/password', { current, new: next });
+
 /** Local DRLs (localdrl.py): proposal, adoption (admin), review (json / xlsx), deletion. */
 export function localDrlPropose(params) {
   return isSample ? serverOnly('Local DRLs') : remote('/api/drl/local/propose', params);

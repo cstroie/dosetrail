@@ -4,11 +4,11 @@
 // the context bar; everything else goes into the work area. Also owns the global shortcuts
 // (Ctrl K and "/" open the command palette) and the theme / language buttons.
 
-import { h, icon } from '../core/dom.js';
+import { h, icon, toast } from '../core/dom.js';
 import { t, lang } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
 import './dt-command-palette.js';
-import { me, logout } from '../core/api.js';
+import { me, logout, changePassword } from '../core/api.js';
 
 const NAV = [
   ['overview', 'index.html', 'overview'],
@@ -17,8 +17,7 @@ const NAV = [
   ['drl', 'drl.html', 'drl'],
   ['reports', 'reports.html', 'reports'],
   ['alerts', 'alerts.html', 'alerts'],
-  ['admin', 'devices.html', 'admin'],
-];
+];  // Admin lives in the account menu, for admins only
 
 class DtShell extends HTMLElement {
   connectedCallback() {
@@ -40,7 +39,6 @@ class DtShell extends HTMLElement {
       this.getAttribute('sub') ? h('span', { class: 'muted' }, ` · ${this.getAttribute('sub')}`) : null);
 
     const palette = h('dt-command-palette');
-    const theme = prefs.get('theme');
     const ctx = h('header', { class: 'ctx' },
       crumb,
       h('button', { class: 'cmdk-trigger', type: 'button', onclick: () => palette.open() },
@@ -48,8 +46,7 @@ class DtShell extends HTMLElement {
       ctxExtras.map((n) => { n.removeAttribute('slot'); return n; }),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('shell.lang'), title: t('shell.lang'),
         onclick: () => { prefs.set('lang', lang() === 'en' ? 'ro' : 'en'); location.reload(); } }, lang().toUpperCase()),
-      h('button', { id: 'dt-theme-btn', class: 'icon-btn', type: 'button', 'aria-label': t(`shell.theme.${theme}`), title: t(`shell.theme.${theme}`),
-        onclick: () => toggleTheme() }, icon(theme === 'dark' ? 'sun' : 'moon', 15, 2)),
+      appearanceMenu(),
       userMenu());
 
     const skip = h('a', { class: 'sr-only', href: '#main' }, 'Skip to content');
@@ -65,8 +62,8 @@ class DtShell extends HTMLElement {
 
 // The signed-in user: initials on the button; the menu has the name, roles and sign-out.
 function userMenu() {
-  const btn = h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('shell.user'), 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '·');
-  const menu = h('div', { class: 'menu', role: 'menu', hidden: true });
+  const btn = h('button', { class: 'avatar-btn', type: 'button', 'aria-label': t('shell.user'), 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '·');
+  const menu = h('div', { class: 'menu account', role: 'menu', hidden: true });
   const wrap = h('span', { class: 'menu-wrap' }, btn, menu);
   const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
   btn.addEventListener('click', (e) => {
@@ -87,27 +84,109 @@ function userMenu() {
     const words = label.split(/[\s._-]+/).filter(Boolean);
     btn.textContent = (words.length > 1 ? words[0][0] + words[words.length - 1][0] : label.slice(0, 2)).toUpperCase();
     btn.title = `${label} (${u.username})`;
+    // as in Reporion: who (name, then the account and its roles), the account's own
+    // actions with an icon each, a separator, sign out
     menu.append(
-      h('div', { style: { padding: '5px 6px' } }, h('strong', {}, label), h('div', { class: 'muted small' }, u.username),
-        h('div', { class: 'muted small' }, `${t('shell.roles')}: ${u.roles.join(', ')}`)),
-      u.roles.includes('admin') ? h('a', { class: 'menu-item', role: 'menuitem', href: 'users.html' }, t('shell.users')) : null,
-      h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: () => logout() }, t('shell.signout')));
+      h('div', { class: 'menu-item static account-info' }, icon('user', 18, 1.8),
+        h('div', { class: 'menu-text' }, h('strong', {}, label),
+          h('span', { class: 'muted small' }, `${u.username} · ${u.roles.join(', ')}`))),
+      h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: () => { close(); passwordDialog(); } },
+        icon('key', 16, 1.8), t('shell.password')),
+      u.roles.includes('admin') ? h('a', { class: 'menu-item', role: 'menuitem', href: 'devices.html',
+        'aria-current': document.querySelector('dt-shell')?.getAttribute('page') === 'admin' ? 'page' : false }, icon('admin', 16, 1.8), t('nav.admin')) : null,
+      h('div', { class: 'menu-sep', role: 'separator' }),
+      h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: () => logout() }, icon('logout', 16, 1.8), t('shell.signout')));
   }).catch(() => { btn.textContent = '?'; });
   return wrap;
 }
 
+// Palettes (tokens in css/tokens.css); swatch = [background, accent] of the dark theme.
+export const PALETTES = [
+  ['iodine', 'Iodine', '#121016', '#B98CF0'],
+  ['cherenkov', 'Cherenkov', '#0A0E13', '#3CC4D8'],
+  ['phosphor', 'Phosphor', '#0F110E', '#C4E35A'],
+  ['instrument', 'Instrument', '#111111', '#F1ECE2'],
+];
+
+function appearanceChanged() {
+  document.dispatchEvent(new CustomEvent('dt-theme-change', { detail: prefs.get('theme') }));
+}
+
+export function setTheme(mode) {
+  prefs.set('theme', mode);
+  document.documentElement.dataset.theme = mode;
+  appearanceChanged();
+}
+
+export function setPalette(name) {
+  prefs.set('palette', name);
+  document.documentElement.dataset.palette = name;
+  appearanceChanged();
+}
+
+// One's own password: current, new, repeat (PUT /api/me/password; audited).
+function passwordDialog() {
+  const err = h('p', { class: 'error small', role: 'alert' });
+  const field = (name, label, ac) => h('label', { class: 'pw-field' }, h('span', { class: 'muted small' }, label),
+    h('input', { class: 'input', type: 'password', name, autocomplete: ac, required: true }));
+  const form = h('form', { method: 'dialog', class: 'pw-form' },
+    h('h2', { class: 'section-title' }, t('shell.password').replace('…', '')),
+    field('current', t('shell.pw.current'), 'current-password'),
+    field('next', t('shell.pw.new'), 'new-password'),
+    field('repeat', t('shell.pw.repeat'), 'new-password'), err,
+    h('div', { class: 'row', style: { 'justify-content': 'flex-end' } },
+      h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, t('shell.pw.cancel')),
+      h('button', { class: 'btn primary', type: 'submit' }, t('shell.pw.save'))));
+  const dlg = h('dialog', { class: 'pw-dialog' }, form);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(form));
+    if (d.next !== d.repeat) { err.textContent = t('shell.pw.differ'); return; }
+    try { await changePassword(d.current, d.next); dlg.close(); toast(t('shell.pw.done')); }
+    catch (ex) { err.textContent = ex.message; }
+  });
+  dlg.addEventListener('close', () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
 export function toggleTheme() {
-  const next = prefs.get('theme') === 'dark' ? 'light' : 'dark';
-  prefs.set('theme', next);
-  document.documentElement.dataset.theme = next;
-  // refresh the theme button label/icon
-  const btn = document.getElementById('dt-theme-btn');
-  if (btn) {
-    btn.replaceChildren(icon(next === 'dark' ? 'sun' : 'moon', 15, 2));
-    btn.setAttribute('aria-label', t(`shell.theme.${next}`));
-    btn.title = t(`shell.theme.${next}`);
-  }
-  document.dispatchEvent(new CustomEvent('dt-theme-change', { detail: next }));
+  setTheme(prefs.get('theme') === 'dark' ? 'light' : 'dark');
+}
+
+// Appearance (as in Reporion): dark / light, then the palettes with a swatch; a choice
+// applies at once and the menu stays open, so another can be tried.
+function appearanceMenu() {
+  const btn = h('button', { id: 'dt-theme-btn', class: 'icon-btn', type: 'button', 'aria-label': t('shell.appearance'),
+    title: t('shell.appearance'), 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, icon('palette', 16, 1.8));
+  const menu = h('div', { class: 'menu appearance', role: 'menu', hidden: true });
+  const wrap = h('span', { class: 'menu-wrap' }, btn, menu);
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  const draw = () => {
+    const mode = prefs.get('theme');
+    const current = prefs.get('palette') || 'iodine';
+    menu.replaceChildren(
+      h('div', { class: 'seg appearance-mode', role: 'group', 'aria-label': t('shell.appearance') },
+        ['dark', 'light'].map((m) => h('button', { type: 'button', 'aria-pressed': String(m === mode),
+          onclick: () => { setTheme(m); draw(); } }, icon(m === 'dark' ? 'moon' : 'sun', 13, 2), ' ', t(`shell.mode.${m}`)))),
+      h('div', { class: 'menu-sep', role: 'separator' }),
+      h('div', { class: 'menu-label muted small' }, t('shell.palette')),
+      ...PALETTES.map(([key, name, bg, accent]) => h('button', { class: 'menu-item', type: 'button', role: 'menuitemradio',
+        'aria-checked': String(key === current), onclick: () => { setPalette(key); draw(); } },
+        h('span', { class: 'swatch', 'aria-hidden': 'true', style: { background: `linear-gradient(135deg, ${bg} 0 50%, ${accent} 50% 100%)` } }),
+        h('span', { class: 'menu-text' }, h('span', {}, name), h('span', { class: 'muted small' }, t(`palette.${key}`))),
+        key === current ? h('span', { class: 'menu-end' }, icon('check', 14, 2.2)) : null)));
+  };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.hidden) draw();
+    menu.hidden = !menu.hidden;
+    btn.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  menu.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  return wrap;
 }
 
 customElements.define('dt-shell', DtShell);

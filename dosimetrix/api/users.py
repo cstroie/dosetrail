@@ -51,6 +51,17 @@ def _password(pw: str) -> str:
     return hash_password(pw)
 
 
+def change_own_password(user: User, current: str, new: str) -> None:
+    """A user's own password: the current one must be right; the same rules as for an admin."""
+    from ..security import verify_password
+
+    if not verify_password(current or "", user.password_hash):
+        raise UserError("the current password is wrong")
+    if new == current:
+        raise UserError("the new password is the same as the current one")
+    user.password_hash = _password(new)
+
+
 def listing(session: Session) -> list[dict]:
     return [as_dict(u) for u in session.scalars(select(User).order_by(User.username))]
 

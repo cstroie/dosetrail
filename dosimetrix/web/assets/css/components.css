@@ -64,6 +64,32 @@ dt-data-grid[data-density="comfortable"] .grid td { padding: 9px 8px; }
 .menu-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: var(--r); cursor: pointer; }
 .menu-item:hover { background: var(--panel-2); }
 .menu button.menu-item { border: 0; background: none; color: var(--text); text-align: left; }
+/* appearance menu (theme + palette) */
+.menu.appearance { min-width: 260px; gap: 2px; }
+.appearance-mode { display: flex; width: 100%; }
+.appearance-mode button { flex: 1; justify-content: center; display: inline-flex; align-items: center; gap: 4px; }
+.menu-sep { height: 1px; background: var(--line); margin: 6px 0; }
+.menu-label { padding: 2px 6px; text-transform: uppercase; letter-spacing: .06em; font-size: var(--fs-xs); }
+.menu-item[aria-checked="true"] { background: var(--accent-soft); }
+.menu-text { display: flex; flex-direction: column; line-height: 1.25; }
+.menu-end { margin-left: auto; color: var(--accent); display: inline-flex; }
+.swatch { width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px var(--line-2); }
+/* account menu (as in Reporion): round initials, an icon on every item, the who-row static */
+.avatar-btn { width: 30px; height: 30px; border-radius: 50%; border: 0; display: inline-grid; place-items: center; cursor: pointer;
+  background: var(--accent-soft); color: var(--accent); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .02em; }
+.avatar-btn:hover, .avatar-btn[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--accent); }
+.menu.account { min-width: 240px; gap: 2px; }
+.menu-item svg { flex: none; color: var(--muted); }
+.menu-item:hover svg, .menu-item[aria-current="page"] svg { color: var(--accent); }
+.menu-item[aria-current="page"] { background: var(--accent-soft); }
+.menu a.menu-item { color: var(--text); text-decoration: none; }
+.menu-item.static { cursor: default; padding: 6px; }
+.menu-item.static:hover { background: none; }
+.account-info svg { color: var(--accent); }
+.pw-dialog { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); color: var(--text); box-shadow: var(--shadow-pop); padding: var(--sp-4); width: min(360px, 90vw); }
+.pw-dialog::backdrop { background: var(--overlay); }
+.pw-form { display: grid; gap: var(--sp-2); }
+.pw-field { display: grid; gap: 2px; }
 
 /* ---------- states ---------- */
 .skeleton { display: block; height: 10px; border-radius: 2px; background: var(--panel-2); width: 100%; }

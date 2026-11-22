@@ -2,7 +2,7 @@
 // Stored in localStorage when available; everything still works without it.
 
 const KEY = 'dosimetrix.prefs';
-const DEFAULTS = { theme: 'dark', lang: 'en', dapUnit: 'Gy·cm²', density: 'compact', origin: 'local' };
+const DEFAULTS = { theme: 'dark', palette: 'iodine', lang: 'en', dapUnit: 'Gy·cm²', density: 'compact', origin: 'local' };
 
 function load() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || localStorage.getItem('dosetrail.prefs') || '{}') }; } catch { return { ...DEFAULTS }; }
@@ -25,5 +25,6 @@ export const prefs = {
 /** Apply theme and language to <html> before first paint (called from the page head). */
 export function applyDocumentPrefs() {
   document.documentElement.dataset.theme = state.theme;
+  document.documentElement.dataset.palette = state.palette;
   document.documentElement.lang = state.lang;
 }

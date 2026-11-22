@@ -70,6 +70,52 @@
   --seq: #6B35B8;
 }
 
+/*
+ * Alternative palettes, chosen per browser (Appearance menu, data-palette on <html>).
+ * Iodine above is the default. Each palette sets its surfaces, accent and heat-map hue for
+ * both themes; status colours and the chart series stay as above (validated for every
+ * dark panel here; see docs/branding/README.md). Selectors carry three attribute/pseudo
+ * parts so they win over the defaults whatever the order.
+ */
+
+/* Cherenkov: the former cyan, the blue glow of a reactor pool */
+:root[data-palette="cherenkov"]:not([data-theme="light"]) {
+  --bg: #0A0E13; --panel: #111821; --panel-2: #172130; --overlay: rgba(4, 8, 12, .6);
+  --text: #DCE4EC; --muted: #8E9BA8; --line: #223040; --line-2: #34465A;
+  --accent: #3CC4D8; --accent-ink: #06141A; --accent-soft: #0F3440; --focus: #7FE3F0; --seq: #3CC4D8;
+}
+:root[data-palette="cherenkov"][data-theme="light"] {
+  --bg: #E9EDF1; --panel: #FFFFFF; --panel-2: #F3F5F8; --overlay: rgba(14, 22, 32, .35);
+  --text: #0E1620; --muted: #4F5B67; --line: #D3DAE1; --line-2: #AFB9C4;
+  --accent: #00788A; --accent-ink: #FFFFFF; --accent-soft: #DDF1F4; --focus: #00788A; --seq: #00788A;
+}
+
+/* Phosphor: the glow of a thermoluminescent dosimeter, an instrument screen; ok turns teal */
+:root[data-palette="phosphor"]:not([data-theme="light"]) {
+  --bg: #0F110E; --panel: #161914; --panel-2: #1E221B; --overlay: rgba(6, 8, 5, .6);
+  --text: #E4E8DF; --muted: #949C8C; --line: #2A3026; --line-2: #3E4638;
+  --accent: #C4E35A; --accent-ink: #141A05; --accent-soft: #2A3312; --focus: #DDF58A; --seq: #C4E35A;
+  --ok: #3CC6A6; --ok-soft: #0F2E27;
+}
+:root[data-palette="phosphor"][data-theme="light"] {
+  --bg: #EEF0EA; --panel: #FFFFFF; --panel-2: #F4F6F1; --overlay: rgba(20, 23, 18, .35);
+  --text: #141712; --muted: #575E50; --line: #D9DED2; --line-2: #B3BBA8;
+  --accent: #4E6B00; --accent-ink: #FFFFFF; --accent-soft: #ECF3D6; --focus: #4E6B00; --seq: #4E6B00;
+  --ok: #0E7A67; --ok-soft: #DBF2EC;
+}
+
+/* Instrument: graphite and bone white, colour only where it carries meaning */
+:root[data-palette="instrument"]:not([data-theme="light"]) {
+  --bg: #111111; --panel: #181818; --panel-2: #212121; --overlay: rgba(0, 0, 0, .6);
+  --text: #EDEAE4; --muted: #9B968E; --line: #2C2C2C; --line-2: #444444;
+  --accent: #F1ECE2; --accent-ink: #111111; --accent-soft: #2B2A27; --focus: #FFFFFF; --seq: #3987e5;
+}
+:root[data-palette="instrument"][data-theme="light"] {
+  --bg: #F2F0EB; --panel: #FFFFFF; --panel-2: #F7F5F1; --overlay: rgba(23, 22, 20, .35);
+  --text: #171614; --muted: #5E5A53; --line: #E0DDD5; --line-2: #BDB8AE;
+  --accent: #1A1A1A; --accent-ink: #FFFFFF; --accent-soft: #E6E3DC; --focus: #1A1A1A; --seq: #2a78d6;
+}
+
 :root {
   /* type: system stacks only, nothing downloaded */
   --font-sans: "Segoe UI", system-ui, -apple-system, Roboto, "Noto Sans", "Liberation Sans", sans-serif;

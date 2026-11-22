@@ -118,7 +118,8 @@ select.input { padding: 0 4px; }
 
 /* ---------- print: always light, no chrome ---------- */
 @media print {
-  :root, :root[data-theme="dark"] {
+  /* :not(#print) gives ID strength, so no palette or theme selector leaks onto paper */
+  :root:not(#print) {
     --bg: #fff; --panel: #fff; --panel-2: #F5F3F8; --text: #111; --muted: #444; --line: #999; --line-2: #666;
     --accent: #6B35B8; --accent-soft: #EEE5FA; --ok: #18794E; --ok-soft: #DDF3E7; --warn: #8A5300; --warn-soft: #FCEFD6;
     --alert: #B3261E; --alert-soft: #FBE6E4; --ref: #B3261E;

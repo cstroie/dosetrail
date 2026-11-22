@@ -530,3 +530,14 @@ def test_survey_central_endpoints(client):
     assert rep["rows"][0]["institutions"][0]["name"] == "Site A"
     up = client.get("/api/survey/uploads").json()[0]
     assert client.delete(f"/api/survey/uploads/{up['id']}").json()["rows"] == 10
+
+
+def test_change_own_password(client):
+    login(client, "phys", "phys-pass-12")
+    put = lambda cur, new: client.put("/api/me/password", json={"current": cur, "new": new})  # noqa: E731
+    assert put("nope", "x" * 12).status_code == 400
+    assert put("phys-pass-12", "short").status_code == 400
+    r = client.put("/api/me/password", json={"current": "phys-pass-12", "new": "phys-pass-new-1"})
+    assert r.status_code == 200
+    assert login(client, "phys", "phys-pass-new-1").status_code == 200
+    client.put("/api/me/password", json={"current": "phys-pass-new-1", "new": "phys-pass-12"})
