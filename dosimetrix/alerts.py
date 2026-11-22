@@ -216,10 +216,16 @@ def counts(session: Session, status: str | None = None, **filters) -> dict:
     by_level: Counter = Counter()
     by_mod: Counter = Counter()
     for key, name, sev, mod, n in rows:
-        r = by_rule.setdefault(key, {"rule": key, "name": name, "n": 0})
-        r["n"] += n
         by_level[sev] += n
         by_mod[mod] += n
+    # the per-rule counts ignore the rule filter, so the rule dropdown keeps listing every rule
+    for key, name, n in session.execute(
+            _filtered(select(AlertRule.key, AlertRule.name, func.count())
+                      .select_from(Alert).join(AlertRule, AlertRule.id == Alert.rule_id)
+                      .join(Study, Study.id == Alert.study_id),
+                      status, **{**filters, "rule": None})
+            .group_by(AlertRule.key, AlertRule.name)):
+        by_rule[key] = {"rule": key, "name": name, "n": n}
     return {"total": sum(by_level.values()), "by_rule": sorted(by_rule.values(),
                                                                 key=lambda x: -x["n"]),
             "by_level": dict(by_level), "by_modality": dict(by_mod)}
