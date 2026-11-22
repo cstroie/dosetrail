@@ -119,10 +119,10 @@ select.input { padding: 0 4px; }
 /* ---------- print: always light, no chrome ---------- */
 @media print {
   :root, :root[data-theme="dark"] {
-    --bg: #fff; --panel: #fff; --panel-2: #F3F5F8; --text: #111; --muted: #444; --line: #999; --line-2: #666;
-    --accent: #00788A; --accent-soft: #DDF1F4; --ok: #18794E; --ok-soft: #DDF3E7; --warn: #8A5300; --warn-soft: #FCEFD6;
+    --bg: #fff; --panel: #fff; --panel-2: #F5F3F8; --text: #111; --muted: #444; --line: #999; --line-2: #666;
+    --accent: #6B35B8; --accent-soft: #EEE5FA; --ok: #18794E; --ok-soft: #DDF3E7; --warn: #8A5300; --warn-soft: #FCEFD6;
     --alert: #B3261E; --alert-soft: #FBE6E4; --ref: #B3261E;
-    --d1: #1F6FB4; --d2: #D46A00; --d3: #1E8C7E; --m-rf: #7A4FB5;
+    --d1: #2a78d6; --d2: #eb6834; --d3: #1baf7a; --m-rf: #eb6834;
   }
   .rail, .ctx, .no-print, .btn, .seg { display: none !important; }
   .panel { break-inside: avoid; }
