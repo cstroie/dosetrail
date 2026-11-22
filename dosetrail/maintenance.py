@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import and_, bindparam, func, select, update
+from sqlalchemy import and_, bindparam, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from .db.models import Device, Event, Patient, Study
@@ -58,8 +58,28 @@ def assign_pseudonyms(session: Session, secret: bytes, batch: int = 5000) -> int
     return len(params)
 
 
+def zero_doses_as_missing(session: Session) -> int:
+    """Events stored with DAP, Ka,r or SID exactly 0 (the unit reported 0, not a
+    measurement): set them to missing, note it in extra_json, recompute study totals."""
+    from .ingest.store import ZERO_IS_MISSING, update_study_totals
+
+    cols = [getattr(Event, k) for k in ZERO_IS_MISSING]
+    events = list(session.scalars(select(Event).where(or_(*[c == 0 for c in cols]))))
+    for e in events:
+        zeros = [k for k in ZERO_IS_MISSING if getattr(e, k) == 0]
+        for k in zeros:
+            setattr(e, k, None)
+        e.extra_json = {**(e.extra_json or {}), "reported_zero": zeros}
+    session.flush()
+    ids = sorted({e.study_id for e in events})
+    for sid in ids:
+        update_study_totals(session, session.get(Study, sid))
+    return len(ids)
+
+
 def recompute_all(session: Session, secret: bytes | None = None) -> list[str]:
-    out = [f"CT studies updated: {recompute_ct_columns(session)}",
+    out = [f"studies with zero doses set to missing: {zero_doses_as_missing(session)}",
+           f"CT studies updated: {recompute_ct_columns(session)}",
            f"devices updated: {recompute_device_stats(session)}"]
     if secret is not None:
         out.append(f"pseudonyms assigned: {assign_pseudonyms(session, secret)}")

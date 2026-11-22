@@ -160,6 +160,7 @@ class Store:
         sigs = {_sig(e) for e in existing} if projection else set()
         added = 0
         for ev in obj.events:
+            ev = zero_as_missing(ev)
             if ev.get("event_uid") and ev["event_uid"] in uids:
                 continue
             if projection and ev.get("dap") is not None and _sig(ev) in sigs:
@@ -257,6 +258,20 @@ def _touch_device(device: Device, when: dt.datetime | None, new_study: bool) -> 
             device.last_study_at = when
         if device.first_study_at is None or when < device.first_study_at:
             device.first_study_at = when
+
+
+# A dose or distance of exactly 0 for an exposure that happened is not a measurement: some
+# units write 0 when the DAP meter is absent, off or not calibrated. Stored as missing, so
+# it does not pull medians down; the report's value is kept in extra_json.
+ZERO_IS_MISSING = ("dap", "rp_dose", "sid_mm")
+
+
+def zero_as_missing(ev: dict) -> dict:
+    zeros = [k for k in ZERO_IS_MISSING if ev.get(k) == 0]
+    if not zeros:
+        return ev
+    return {**ev, **dict.fromkeys(zeros), "extra_json": {**(ev.get("extra_json") or {}),
+                                                         "reported_zero": zeros}}
 
 
 def update_study_totals(session: Session, study: Study) -> None:

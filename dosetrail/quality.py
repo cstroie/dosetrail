@@ -11,6 +11,8 @@ Rules (severity ``error`` = the value is almost certainly wrong, ``warn`` = chec
   age group. Probably an error, or a case worth reviewing.
 * ``weight_implausible`` (warn): below 0–10 years, outside WHO weight-for-age P1–P99 (when
   the tables are installed: ``dosetrail growth install``); otherwise outside wide bounds.
+* ``dap_missing`` (warn): a radiography or fluoroscopy study with exposures but no DAP
+  (the unit reported none, or 0: DAP meter absent, off or out of calibration).
 * ``age_missing`` / ``sex_missing`` (warn).
 * ``possible_duplicate`` (warn): another study of the same patient on the same device
   within 2 minutes, with a different Study UID.
@@ -48,6 +50,7 @@ RULES = {
     "dose_absurd": ("error", "Physically implausible dose value"),
     "dose_far_above_drl": ("warn", "Dose above 3 × the national DRL of the exam"),
     "weight_implausible": ("warn", "Weight implausible for the age"),
+    "dap_missing": ("warn", "Exposures without DAP (none or 0 reported)"),
     "age_missing": ("warn", "No age"),
     "sex_missing": ("warn", "No sex"),
     "possible_duplicate": ("warn", "Another study of the patient on the device within 2 min"),
@@ -178,6 +181,12 @@ class Checker:
                 code = national.get(e.id) if rx else national.get(None)
                 if code and e.dap:
                     per_code[code] += e.dap
+        if s.modality in ("DX", "CR", "RF", "XA") and events \
+                and all(e.dap is None for e in events if not e.is_localizer):
+            zero = sum(1 for e in events
+                       if "dap" in ((e.extra_json or {}).get("reported_zero") or []))
+            out.append(Finding("dap_missing", f"{len(events)} exposures"
+                               + (f", {zero} reported as 0" if zero else "")))
         for code, dap in per_code.items():
             ref = self.drl.get((code, band, "dap"))
             if ref and dap > 3 * ref:

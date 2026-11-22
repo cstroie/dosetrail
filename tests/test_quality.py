@@ -62,3 +62,31 @@ def test_rules_on_studies(session):
     assert d["share"]["weight_measured"] == round(1 / 3, 4) and d["flagged"] == 2
     assert {f["id"] for f in out["flagged"]} == {good.id, bad.id}  # missing data alone is
     # counted but does not put a study on the flagged list
+
+
+def test_zero_dap_is_missing(session):
+    from dosetrail import maintenance
+    from dosetrail.ingest.store import update_study_totals, zero_as_missing
+
+    ev = zero_as_missing({"dap": 0.0, "rp_dose": 0.0, "sid_mm": 0.0, "kvp": 72.0,
+                          "extra_json": {"source": "rdsr"}})
+    assert ev["dap"] is None and ev["sid_mm"] is None and ev["kvp"] == 72.0
+    assert ev["extra_json"] == {"source": "rdsr", "reported_zero": ["dap", "rp_dose", "sid_mm"]}
+    assert zero_as_missing({"dap": 0.01}) == {"dap": 0.01}
+
+    load_all(session)
+    dev = Device(display_name="Mobile", identity_key="q-z", is_local=True)
+    kid = Patient(pseudo_id="P-Z1", sex="M")
+    session.add_all([dev, kid])
+    session.flush()
+    s = Study(study_uid="z.1", modality="DX", device_id=dev.id, patient_id=kid.id,
+              study_datetime=T, age_days=30, source_kind="test", study_description="Chest")
+    s.events = [Event(dap=0.0, kvp=72.0), Event(dap=0.0, kvp=72.0)]
+    session.add(s)
+    session.flush()
+    update_study_totals(session, s)
+    assert s.total_dap == 0.0
+    assert maintenance.zero_doses_as_missing(session) == 1
+    session.refresh(s)
+    assert s.total_dap is None and all(e.dap is None for e in s.events)
+    assert "dap_missing" in _rules(quality.study_findings(session, s.id))
