@@ -21,7 +21,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import and_, case, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from .db.models import (
@@ -57,6 +57,8 @@ METRICS: dict[str, Metric] = {
     "psd": Metric("study", Study.psd_mgy, "mGy", "Peak skin dose (estimate)"),
     "exposures": Metric("study", Study.n_events, "1", "Irradiation events"),
     "dlp": Metric("event", Event.dlp, "mGy.cm", "DLP per series"),
+    "ssde": Metric("event", func.coalesce(Event.ssde, Event.ssde_calc), "mGy",
+                   "SSDE per series (reported, else calculated)"),
     "ctdivol": Metric("event", Event.ctdivol, "mGy", "CTDIvol per series"),
     "scan_length": Metric("event", Event.scan_length_mm, "mm", "Scan length"),
     "dap": Metric("event", Event.dap, "Gy.cm2", "DAP per exposure"),

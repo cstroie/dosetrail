@@ -88,6 +88,7 @@ _EV = [
     ("Phantom [cm]", "ct_phantom_cm", None), ("Scan length [mm]", "scan_length_mm", 1),
     ("Pitch", "pitch", 3), ("Collimation [mm]", "collimation_mm", 2),
     ("Rotation time [s]", "rotation_time_s", 3), ("SSDE [mGy]", "ssde", 3),
+    ("SSDE calculated [mGy]", "ssde_calc", 3), ("SSDE method", "ssde_method", None),
     ("kVp [kV]", "kvp", 1), ("mA", "ma", 2), ("mAs", "mas", 3),
     ("Exposure time [s]", "exposure_time_s", 4), ("DAP [Gy.cm2]", "dap", 8),
     ("Ka,r [Gy]", "rp_dose", 8), ("Fluoroscopy time [s]", "fluoro_time_s", 2),

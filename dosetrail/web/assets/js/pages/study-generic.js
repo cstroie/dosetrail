@@ -33,6 +33,7 @@ function ctColumns() {
     { key: 'ctdivol', label: 'CTDIvol', unit: 'mGy', align: 'right', render: (e) => (e.ctdivol == null ? '' : num(e.ctdivol, 2)) },
     { key: 'phantom_cm', label: 'Ph.', unit: 'cm', align: 'right' },
     { key: 'dlp', label: 'DLP', unit: 'mGy·cm', align: 'right', render: (e) => (e.dlp == null ? '' : num(e.dlp, 1)) },
+    { key: 'ssde_mgy', label: 'SSDE', unit: 'mGy', align: 'right', render: (e) => (e.ssde_mgy == null ? '' : h('span', { title: `${e.ssde_source === 'reported' ? 'reported by the scanner' : `calculated (${e.ssde_source})`}${e.wed_cm ? ` · Dw ${num(e.wed_cm, 1)} cm` : ''}` }, num(e.ssde_mgy, 2), e.ssde_source === 'reported' ? '' : '*')) },
     { key: 'scan_length_mm', label: 'Length', unit: 'cm', align: 'right', render: (e) => (e.scan_length_mm == null ? '' : num(e.scan_length_mm / 10, 1)) },
     { key: 'pitch', label: 'Pitch', align: 'right' },
     { key: 'kvp', label: 'kV', align: 'right' },
@@ -137,7 +138,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
 }
 
 function exportRows(s, ct) {
-  const cols = ct ? ['no', 'protocol', 'type', 'ctdivol', 'phantom_cm', 'dlp', 'scan_length_mm', 'pitch', 'kvp', 'mas', 'exam']
+  const cols = ct ? ['no', 'protocol', 'type', 'ctdivol', 'phantom_cm', 'dlp', 'ssde_mgy', 'scan_length_mm', 'pitch', 'kvp', 'mas', 'exam']
     : ['no', 'time', 'protocol', 'anatomy', 'view', 'kvp', 'mas', 'dap_gycm2', 'exposure_index', 'deviation_index', 'sid_cm', 'exam'];
   const esc = (v) => (v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v).replace(/^([=+\-@])/, "'$1"));
   const text = [cols.join(',')].concat(s.events.map((e) => cols.map((c) => esc(e[c])).join(','))).join('\r\n');

@@ -81,6 +81,9 @@ def recompute_all(session: Session, secret: bytes | None = None) -> list[str]:
     out = [f"studies with zero doses set to missing: {zero_doses_as_missing(session)}",
            f"CT studies updated: {recompute_ct_columns(session)}",
            f"devices updated: {recompute_device_stats(session)}"]
+    from . import ssde
+
+    out.append(f"CT series with SSDE calculated from Dw: {ssde.update(session)}")
     if secret is not None:
         out.append(f"pseudonyms assigned: {assign_pseudonyms(session, secret)}")
     return out

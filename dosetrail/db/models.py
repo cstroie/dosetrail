@@ -241,6 +241,9 @@ class Event(Base):
     tcm: Mapped[str | None] = mapped_column(Text(64))
     ssde: Mapped[float | None] = mapped_column(Float)
     wed_mm: Mapped[float | None] = mapped_column(Float)
+    # SSDE calculated from wed_mm (ssde.py); ssde above is the scanner-reported value
+    ssde_calc: Mapped[float | None] = mapped_column(Float)
+    ssde_method: Mapped[str | None] = mapped_column(AsciiId(24))
     is_localizer: Mapped[bool] = mapped_column(Boolean, default=False)
     is_principal: Mapped[bool | None] = mapped_column(Boolean)
     dose_check_alert: Mapped[bool | None] = mapped_column(Boolean)
