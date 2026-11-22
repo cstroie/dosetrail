@@ -504,7 +504,8 @@ def test_alerts_page_api(client):
     keys = {r["rule"] for r in summ["by_rule"]}
     assert {"fluoro-kar-5gy", "fluoro-dap-500"} <= keys
     # selecting a rule must not shrink the rule dropdown
-    sel = client.get("/api/alerts/summary", params={"status": "all", "rule": "fluoro-dap-500"}).json()
+    sel = client.get("/api/alerts/summary",
+                     params={"status": "all", "rule": "fluoro-dap-500"}).json()
     assert {r["rule"] for r in sel["by_rule"]} == keys and sel["total"] == 1
     one = client.get("/api/alerts", params={"status": "all", "rule": "fluoro-dap-500"}).json()
     assert len(one) == 1 and one[0]["modality"] == "XA"
