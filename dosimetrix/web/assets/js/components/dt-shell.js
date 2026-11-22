@@ -102,10 +102,10 @@ function userMenu() {
 
 // Palettes (tokens in css/tokens.css); swatch = [background, accent] of the dark theme.
 export const PALETTES = [
+  ['film', 'Film', '#070B0E', '#9CB8D6'],
   ['iodine', 'Iodine', '#111114', '#AE99D6'],
   ['cherenkov', 'Cherenkov', '#0A0E13', '#3CC4D8'],
   ['phosphor', 'Phosphor', '#0F110E', '#C4E35A'],
-  ['film', 'Film', '#070B0E', '#9CB8D6'],
 ];
 
 function appearanceChanged() {
@@ -119,6 +119,7 @@ export function setTheme(mode) {
 }
 
 export function setPalette(name) {
+  prefs.set('paletteV', 2);
   prefs.set('palette', name);
   document.documentElement.dataset.palette = name;
   appearanceChanged();
@@ -164,7 +165,7 @@ function appearanceMenu() {
   const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
   const draw = () => {
     const mode = prefs.get('theme');
-    const current = prefs.get('palette') || 'iodine';
+    const current = prefs.get('palette') || 'film';
     menu.replaceChildren(
       h('div', { class: 'seg appearance-mode', role: 'group', 'aria-label': t('shell.appearance') },
         ['dark', 'light'].map((m) => h('button', { type: 'button', 'aria-pressed': String(m === mode),

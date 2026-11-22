@@ -2,12 +2,15 @@
 // Stored in localStorage when available; everything still works without it.
 
 const KEY = 'dosimetrix.prefs';
-const DEFAULTS = { theme: 'dark', palette: 'iodine', lang: 'en', dapUnit: 'Gy·cm²', density: 'compact', origin: 'local' };
+const DEFAULTS = { theme: 'dark', palette: 'film', paletteV: 2, lang: 'en', dapUnit: 'Gy·cm²', density: 'compact', origin: 'local' };
 
 function load() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem('dosetrail.prefs') || '{}'); } catch { /* ignore */ }
   if (saved.palette === 'instrument') saved.palette = 'film';  // renamed 2026-11-22
+  // Film became the default (2026-11-22): a palette stored before then was the old default
+  // written along with other preferences, not a choice
+  if (saved.paletteV !== 2) { saved.palette = 'film'; saved.paletteV = 2; }
   return { ...DEFAULTS, ...saved };
 }
 

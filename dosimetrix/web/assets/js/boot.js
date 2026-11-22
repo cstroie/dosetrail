@@ -4,6 +4,7 @@
   var p = {};
   try { p = JSON.parse(localStorage.getItem('dosimetrix.prefs') || localStorage.getItem('dosetrail.prefs') || '{}'); } catch (e) { /* ignore */ }
   document.documentElement.dataset.theme = p.theme === 'light' ? 'light' : 'dark';
-  document.documentElement.dataset.palette = /^(iodine|cherenkov|phosphor|film)$/.test(p.palette || '') ? p.palette : p.palette === 'instrument' ? 'film' : 'iodine';
+  // Film is the default; a palette stored before it became the default (no paletteV 2) is ignored
+  document.documentElement.dataset.palette = p.paletteV === 2 && /^(iodine|cherenkov|phosphor|film)$/.test(p.palette || '') ? p.palette : 'film';
   document.documentElement.lang = p.lang === 'ro' ? 'ro' : 'en';
 }());
