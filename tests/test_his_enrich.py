@@ -19,6 +19,14 @@ GIRL = "618010140001"  # + check digit: a girl born 2018-01-01
 GIRL += str(ro_cnp_check_digit(GIRL))
 
 
+@pytest.fixture(autouse=True)
+def exams_count_as_new(monkeypatch):
+    """The factory's exams are from 2025: treat them as new imports here."""
+    from dosetrail.ingest import store
+
+    monkeypatch.setattr(store, "HIS_NEW_DAYS", 10 ** 5)
+
+
 @pytest.fixture
 def stub():
     s = his_stub.Stub()
@@ -53,6 +61,15 @@ def test_new_studies_are_queued_only_with_a_server_and_policy(session, stub):
     session.get(Device, st.device_id).his_policy = "none"
     st = _ingest(session, "1.9.3")
     assert session.get(HisLookup, st.id) is None
+
+
+def test_old_exams_are_history_and_not_queued(session, stub, his, monkeypatch):
+    from dosetrail.ingest import store
+
+    monkeypatch.setattr(store, "HIS_NEW_DAYS", 7)
+    st = _ingest(session, "1.9.5")  # an exam from 2025 arriving now (PACS backfill)
+    assert session.get(HisLookup, st.id) is None
+    assert st.patient.sex == "F" and st.age_precision.value == "exact"  # CNP still applies
 
 
 def test_request_on_the_exam_day_gives_weight_height_and_indication(session, stub, his):

@@ -6,7 +6,8 @@ registered in SCHEMES; `parse()` tries them in order and returns the first match
 
 Romania – CNP (Cod Numeric Personal), 13 digits:  S YY MM DD JJ NNN C
   S    sex and century: 1/2 1900–1999, 3/4 1800–1899, 5/6 2000–2099 (odd = male);
-       7/8 foreign residents (century not encoded); 9 foreigners (sex not encoded)
+       7/8 foreign residents, 9 foreigners: century not encoded, taken as the latest one
+       that puts the birth before the exam (under 100 years); 9 doesn't encode sex
   JJ   county or series code: 01–47, 51, 52, 70, 80–83
   C    check digit: sum(digit_i × "279146358279"_i) mod 11, a result of 10 counts as 1
 """
@@ -16,8 +17,6 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Callable
 from dataclasses import dataclass
-
-MAX_AGE_YEARS = 120
 
 
 @dataclass(frozen=True)
@@ -64,12 +63,14 @@ def ro_cnp(value: str, on: dt.date | None = None) -> NationalId | None:
         if birth is None:
             return None
         return NationalId("ro_cnp", sex, birth if birth <= on else None)
-    # 7/8/9: the century isn't encoded; keep it only when exactly one is plausible
-    options = [b for c in (1900, 2000) if (b := _date(c + yy, mm, dd)) is not None
-               and b <= on and (on.year - b.year) <= MAX_AGE_YEARS]
-    if not any(_date(c + yy, mm, dd) for c in (1900, 2000)):
+    # 7/8/9: the century isn't encoded: the latest one that puts the birth on or before
+    # `on` (the patient is taken to be under 100)
+    birth = _date(2000 + yy, mm, dd)
+    if birth is None or birth > on:
+        birth = _date(1900 + yy, mm, dd)
+    if birth is None:
         return None
-    return NationalId("ro_cnp", sex, options[0] if len(options) == 1 else None)
+    return NationalId("ro_cnp", sex, birth if birth <= on else None)
 
 
 # ----------------------------------------------------------------------------- registry

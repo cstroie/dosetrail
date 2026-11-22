@@ -43,7 +43,7 @@ def test_ro_cnp_future_birth_is_dropped():
 
 def test_ro_cnp_residents_century():
     assert ro_cnp(cnp("750010140001"), ON).birth_date == dt.date(1950, 1, 1)  # 2050 is future
-    assert ro_cnp(cnp("810010140001"), ON).birth_date is None  # 1910 or 2010: ambiguous
+    assert ro_cnp(cnp("810010140001"), ON).birth_date == dt.date(2010, 1, 1)  # under 100
     assert ro_cnp(cnp("810010140001"), ON).sex == "F"
     assert ro_cnp(cnp("910010140001"), ON).sex is None
 

@@ -225,7 +225,7 @@ class Store:
         if obj.kind in ("ct_rdsr", "proj_rdsr") and study.modality in ("SR", "OT", None):
             study.modality = s.get("modality") or study.modality
         self.session.flush()
-        if new and self._his_wanted(device):
+        if new and self._his_wanted(device) and _recent(study.study_datetime):
             self.session.add(HisLookup(study_id=study.id, status="pending", attempts=0))
             self.session.flush()
         return study, new
@@ -263,6 +263,13 @@ class Store:
     def _count(self, r: Result) -> Result:
         self.stats[r.status] += 1
         return r
+
+
+HIS_NEW_DAYS = 7  # older exams (PACS or legacy backfill) are history: CNP + estimates only
+
+
+def _recent(when: dt.datetime | None) -> bool:
+    return when is None or when >= dt.datetime.now() - dt.timedelta(days=HIS_NEW_DAYS)
 
 
 def derive(session: Session, study_ids: list[int]) -> None:

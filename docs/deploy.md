@@ -88,7 +88,10 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
   `dosetrail his check`). Supported: a HippoBridge FHIR gateway. Use a HIS account with read
   access. The password is stored encrypted with a key derived from the site secret, and is
   never shown again; if the site secret changes, enter the password again.
-- With an enabled server, every new study is queued. The `dosetrail-his` service
+- With an enabled server, every new study whose exam is at most 7 days old is queued.
+  Older exams arriving now (a PACS or legacy backfill) are history: they get the CNP
+  (sex, birth date, exact age) and growth-chart weight estimates, not HIS lookups. Use
+  `dosetrail his backfill` for them, if ever. The `dosetrail-his` service
   (`dosetrail his run`) works through the queue one study at a time, pausing between calls
   (`min_interval_s`):
   1. it finds the patient by the patient ID (a national ID such as the CNP, or a HIS code);
