@@ -239,3 +239,14 @@ def test_mammogram_copies_are_not_counted_twice(session):
         store.store(parse(ds))
     s = session.scalar(select(Study).filter_by(study_uid="1.2.3.710"))
     assert s.n_events == 1 and s.agd_left == pytest.approx(1.25)
+
+
+def test_mammography_laterality_as_a_target_region_modifier():
+    ds = f.proj_rdsr(study_uid="1.2.3.720", sop_uid="1.2.3.720.1")
+    ev = next(it for it in ds.ContentSequence
+              if it.ConceptNameCodeSequence[0].CodeValue == "113706")
+    ev.ContentSequence.append(f.item("CODE", ("123014", "Target Region"),
+                                     ("76752008", "Breast", "SCT"), children=[
+        f.item("CODE", ("272741003", "Laterality"), ("24028007", "Right", "SCT"),
+               rel="HAS CONCEPT MOD")]))
+    assert parse(ds).events[0]["laterality"] == "R"

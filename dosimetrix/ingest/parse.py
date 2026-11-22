@@ -367,7 +367,9 @@ def parse_projection(ds, root: Node) -> ParsedObject:
         pulses = ev.find_all("113793", deep=True)
         widths = [p.number for p in pulses if p.number is not None]
         n_pulses = ev.num("113768")
-        lat = ev.coded("111027")  # laterality
+        # Image Laterality (111027), or Laterality (SCT 272741003 / SRT G-C171) as a modifier
+        # of the target region, as mammography reports write it
+        lat = ev.coded("111027") or ev.coded("272741003") or ev.coded("G-C171")
         events.append({
             "event_uid": (ev.text("113769") or "")[:64] or None,
             "event_datetime": ev.datetime("111526"),
