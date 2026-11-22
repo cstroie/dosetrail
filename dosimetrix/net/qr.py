@@ -381,6 +381,12 @@ def has_dose_report(session: Session, study_uid: str) -> bool:
     return bool(st and st.source_kind in ("ct_rdsr", "proj_rdsr") and st.n_events)
 
 
+def needs_activity(session: Session, study_uid: str) -> bool:
+    """A known study (e.g. the CT part of a PET/CT) without its administered activity."""
+    return session.scalar(select(Study.id).where(
+        Study.study_uid == study_uid, Study.admin_activity_mbq.is_(None))) is not None
+
+
 def needs_staff(session: Session, study_uid: str) -> bool:
     """A CT study we have whose operator and performing physician are both unknown."""
     return session.scalar(select(Study.id).where(
@@ -469,7 +475,8 @@ def run_day(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
             if not (mods & (wanted - {"SR"})) and not (sr_only and "SR" in wanted):
                 stats.add("skipped_not_xray")
                 continue
-            if in_database(session, h.uid):
+            if in_database(session, h.uid) and not (h.modalities & NM_IMAGES
+                                                     and needs_activity(session, h.uid)):
                 stats.add("skipped_known")
                 continue
             todo.append(h)
