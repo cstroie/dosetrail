@@ -105,7 +105,7 @@ export const PALETTES = [
   ['iodine', 'Iodine', '#111114', '#AE99D6'],
   ['cherenkov', 'Cherenkov', '#0A0E13', '#3CC4D8'],
   ['phosphor', 'Phosphor', '#0F110E', '#C4E35A'],
-  ['instrument', 'Instrument', '#111111', '#F1ECE2'],
+  ['film', 'Film', '#070B0E', '#9CB8D6'],
 ];
 
 function appearanceChanged() {

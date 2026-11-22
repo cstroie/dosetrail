@@ -5,7 +5,10 @@ const KEY = 'dosimetrix.prefs';
 const DEFAULTS = { theme: 'dark', palette: 'iodine', lang: 'en', dapUnit: 'Gy·cm²', density: 'compact', origin: 'local' };
 
 function load() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || localStorage.getItem('dosetrail.prefs') || '{}') }; } catch { return { ...DEFAULTS }; }
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem('dosetrail.prefs') || '{}'); } catch { /* ignore */ }
+  if (saved.palette === 'instrument') saved.palette = 'film';  // renamed 2026-11-22
+  return { ...DEFAULTS, ...saved };
 }
 
 let state = load();

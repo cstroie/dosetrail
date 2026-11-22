@@ -104,16 +104,20 @@
   --ok: #0E7A67; --ok-soft: #DBF2EC;
 }
 
-/* Instrument: graphite and bone white, colour only where it carries meaning */
-:root[data-palette="instrument"]:not([data-theme="light"]) {
-  --bg: #111111; --panel: #181818; --panel-2: #212121; --overlay: rgba(0, 0, 0, .6);
-  --text: #EDEAE4; --muted: #9B968E; --line: #2C2C2C; --line-2: #444444;
-  --accent: #F1ECE2; --accent-ink: #111111; --accent-soft: #2B2A27; --focus: #FFFFFF; --seq: #3987e5;
+/* Film (after Reporion's): cool X-ray film on a light box; its own softer status steps */
+:root[data-palette="film"]:not([data-theme="light"]) {
+  --bg: #070B0E; --panel: #0F1A22; --panel-2: #142230; --overlay: rgba(2, 5, 8, .65);
+  --text: #C3D4E4; --muted: #83909B; --line: #243846; --line-2: #3A5166;
+  --accent: #9CB8D6; --accent-ink: #0A1218; --accent-soft: #182A3A; --focus: #B4CCE4; --seq: #9CB8D6;
+  --ok: #74C9A3; --ok-soft: #10291F; --warn: #E0B25C; --warn-soft: #2E240F;
+  --alert: #E58A8A; --alert-soft: #331718; --ref: #E58A8A;
 }
-:root[data-palette="instrument"][data-theme="light"] {
-  --bg: #F2F0EB; --panel: #FFFFFF; --panel-2: #F7F5F1; --overlay: rgba(23, 22, 20, .35);
-  --text: #171614; --muted: #5E5A53; --line: #E0DDD5; --line-2: #BDB8AE;
-  --accent: #1A1A1A; --accent-ink: #FFFFFF; --accent-soft: #E6E3DC; --focus: #1A1A1A; --seq: #2a78d6;
+:root[data-palette="film"][data-theme="light"] {
+  --bg: #C9D6E2; --panel: #F4F8FC; --panel-2: #EAF1F8; --overlay: rgba(11, 23, 34, .35);
+  --text: #0B1722; --muted: #425568; --line: #BCCBDA; --line-2: #8EA6BB;
+  --accent: #2F5A86; --accent-ink: #FFFFFF; --accent-soft: #E2ECF6; --focus: #2F5A86; --seq: #2F5A86;
+  --ok: #1F7A55; --ok-soft: #DDF0E7; --warn: #8A5A00; --warn-soft: #F6EBD3;
+  --alert: #B03030; --alert-soft: #F6E1E1; --ref: #B03030;
 }
 
 :root {

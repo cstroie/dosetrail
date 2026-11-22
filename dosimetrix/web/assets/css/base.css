@@ -131,3 +131,12 @@ select.input { padding: 0 4px; }
 }
 
 .work-inner { display: contents; }
+
+/* Film: the light box behind the film (screen only; print stays plain) */
+@media screen {
+  :root[data-palette="film"]:not([data-theme="light"]) body {
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(156, 184, 214, .09), transparent 70%) fixed, var(--bg); }
+  :root[data-palette="film"][data-theme="light"] body {
+    background: radial-gradient(ellipse 80% 65% at 50% 38%, #F3F8FC, #E3ECF4 45%, transparent 100%) fixed, #B4C4D4; }
+}
+
