@@ -199,7 +199,7 @@ modality = "CT,RF,XA"
 threshold = 0.0
 severity = "alert"
 notify = true
-note = "The study is marked as pregnant (DICOM Pregnancy Status, HIS or entered): estimate and document the conceptus dose, especially when the uterus was in or near the beam (ICRP 84)."
+note = "The study is marked as pregnant (today only from the HIS request; 0 studies so far): estimate and document the conceptus dose, especially when the uterus was in or near the beam (ICRP 84)."
 
 [[rule]]
 key = "device-silent-4d"
@@ -210,7 +210,7 @@ unit = "d"
 window_days = 28
 severity = "warn"
 notify = true
-note = "Only devices that averaged at least one study a day over the 28 days before: a broken dose report export, PACS link or receiver rather than a quiet room. 4 days cover a long weekend."
+note = "Only devices that averaged at least one study a day over the 28 days before: a broken dose report export, PACS link or receiver rather than a quiet room. 4 days cover a long weekend. 2025–2026: 25 spells, mostly gaps in the collected data."
 
 [[rule]]
 key = "device-drift-1.5x"
@@ -219,5 +219,5 @@ kind = "device_drift"
 threshold = 1.5
 window_days = 28
 severity = "warn"
-notify = true
-note = "Median per device, national exam code and age group, in each of the last two weeks, against the 12 weeks before (≥ 10 values a week, ≥ 30 before): a protocol change, software update, detector or AEC fault. CT DLP and fluoroscopy DAP per study, radiography DAP per projection. 2025–2026: 6 episodes."
+notify = false
+note = "Median per device, national exam code and age group, in each of the last two weeks, against the 12 weeks before (≥ 10 values a week, ≥ 30 before): a protocol change, software update, detector or AEC fault. CT DLP and fluoroscopy DAP per study, radiography DAP per projection. 2025–2026: 19 episodes (about 10 a year), all radiography, most of them on one room."
