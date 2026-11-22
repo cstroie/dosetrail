@@ -4,7 +4,11 @@ Rules:
 * passwords: at least 10 characters, stored as scrypt hashes, never logged;
 * roles: viewer, exporter, pid (identified data), importer, admin;
 * an administrator cannot disable themselves or remove their own admin role, so the
-  system always keeps at least the one administrator making the change.
+  system always keeps at least the one administrator making the change;
+* a username can be renamed (same rules as at creation); the login cookie holds the user id,
+  so the user stays signed in, while past audit rows keep the name they were written with;
+* only a user without the admin role can be removed (take the role away first); their audit
+  rows stay, with the username they were written with.
 """
 
 from __future__ import annotations
@@ -66,12 +70,17 @@ def listing(session: Session) -> list[dict]:
     return [as_dict(u) for u in session.scalars(select(User).order_by(User.username))]
 
 
-def create(session: Session, data: dict) -> User:
-    username = (data.get("username") or "").strip()
+def valid_username(session: Session, raw: str | None) -> str:
+    username = (raw or "").strip()
     if not username or len(username) > 64 or not username.isascii() or " " in username:
         raise UserError("username: 1–64 ASCII characters, no spaces")
     if session.scalar(select(User).filter_by(username=username)) is not None:
         raise UserError(f"user {username!r} exists")
+    return username
+
+
+def create(session: Session, data: dict) -> User:
+    username = valid_username(session, data.get("username"))
     u = User(username=username, display_name=(data.get("name") or "").strip() or None,
              roles=_roles(data.get("roles")), password_hash=_password(data.get("password")),
              is_active=True)
@@ -85,6 +94,10 @@ def update(session: Session, acting: User, username: str, patch: dict) -> tuple[
     if u is None:
         raise UserError("user not found")
     changes: dict = {}
+    if patch.get("username") and patch["username"].strip() != u.username:
+        new = valid_username(session, patch["username"])
+        changes["username"] = {"from": u.username, "to": new}
+        u.username = new
     if "name" in patch:
         name = (patch["name"] or "").strip() or None
         if name != u.display_name:
@@ -107,6 +120,21 @@ def update(session: Session, acting: User, username: str, patch: dict) -> tuple[
         changes["password"] = "changed"  # never the value
     session.flush()
     return u, changes
+
+
+def remove(session: Session, acting: User, username: str) -> dict:
+    """Delete a non-admin account; returns what it was, for the audit row."""
+    u = session.scalar(select(User).filter_by(username=username))
+    if u is None:
+        raise UserError("user not found")
+    if u.id == acting.id:
+        raise UserError("you cannot remove your own account")
+    if "admin" in u.role_set():
+        raise UserError("an administrator cannot be removed; take away the admin role first")
+    gone = {"name": u.display_name, "roles": u.roles}
+    session.delete(u)
+    session.flush()
+    return gone
 
 
 def audit(session: Session, limit: int = 200, action: str | None = None,

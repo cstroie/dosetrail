@@ -424,6 +424,71 @@ def test_users_and_audit(client):
                                            "password": "another-pass-2"}).status_code == 200
 
 
+def test_user_rename_and_remove(client):
+    login(client, "boss", "boss-pass-123")
+    assert client.post("/api/users", json={"username": "tech", "password": "tech-pass-123",
+                                           "roles": ["viewer"]}).status_code == 200
+    login(client, "tech", "tech-pass-123")
+    client.get("/api/studies")
+    tech_cookie = dict(client.cookies)
+    login(client, "boss", "boss-pass-123")
+    # rename: same rules as at creation; the renamed user stays signed in (cookie holds the id)
+    assert client.patch("/api/users/tech", json={"username": "viewer"}).status_code == 400
+    assert client.patch("/api/users/tech", json={"username": "a b"}).status_code == 400
+    r = client.patch("/api/users/tech", json={"username": "radtech"}).json()
+    assert r["username"] == "radtech"
+    assert r["changes"]["username"] == {"from": "tech", "to": "radtech"}
+    boss_cookie = dict(client.cookies)
+    client.cookies.clear()
+    client.cookies.update(tech_cookie)
+    assert client.get("/api/me").json()["username"] == "radtech"
+    assert client.delete("/api/users/viewer").status_code == 403  # not an admin
+    client.cookies.clear()
+    client.cookies.update(boss_cookie)
+    assert client.post("/api/login", json={"username": "radtech",
+                                           "password": "tech-pass-123"}).status_code == 200
+    login(client, "boss", "boss-pass-123")
+    # remove: never an admin (nor oneself); audit rows survive with the name they had
+    assert client.delete("/api/users/boss").status_code == 400
+    assert client.delete("/api/users/nobody").status_code == 400
+    assert client.delete("/api/users/radtech").status_code == 200
+    assert not any(u["username"] == "radtech" for u in client.get("/api/users").json()["users"])
+    client.cookies.clear()
+    client.cookies.update(tech_cookie)
+    assert client.get("/api/studies").status_code == 401
+    login(client, "boss", "boss-pass-123")
+    log = client.get("/api/audit", params={"action": "user."}).json()["rows"]
+    assert [x["action"] for x in log[:2]] == ["user.delete", "user.update"]
+    assert log[0]["target"] == "user:radtech" and log[0]["detail"]["roles"] == "viewer"
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        s.add(User(username="admin2", password_hash="x", roles="viewer,admin"))
+        s.commit()
+    r = client.delete("/api/users/admin2")
+    assert r.status_code == 400 and "admin role" in r.json()["error"]
+
+
+def test_cli_user_rename_and_delete(client):
+    from dosimetrix import cli
+
+    url = str(client.app.state.settings.database_url)
+    base = ["user", "--url", url]
+    with make_sessionmaker(make_engine(url))() as s:
+        s.add(User(username="clerk", password_hash="x", roles="viewer"))
+        s.commit()
+    assert cli.main(base[:1] + ["rename", "clerk", "--to", "viewer"] + base[1:]) == 2
+    assert cli.main(base[:1] + ["rename", "clerk", "--to", "physicist"] + base[1:]) == 0
+    assert cli.main(base[:1] + ["delete", "boss"] + base[1:]) == 2
+    assert cli.main(base[:1] + ["delete", "physicist"] + base[1:]) == 0
+    assert cli.main(base[:1] + ["delete", "physicist"] + base[1:]) == 2
+    with make_sessionmaker(make_engine(url))() as s:
+        names = set(s.scalars(select(User.username)))
+        assert "clerk" not in names and "physicist" not in names and "boss" in names
+        acts = [a for (a,) in s.execute(select(AuditLog.action).where(
+            AuditLog.username.like("cli:%")).order_by(AuditLog.id))]
+        assert acts[-2:] == ["user.update", "user.delete"]
+
+
 def test_alerts_page_api(client):
     from dosimetrix import alerts
 

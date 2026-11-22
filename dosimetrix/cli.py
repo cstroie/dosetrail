@@ -541,6 +541,35 @@ def _cmd_user(args: argparse.Namespace) -> int:
                 user.is_active = False
                 session.commit()
             return 0
+        if args.action in ("rename", "delete"):
+            from .api import users as users_mod
+            from .db.models import AuditLog
+
+            if user is None:
+                print(f"no user {args.username!r}")
+                return 2
+            try:
+                if args.action == "rename":
+                    new = users_mod.valid_username(session, args.to)
+                    detail = {"username": {"from": user.username, "to": new}}
+                    user.username = new
+                    action, target = "user.update", f"user:{new}"
+                else:
+                    if "admin" in user.role_set():
+                        raise users_mod.UserError(
+                            "an administrator cannot be removed; take away the admin role first")
+                    detail = {"name": user.display_name, "roles": user.roles}
+                    session.delete(user)
+                    action, target = "user.delete", f"user:{args.username}"
+            except users_mod.UserError as e:
+                print(e)
+                return 2
+            session.add(AuditLog(username=f"cli:{getpass.getuser()}", action=action,
+                                 target=target, detail=detail))
+            session.commit()
+            print(f"user {args.username}: " + (f"renamed to {args.to.strip()}"
+                                               if args.action == "rename" else "removed"))
+            return 0
         password = args.password or getpass.getpass(f"password for {args.username}: ")
         if len(password) < 10:
             print("password must have at least 10 characters")
@@ -1059,10 +1088,11 @@ def build_parser() -> argparse.ArgumentParser:
     r.set_defaults(func=_cmd_recompute)
 
     u = sub.add_parser("user", help="manage users")
-    u.add_argument("action", choices=["set", "disable", "list"])
+    u.add_argument("action", choices=["set", "disable", "rename", "delete", "list"])
     u.add_argument("username", nargs="?", default="")
     u.add_argument("--roles", help=f"comma-separated: {', '.join(ROLES)}")
     u.add_argument("--name", help="display name")
+    u.add_argument("--to", help="rename: the new username")
     u.add_argument("--password", help="(insecure: visible in process list) prompt if omitted")
     u.add_argument("--url")
     u.set_defaults(func=_cmd_user)

@@ -748,6 +748,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         session.commit()
         return {**users.as_dict(u), "changes": changes}
 
+    @app.delete("/api/users/{username}")
+    def user_delete(username: str, request: Request, user: User = Depends(admin_user),
+                    session: Session = Depends(db)):
+        gone = _users(lambda m: m.remove(session, user, username))
+        _audit(session, request, user, "user.delete", f"user:{username}", gone)
+        session.commit()
+        return {"ok": True}
+
     @app.get("/api/audit")
     def audit_log(limit: int = 200, action: str | None = None, user_name: str | None = None,
                   text: str | None = None, since: str | None = None,
