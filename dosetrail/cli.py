@@ -250,6 +250,27 @@ def _cmd_refetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_skin(args: argparse.Namespace) -> int:
+    from . import skindose
+    from .db.session import make_engine, make_sessionmaker
+
+    with make_sessionmaker(make_engine(args.url or load_settings().database_url))() as session:
+        if args.study:
+            r = skindose.for_study(session, args.study)
+            if r is None:
+                print("study not found")
+                return 1
+            print(f"peak skin dose {r['psd_mgy']} mGy at {r['psd_at']} (estimate), "
+                  f"Ka,r total {r['kar_total_mgy']} mGy, {r['events_used']} events, "
+                  f"{r['geometries']} geometries")
+            for k, v in r["assumptions"].items():
+                print(f"  {k}: {v}")
+            return 0
+        print(skindose.update_psd(session))
+        session.commit()
+    return 0
+
+
 def _cmd_alerts(args: argparse.Namespace) -> int:
     import datetime as dt
 
@@ -707,6 +728,11 @@ def build_parser() -> argparse.ArgumentParser:
     fg.add_argument("--apply", action="store_true", help="really delete (default: dry run)")
     fg.add_argument("--url")
     fg.set_defaults(func=_cmd_refetch)
+
+    sk = sub.add_parser("skin", help="estimate peak skin doses of fluoroscopy studies (batch)")
+    sk.add_argument("--study", type=int, help="print the estimate for one study")
+    sk.add_argument("--url")
+    sk.set_defaults(func=_cmd_skin)
 
     al = sub.add_parser("alerts", help="evaluate alert rules, send notifications, list")
     al.add_argument("action", choices=["evaluate", "notify", "list", "test-notify"])

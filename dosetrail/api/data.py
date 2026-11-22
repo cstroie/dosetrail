@@ -298,7 +298,7 @@ def study(session: Session, study_id: int) -> dict | None:
         "totals": {
             "dap_gycm2": _r(s.total_dap), "kar_gy": _r(s.total_rp_dose),
             "fluoro_s": _r(s.total_fluoro_time, 1), "acquisitions": len(acq),
-            "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": None,
+            "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": _r(s.psd_mgy, 1),
             "dlp_mgycm": _r(s.total_dlp, 1), "ctdivol_max": _r(s.ctdivol_max, 2),
             "n_events": s.n_events,
         },

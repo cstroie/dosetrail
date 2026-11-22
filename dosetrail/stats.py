@@ -53,6 +53,7 @@ METRICS: dict[str, Metric] = {
     "dap_acq": Metric("study", Study.total_acq_dap, "Gy.cm2", "DAP acquisition"),
     "kar_total": Metric("study", Study.total_rp_dose, "Gy", "Ka,r total"),
     "fluoro_time": Metric("study", Study.total_fluoro_time, "s", "Fluoroscopy time"),
+    "psd": Metric("study", Study.psd_mgy, "mGy", "Peak skin dose (estimate)"),
     "exposures": Metric("study", Study.n_events, "1", "Irradiation events"),
     "dlp": Metric("event", Event.dlp, "mGy.cm", "DLP per series"),
     "ctdivol": Metric("event", Event.ctdivol, "mGy", "CTDIvol per series"),

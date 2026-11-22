@@ -112,3 +112,15 @@ max_age_days = 6574
 severity = "warn"
 notify = false
 note = "About the top 0.14 % of children here (2025: 56 of 39,062). Studies, not exposures: review the justification and alternatives (ultrasound, MRI)."
+
+[[rule]]
+key = "fluoro-psd-2gy"
+name = "Fluoroscopy: estimated peak skin dose ≥ 2 Gy"
+kind = "threshold"
+modality = "RF,XA"
+metric = "psd"
+threshold = 2000.0
+unit = "mGy"
+severity = "warn"
+notify = false
+note = "2 Gy: threshold of transient erythema (ICRP 85, NCRP 168). The peak skin dose is a model estimate: check the skin dose map and the procedure."

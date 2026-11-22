@@ -9,7 +9,7 @@ import { baseOption } from '../components/dt-chart.js';
 import { h, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mmss, clock, DAP_UNITS } from '../core/format.js';
-import { study, isSample, identifyStudy, ackAlert } from '../core/api.js';
+import { study, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
 import { renderStudy } from './study-generic.js';
 import { prefs } from '../core/prefs.js';
 
@@ -45,7 +45,8 @@ function readouts(s) {
     row('Fluoro / acq. DAP', `${dap(dapF)} / ${dap(T.dap_gycm2 - dapF)}`, { sm: true, sub: `${Math.round((dapF / T.dap_gycm2) * 100)}% / ${100 - Math.round((dapF / T.dap_gycm2) * 100)}% · ${u}` }),
     row('Plane A / B DAP', `${dap(sum((e) => e.plane === 'A', 'dap_gycm2'))} / ${dap(sum((e) => e.plane === 'B', 'dap_gycm2'))}`, { sm: true,
       sub: `Ka,r ${num(sum((e) => e.plane === 'A', 'kar_mgy') / 1000, 2)} / ${num(sum((e) => e.plane === 'B', 'kar_mgy') / 1000, 2)} Gy` }),
-    row('Peak skin dose', '—', { sub: 'estimate in a later release' }),
+    row('Peak skin dose', T.peak_skin_mgy != null ? num(T.peak_skin_mgy / 1000, 2) : '—', { unit: T.peak_skin_mgy != null ? 'Gy' : '',
+      hot: T.peak_skin_mgy >= 2000, sub: T.peak_skin_mgy != null ? 'model estimate · see the skin dose map' : 'no Ka,r per event' }),
   ];
 }
 
@@ -229,9 +230,7 @@ async function render() {
           h('div', { class: 'panel-body' }, chart)),
         grid,
         selInfo,
-        h('section', { class: 'panel', 'aria-labelledby': 'h-sk' },
-          h('div', { class: 'panel-head' }, h('h2', { id: 'h-sk' }, t('study.skin')), h('span', { class: 'tag info' }, t('study.planned'))),
-          h('div', { class: 'skin' }, h('div', {}, '2D unfolded body surface · heat map (mGy)'), h('div', {}, '3D phantom · later'))))));
+        skinPanel(s))));
 
   document.title = `${s.accession} · DoseTrail`;
   refresh();
@@ -242,6 +241,46 @@ async function render() {
     chart.draw(curveOption(s, selected));
   });
   document.addEventListener('dt-unit-change', refresh);
+}
+
+/** Skin dose map (model estimate): the body surface unfolded around the body axis. */
+function skinPanel(s) {
+  const host = h('div', { class: 'panel-body' }, h('p', { class: 'muted' }, 'Computing the estimate…'));
+  const panel = h('section', { class: 'panel', 'aria-labelledby': 'h-sk' },
+    h('div', { class: 'panel-head' }, h('h2', { id: 'h-sk' }, t('study.skin')), h('span', { class: 'tag warn' }, 'estimate')), host);
+  if (isSample) { host.replaceChildren(h('p', { class: 'muted' }, 'The skin dose map needs the server.')); return panel; }
+  skinDose(s.id).then((r) => {
+    if (r.psd_mgy == null) { host.replaceChildren(h('p', { class: 'muted' }, 'No event has a reference-point air kerma (Ka,r): no estimate.')); return; }
+    const chart = h('dt-chart', { label: 'Skin dose map, mGy', height: '330' });
+    const SIDES = ['anterior', 'anterior-left', 'left', 'posterior-left', 'posterior', 'posterior-right', 'right', 'anterior-right'];
+    const side = (th) => SIDES[Math.round(th / 45) % 8];
+    const data = [];
+    let max = 0;
+    r.dose_mgy.forEach((row, zi) => row.forEach((v, ti) => { if (v > 0) { data.push([ti, zi, Math.round(v)]); max = Math.max(max, v); } }));
+    const option = (th) => ({
+      ...baseOption(th),
+      grid: { left: 52, right: 20, top: 16, bottom: 74 },
+      tooltip: { formatter: (p) => `${r.theta[p.value[0]]}° ${side(r.theta[p.value[0]])} · ${r.z_cm[p.value[1]]} cm<br>${num(p.value[2])} mGy` },
+      xAxis: { type: 'category', data: r.theta, name: 'around the body: anterior → left → posterior → right', nameLocation: 'middle', nameGap: 26,
+        axisLabel: { color: th.muted, interval: 0, formatter: (v) => ({ 0: 'A', 90: 'L', 180: 'P', 270: 'R' }[v] ?? '') }, axisTick: { show: false }, splitArea: { show: false } },
+      yAxis: { type: 'category', data: r.z_cm, name: 'cm (head +)', axisLabel: { color: th.muted, interval: 9 }, splitArea: { show: false } },
+      visualMap: { min: 0, max: Math.max(max, 1), calculable: true, orient: 'horizontal', left: 'center', bottom: 0, itemHeight: 220, itemWidth: 10,
+        inRange: { color: [th.panel, th.seq, th.warn, th.alert] }, textStyle: { color: th.muted, fontFamily: th.mono }, formatter: (v) => `${num(v)} mGy` },
+      series: [{ type: 'heatmap', data, progressive: 0 }],
+    });
+    const at = r.psd_at;
+    const A = r.assumptions;
+    host.replaceChildren(
+      h('div', { class: 'readout' }, h('span', { class: 'l' }, 'Peak skin dose (estimate)'),
+        h('span', { class: 'v' }, num(r.psd_mgy / 1000, 2), h('span', { class: 'unit' }, ' Gy')),
+        h('span', { class: 'sub' }, `${side(at.theta)} (${at.theta}°) · ${at.z_cm >= 0 ? '+' : ''}${at.z_cm} cm from the isocentre · ${num(r.psd_over_kar, 2)} × Ka,r total · area ≥ 2 Gy ${num(r.area_cm2_over_2gy)} cm², ≥ 3 Gy ${num(r.area_cm2_over_3gy)} cm²`)),
+      chart,
+      h('details', {}, h('summary', { class: 'muted small', style: { cursor: 'pointer' } }, `Model and assumptions · ${r.events_used} events in ${r.geometries} geometries${r.events_skipped ? `, ${r.events_skipped} without Ka,r` : ''}`),
+        h('ul', { class: 'muted small' }, [A.phantom, A.factors, `isocentre ${A.isocentre}`, ...A.notes].map((x) => h('li', {}, x)),
+          h('li', {}, 'A DoseTrail model, not a measurement: use it to decide on patient follow-up, not as a skin dose record.'))));
+    chart.draw(option);
+  }).catch((err) => host.replaceChildren(h('p', { class: 'error' }, err.message)));
+  return panel;
 }
 
 function exportEvents(s) {

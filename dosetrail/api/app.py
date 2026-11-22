@@ -267,6 +267,16 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         out["quality"] = quality.study_findings(session, study_id)
         return out
 
+    @app.get("/api/studies/{study_id}/skin")
+    def study_skin(study_id: int, user: User = Depends(current_user),
+                   session: Session = Depends(db)):
+        from .. import skindose
+
+        r = skindose.for_study(session, study_id)
+        if r is None:
+            raise HTTPException(404, "study not found")
+        return r
+
     @app.get("/api/quality")
     def quality_report(q: str = "origin:local date:90d", limit: int = 200,
                        user: User = Depends(current_user), session: Session = Depends(db)):

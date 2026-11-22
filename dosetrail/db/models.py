@@ -187,6 +187,7 @@ class Study(TimestampMixin, Base):
     agd_left: Mapped[float | None] = mapped_column(Float)
     agd_right: Mapped[float | None] = mapped_column(Float)
     admin_activity_mbq: Mapped[float | None] = mapped_column(Float)
+    psd_mgy: Mapped[float | None] = mapped_column(Float)  # estimated peak skin dose
 
     source_kind: Mapped[str] = mapped_column(AsciiId(32))  # rdsr, dx_header, openrem, ...
     source_json: Mapped[dict | None] = mapped_column(JSONType)
@@ -253,7 +254,14 @@ class Event(Base):
     filter_al_mm: Mapped[float | None] = mapped_column(Float)
     grid: Mapped[str | None] = mapped_column(Text(64))
     sid_mm: Mapped[float | None] = mapped_column(Float)
-    ssd_mm: Mapped[float | None] = mapped_column(Float)
+    ssd_mm: Mapped[float | None] = mapped_column(Float)  # source to entrance surface
+    # C-arm / table geometry (RDSR TID 10003): needed for skin dose estimates
+    dist_source_iso_mm: Mapped[float | None] = mapped_column(Float)  # 113748
+    dist_source_rp_mm: Mapped[float | None] = mapped_column(Float)  # 113737
+    table_long_mm: Mapped[float | None] = mapped_column(Float)  # 113751
+    table_lat_mm: Mapped[float | None] = mapped_column(Float)  # 113752
+    table_height_mm: Mapped[float | None] = mapped_column(Float)  # 113753
+    patient_position: Mapped[str | None] = mapped_column(Text(64))  # e.g. headfirst supine
     field_w_mm: Mapped[float | None] = mapped_column(Float)
     field_h_mm: Mapped[float | None] = mapped_column(Float)
     primary_angle: Mapped[float | None] = mapped_column(Float)

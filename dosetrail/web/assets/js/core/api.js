@@ -329,3 +329,8 @@ export function alertList(params = {}) {
 }
 /** POST /api/alerts/ack {ids, note} (audit-logged) */
 export const ackAlerts = (ids, note) => send('POST', '/api/alerts/ack', { ids, note });
+
+/** GET /api/studies/{id}/skin → skin dose map estimate { psd_mgy, psd_at, theta, z_cm, dose_mgy, assumptions, ... } */
+export function skinDose(id) {
+  return isSample ? serverOnly('Skin dose map') : remote(`/api/studies/${id}/skin`);
+}
