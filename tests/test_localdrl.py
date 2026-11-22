@@ -27,6 +27,15 @@ def test_propose_rooms(session, data):  # noqa: F811
     assert one["method"] == "median_room" and one["value"] == 800
     # radiography per study (the retake summed)
     assert _row(out["rows"], "RX-CAP-AP", "1-4y", "dap")["value"] == pytest.approx(0.15)
+    assert ct["n_phantom32"] == 0
+    from dosetrail.db.models import Event
+
+    ev = session.query(Event).filter(Event.dlp == 1300.0).one()
+    ev.ct_phantom_cm = 32
+    session.flush()
+    again = _row(localdrl.propose(session, [], "national", min_n=1)["rows"],
+                 "CT-CAP", "1-4y", "dlp")
+    assert again["n_phantom32"] == 1
     icrp = localdrl.propose(session, [], "icrp", min_n=1)
     assert _row(icrp["rows"], "CT-CAP", "1-6y", "dlp")["value"] == pytest.approx(1180)
 

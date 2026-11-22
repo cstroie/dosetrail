@@ -67,7 +67,8 @@ async function propose() {
       h('td', { class: 'r' }, value), h('td', {}, UNIT[x.unit] || x.unit),
       h('td', { class: 'muted small' }, x.method === 'p75_rooms' ? 'P75 rooms' : x.method === 'median_room' ? 'median (1 room)' : 'too few'),
       h('td', { class: 'r' }, x.reference == null ? '—' : smart(x.reference)),
-      h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, `${num(x.ratio, 2)}×`) : '')));
+      h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, `${num(x.ratio, 2)}×`) : '',
+        x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT values reported on the 32 cm (body) phantom: about half the 16 cm value — check before adopting' }, ` 32 cm: ${x.n_phantom32}`) : null)));
     last = x.exam;
   }
   const name = h('input', { class: 'input', value: `Local DRLs ${r.start} – ${r.end}`, style: { width: '320px' } });

@@ -45,6 +45,7 @@ NUMERIC = ("age_days", "age_months", "age_years", "weight_kg", "weight_reported_
            "scan_length", "kvp", "mas", "effective_mas", "pitch", "ssde", "pka", "fluoro_time",
            "kae", "exposures")
 REQUIRED = ("survey_version", "institution", "modality", "period")
+FREE_TEXT = ("indication_text",)  # may name people or places: not kept centrally
 TYPED = ("device", "manufacturer", "model", "modality", "patient", "sex", "head_age_group",
          "weight_kg", "weight_source", "weight_group", "drl_exclusion", "indication",
          "exam_code", "edrl_exam", "ndrl_exam", "projection", "contrast", "ctdivol",
@@ -168,7 +169,7 @@ def upload(session: Session, content: bytes, *, filename: str | None = None,
         "upload_id": up.id, "institution": inst, "period": period,
         "age_years": r["age_years_total"], **_typed(r),
         "extra": {k: v for k, v in r.items() if k not in known and k not in REQUIRED
-                  and k != "age_years_total" and v not in ("", None)},
+                  and k not in FREE_TEXT and k != "age_years_total" and v not in ("", None)},
     } for r in rows])
     session.flush()
     return up
@@ -256,6 +257,7 @@ def national(session: Session, start: str, end: str, *, grid: str = "rp185",
                 SurveyRow.period <= end))
     values: dict[tuple, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     counts: Counter = Counter()
+    phantom32: Counter = Counter()  # head CT values measured on the 32 cm phantom
     insts_seen: set[str] = set()
     for r in session.scalars(q):
         counts["rows"] += 1
@@ -281,9 +283,12 @@ def national(session: Session, start: str, end: str, *, grid: str = "rp185",
         fam = "CT" if mod == "CT" else mod
         quants = [("dlp", r.dlp, "mGy.cm"), ("ctdivol", r.ctdivol, "mGy")] if mod == "CT" \
             else [("dap", r.pka / 1000 if r.pka is not None else None, "Gy.cm2")]
+        head = g.parameter(NATIONAL, exam) == "age"
         for quantity, v, unit in quants:
             if v is not None:
                 values[(exam, band, quantity, unit, fam)][r.institution].append(v)
+                if head and r.phantom == 32:
+                    phantom32[(exam, band, quantity, unit, fam)] += 1
     from .db.models import Code, CodeSystem
 
     labels = dict(session.execute(select(Code.code, Code.meaning).join(CodeSystem)
@@ -309,6 +314,7 @@ def national(session: Session, start: str, end: str, *, grid: str = "rp185",
             "exam": exam, "exam_meaning": labels.get(exam, exam), "group": band,
             "quantity": quantity, "unit": unit, "n": p["n"], "n_institutions": len(per_inst),
             "n_institutions_counted": len(medians), "min_n": n_min,
+            "n_phantom32": phantom32.get((exam, band, quantity, unit, fam), 0),
             "national_median": p["median"], "ndrl_proposal": ndrl_prop,
             "iq_factor": round(iq, 2) if iq else None, "iq_flag": _iq_flag(iq),
             "edrl": eu, "status_edrl": _status(ndrl_prop, eu),

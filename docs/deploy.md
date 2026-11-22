@@ -160,7 +160,7 @@ docker compose --profile his up -d his   # HIS worker (needs a HIS server)
 
 Admin → Local DRLs proposes local diagnostic reference levels from the hospital's own data (ICRP 135). For each national DRL examination and patient group, the median of each room (device) with at least *n* values is computed; the local DRL is the P75 of those room medians, or the median when only one room qualifies. CT is per series; radiography, fluoroscopy and mammography per study; DRL exclusions are left out. Groups are the national age groups or the ICRP 135 / RP 185 groups (head by age, body by weight, with or without estimated weights). Each value is shown against the national DRL or the RP 185 EDRL.
 
-Chosen values (editable) are adopted as a reference set `local-…`, which the comparison page, reports and alerts can use like any other set. The yearly review compares an adopted set with a new period: the new value, the change, and the rooms whose median is above the local DRL (XLSX for the file). Adopting and deleting are audited; the bundled sets cannot be deleted.
+Chosen values (editable) are adopted as a reference set `local-…`, which can be chosen like any other set on the comparison page, in the DRL summary export and in the semestrial trend (alert rules keep their own thresholds). The yearly review compares an adopted set with a new period: the new value, the change, and the rooms whose median is above the local DRL (XLSX for the file). Adopting and deleting are audited; the bundled sets cannot be deleted.
 
 ## Clinical indications
 

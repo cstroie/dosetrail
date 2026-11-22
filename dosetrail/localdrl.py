@@ -15,7 +15,8 @@ second grid: head exams by age, body exams by weight; see grid.py). Each row sho
 national DRL (national grid) or the RP 185 EDRL (ICRP grid) where one exists.
 
 **Adoption.** An administrator picks the rows to keep; they become a reference set with
-key ``local-…``, usable wherever a reference set is (comparison page, alerts, reports).
+key ``local-…``, usable wherever a reference set can be chosen (the comparison page, the
+DRL summary export, the semestrial trend). Alert rules use their own thresholds.
 Seeded sets are never touched; local sets can be deleted.
 
 **Review** (Directive 2013/59 Art. 56: DRLs are reviewed regularly; typically yearly):
@@ -156,6 +157,17 @@ def propose(session: Session, conds: list, grid: str = "national", min_n: int = 
                   parameter=t["scheme"].parameter, band=t["band"].key)
              for i, t in enumerate(templates)]
     got = collect(session, conds, items, by_device=True, estimated_weights=estimated_weights)
+    # head CT values reported on the 32 cm body phantom are about half the 16 cm value:
+    # counted per row so a proposal built on them is visible (quality rule phantom_32_head)
+    from .db.models import Event
+    from .grid import Grid
+
+    g = Grid(session)
+    head_ct = [it for it, t in zip(items, templates, strict=True)
+               if t["quantity"] in ("dlp", "ctdivol") and g.parameter(NATIONAL, t["code"].code)
+               == "age"]
+    p32 = collect(session, [*conds, Event.ct_phantom_cm == 32], head_ct,
+                  estimated_weights=estimated_weights) if head_ct else {}
     refs = _references(session, grid)
     names = device_names(session)
     rows = []
@@ -171,6 +183,7 @@ def propose(session: Session, conds: list, grid: str = "national", min_n: int = 
             "band": t["band"].key, "band_label": t["band"].label,
             "quantity": t["quantity"], "unit": t["unit"], "applies_to": t["applies_to"],
             **rule, "reference": _sig(ref),
+            "n_phantom32": sum(len(v) for v in (p32.get(i) or {}).values()),
             "ratio": rule["value"] / ref if rule["value"] and ref else None,
             "status": _status(rule["value"], ref)})
     return {"grid": grid, "min_n": min_n, "estimated_weights": estimated_weights,

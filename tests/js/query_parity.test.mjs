@@ -1,6 +1,6 @@
 // Runs the browser query language (dosetrail/web/assets/js/core/query.js) on the shared
 // corpus and checks it against the expected results that the Python side also asserts.
-//   node --test tests/js/
+//   node --test tests/js/query_parity.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
