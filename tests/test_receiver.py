@@ -130,3 +130,30 @@ def test_database_error_keeps_object_queued(rx, monkeypatch):
     monkeypatch.undo()
     worker.drain()
     assert worker.stats["imported"] == 1 and not spool.pending()
+
+
+def test_forget_studies_for_refetch(session):
+    import datetime as dt
+
+    from sqlalchemy import func, select
+
+    from dosetrail.db.models import AppSetting, Event, IngestedObject, Study
+    from dosetrail.maintenance import forget_studies
+    from dosetrail.net.qr import DONE_KEY
+
+    s = Study(study_uid="f.1", modality="DX", source_kind="proj_rdsr",
+              study_datetime=dt.datetime(2026, 9, 1, 10))
+    s.events = [Event(kvp=70.0)]
+    keep = Study(study_uid="f.2", modality="DX", source_kind="proj_rdsr",
+                 study_datetime=dt.datetime(2026, 9, 2, 10), total_dap=0.1)
+    session.add_all([s, keep])
+    session.flush()
+    session.add(IngestedObject(sop_instance_uid="f.1.1", study_id=s.id, status="imported",
+                               source="qr"))
+    session.add(AppSetting(key=DONE_KEY, value=["2026-09-01", "2026-09-02"]))
+    session.flush()
+    out = forget_studies(session, [s.id])
+    assert out == {"studies": 1, "days": ["2026-09-01"], "objects": 1}
+    assert session.scalar(select(func.count()).select_from(Study)) == 1
+    assert session.scalar(select(func.count()).select_from(Event)) == 0
+    assert session.get(AppSetting, DONE_KEY).value == ["2026-09-02"]

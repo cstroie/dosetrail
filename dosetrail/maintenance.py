@@ -64,3 +64,32 @@ def recompute_all(session: Session, secret: bytes | None = None) -> list[str]:
     if secret is not None:
         out.append(f"pseudonyms assigned: {assign_pseudonyms(session, secret)}")
     return out
+
+
+def forget_studies(session: Session, study_ids: list[int]) -> dict:
+    """Remove studies so that query/retrieve fetches them again: their events,
+    classifications, alerts and import records go too, and their days lose the
+    'retrieved' mark. Used to repair studies imported with a parser bug."""
+    from sqlalchemy import delete
+
+    from .db.models import Alert, AppSetting, Classification, IngestedObject
+    from .net.qr import DONE_KEY
+
+    ids = sorted(set(study_ids))
+    days = {d.date().isoformat() for d in session.scalars(
+        select(Study.study_datetime).where(Study.id.in_(ids))) if d}
+    out = {"studies": len(ids), "days": sorted(days)}
+    for i in range(0, len(ids), 1000):
+        chunk = ids[i:i + 1000]
+        session.execute(delete(Alert).where(Alert.study_id.in_(chunk)))
+        session.execute(delete(Classification).where(Classification.study_id.in_(chunk)))
+        out["objects"] = out.get("objects", 0) + session.execute(
+            delete(IngestedObject).where(IngestedObject.study_id.in_(chunk))).rowcount
+        session.execute(delete(Event).where(Event.study_id.in_(chunk)))
+        session.execute(delete(Study).where(Study.id.in_(chunk)))
+    row = session.get(AppSetting, DONE_KEY)
+    if row is not None and row.value:
+        row.value = [d for d in row.value if d not in days]
+    session.flush()
+    recompute_device_stats(session)
+    return out

@@ -218,6 +218,38 @@ def _cmd_growth(args: argparse.Namespace) -> int:
     return 0 if "error" not in stats else 1
 
 
+def _cmd_refetch(args: argparse.Namespace) -> int:
+    import datetime as dt
+
+    from sqlalchemy import select
+
+    from .db.models import AuditLog, Study
+    from .db.session import make_engine, make_sessionmaker
+    from .maintenance import forget_studies
+
+    kind, col = (("proj_rdsr", Study.total_dap) if args.missing == "dap"
+                 else ("ct_rdsr", Study.total_dlp))
+    with make_sessionmaker(make_engine(args.url or load_settings().database_url))() as session:
+        q = select(Study.id).where(Study.source_kind == kind, col.is_(None))
+        if args.since:
+            q = q.where(Study.study_datetime >= dt.datetime.fromisoformat(args.since))
+        ids = list(session.scalars(q))
+        if not args.apply:
+            print(f"{len(ids)} {kind} studies without {args.missing} (dry run; --apply deletes "
+                  "them so that qr fetches them again)")
+            return 0
+        out = forget_studies(session, ids)
+        import getpass
+
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="refetch",
+                             target=f"{kind}:{args.missing}", detail=out))
+        session.commit()
+    print(f"forgot {out['studies']} studies ({out.get('objects', 0)} objects) on "
+          f"{len(out['days'])} days: {', '.join(out['days'])}")
+    print("run 'dosetrail qr' over these days to fetch them again")
+    return 0
+
+
 def _cmd_alerts(args: argparse.Namespace) -> int:
     import datetime as dt
 
@@ -666,6 +698,15 @@ def build_parser() -> argparse.ArgumentParser:
     gr.add_argument("action", choices=["install", "check", "status"])
     gr.add_argument("--url")
     gr.set_defaults(func=_cmd_growth)
+
+    fg = sub.add_parser("refetch", help="forget studies imported with missing doses so that "
+                                         "qr retrieves them again (repair)")
+    fg.add_argument("--missing", choices=["dap", "dlp"], required=True,
+                    help="dose reports (proj_rdsr: dap, ct_rdsr: dlp) without that total")
+    fg.add_argument("--since", help="only studies from this date (YYYY-MM-DD)")
+    fg.add_argument("--apply", action="store_true", help="really delete (default: dry run)")
+    fg.add_argument("--url")
+    fg.set_defaults(func=_cmd_refetch)
 
     al = sub.add_parser("alerts", help="evaluate alert rules, send notifications, list")
     al.add_argument("action", choices=["evaluate", "notify", "list", "test-notify"])
