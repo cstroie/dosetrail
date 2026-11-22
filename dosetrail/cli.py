@@ -618,7 +618,7 @@ def _cmd_rdsr(args: argparse.Namespace) -> int:
                                                     "identified": args.identified}))
         session.commit()
     print(f"{len(paths)} dose SR files -> {args.out}"
-          + ("" if args.identified else " (anonymised)"))
+          + ("" if args.identified else " (pseudonymised)"))
     return 0
 
 
@@ -939,7 +939,7 @@ def build_parser() -> argparse.ArgumentParser:
     gr.set_defaults(func=_cmd_growth)
 
     rd = sub.add_parser("rdsr", help="write dose SRs (IHE REM RDSR) of stored studies to "
-                                     "files (anonymised unless --identified); no sending")
+                                     "files (pseudonymised unless --identified); no sending")
     rd.add_argument("--study", type=int, action="append", help="study id (repeatable)")
     rd.add_argument("--query", help="query, e.g. 'modality:CT date:30d'")
     rd.add_argument("--limit", type=int, default=1000)

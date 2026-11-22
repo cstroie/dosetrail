@@ -257,7 +257,7 @@ export const decideMapping = (family, field, text, code) =>
  * Download link for GET /api/export?q=&level=study|event&format=csv|xlsx&pid=
  * (exporter or admin role; pid=1 needs the pid role; every export is audit-logged).
  */
-/** GET /api/studies/{id}/rdsr: the study's dose SR (IHE REM) as a file; anonymised. */
+/** GET /api/studies/{id}/rdsr: the study's dose SR (IHE REM) as a file; pseudonymised. */
 export function rdsrUrl(id) {
   return isSample ? null : new URL(`/api/studies/${id}/rdsr`, MODE).href;
 }

@@ -26,10 +26,9 @@ def test_ranges_head_and_phantom_rules():
 
 def test_event():
     ev = Event(ctdivol=10.0, wed_mm=200, ct_phantom_cm=32, anatomy="Abdomen", is_localizer=False)
-    val, method = ssde.for_event(ev)
+    val, method = ssde.for_event(ev, head=False)
     assert val == pytest.approx(17.8, abs=0.1) and method == "aapm204_body32"
-    ev.anatomy = "Head"
     ev.ct_phantom_cm = 16
-    assert ssde.for_event(ev)[1] == "aapm293_head16"
+    assert ssde.for_event(ev, head=True)[1] == "aapm293_head16"
     ev.wed_mm = None
-    assert ssde.for_event(ev) is None
+    assert ssde.for_event(ev, head=True) is None

@@ -21,7 +21,6 @@ import math
 
 BODY = {32: (3.704369, 0.03671937, 8.0, 45.0), 16: (1.874799, 0.03871313, 6.0, 45.0)}
 HEAD16 = (1.9852, 0.0486)
-HEAD_WORDS = ("head", "brain", "cap", "cran", "skull", "craniu", "encefal", "orbit", "sinus")
 
 
 def factor(dw_cm: float, phantom_cm: int, head: bool) -> tuple[float, str] | None:
@@ -41,16 +40,12 @@ def factor(dw_cm: float, phantom_cm: int, head: bool) -> tuple[float, str] | Non
     return a * math.exp(-b * dw_cm), f"aapm204_body{phantom_cm}"
 
 
-def is_head(anatomy: str | None, protocol: str | None) -> bool:
-    text = f"{anatomy or ''} {protocol or ''}".casefold()
-    return any(w in text for w in HEAD_WORDS)
-
-
-def for_event(ev) -> tuple[float, str] | None:
-    """(SSDE mGy, method) for a CT event with CTDIvol, phantom and a measured Dw."""
+def for_event(ev, head: bool) -> tuple[float, str] | None:
+    """(SSDE mGy, method) for a CT event with CTDIvol, phantom and a measured Dw. ``head``:
+    a head series (quality._head_series: the protocol's own exam, else the study's)."""
     if ev.is_localizer or ev.ctdivol is None or not ev.wed_mm or not ev.ct_phantom_cm:
         return None
-    f = factor(ev.wed_mm / 10, ev.ct_phantom_cm, is_head(ev.anatomy, ev.protocol))
+    f = factor(ev.wed_mm / 10, ev.ct_phantom_cm, head)
     if f is None:
         return None
     return round(f[0] * ev.ctdivol, 3), f[1]
@@ -61,14 +56,18 @@ def update(session, study_ids=None) -> int:
     from sqlalchemy import select
 
     from .db.models import Event, Study
+    from .quality import _head_series, _national_codes
 
     q = (select(Event).join(Study, Study.id == Event.study_id)
          .where(Study.modality == "CT", Event.wed_mm.is_not(None)))
     if study_ids is not None:
         q = q.where(Event.study_id.in_(list(study_ids)))
+    events = list(session.scalars(q))
+    codes = _national_codes(session, sorted({e.study_id for e in events}))
     n = 0
-    for ev in session.scalars(q):
-        val, method = for_event(ev) or (None, None)
+    for ev in events:
+        head = _head_series(ev, codes.get(ev.study_id, {}).get(None))
+        val, method = for_event(ev, head) or (None, None)
         if (ev.ssde_calc, ev.ssde_method) != (val, method):
             ev.ssde_calc, ev.ssde_method = val, method
             n += 1

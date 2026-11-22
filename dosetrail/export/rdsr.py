@@ -8,10 +8,11 @@ The objects are DICOM Part 10 files (Explicit VR Little Endian) that our own par
 other dose monitors, read back. Values are what DoseTrail stored, in DICOM's units; nothing
 is recomputed. A weight is written only when it was reported (estimated weights are not).
 
-Anonymised by default: patient ID → the keyed pseudonym, no name, birth date, accession or
+Pseudonymised by default: patient ID → the keyed pseudonym, no name, birth date, accession or
 physicians; study / series / SOP UIDs replaced by stable derived UIDs (the same study
-always gives the same UIDs, so a receiver can de-duplicate). ``identified=True`` keeps the
-originals (needs the pid role in the API).
+always gives the same UIDs, so a receiver can de-duplicate). Kept: exact study date and
+time, age, sex, study description, protocol names and comments — personal data still.
+``identified=True`` keeps the originals (needs the pid role in the API).
 
 This module only builds objects and writes files. Sending them (C-STORE to a PACS or a
 registry) is deliberately not part of it.

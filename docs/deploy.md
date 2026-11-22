@@ -82,10 +82,11 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
 - Values: `weight_kg`, `height_m` or `height_cm`. `,` or `;` separated; decimal commas are accepted.
 - Provenance: `source` (`measured`, `chart_same_day`, `chart_72h`, `imported`) or `measured_at` (a date: same day as the exam → chart_same_day, within 72 h → chart_72h). Neither → `imported`.
 - A value replaces the stored one only when its source ranks higher (measured > same day > 72 h > imported/DICOM > HIS chart > estimate), and only when plausible for age and sex.
+- A child's weight without a source (`imported`) outside P1–P99 for age and sex is counted as written in the dry run, but after `--apply` the growth check keeps it only as `weight_reported_kg` and uses the median estimate, as for a DICOM weight.
 
 ## Dose SR export (IHE REM)
 
-`dosetrail rdsr --study ID --out DIR` (or `--query 'modality:CT date:30d'`) writes one X-Ray Radiation Dose SR per study: TID 10011 for CT, TID 10001 for radiography, fluoroscopy and mammography, built from the stored values. Files are anonymised (pseudonymous patient ID; no name, birth date, accession or physicians; stable derived UIDs) unless `--identified`. Estimated weights are not written. Users with the exporter role can download a study's file from the study page ("Dose SR"; `GET /api/studies/{id}/rdsr`). DoseTrail only writes files: it does not send dose SRs to a PACS or registry.
+`dosetrail rdsr --study ID --out DIR` (or `--query 'modality:CT date:30d'`) writes one X-Ray Radiation Dose SR per study: TID 10011 for CT, TID 10001 for radiography, fluoroscopy and mammography, built from the stored values. Files are pseudonymised unless `--identified`: pseudonymous patient ID; no name, birth date, accession or physicians; derived study, series, SOP and event UIDs. They still carry the exact study date and time, age, sex, the study description and the free-text protocol names and comments, so treat them as personal data (the survey export, which cuts dates to the month, is the anonymised product). Estimated weights are not written. Users with the exporter role can download a study's file from the study page ("Dose SR"; `GET /api/studies/{id}/rdsr`). DoseTrail only writes files: it does not send dose SRs to a PACS or registry.
 
 ## DICOM nodes
 - Remote AEs are managed in Admin → Integration:

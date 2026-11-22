@@ -152,7 +152,7 @@ export function revealButton(s, identity) {
   });
   const sr = rdsrUrl(s.id);
   return h('span', { class: 'row no-print', style: { display: 'inline-flex' } }, btn,
-    sr ? h('a', { class: 'btn xs ghost', href: sr, download: '', title: 'Dose SR (IHE REM RDSR) of this study, anonymised (exporter role)' }, 'Dose SR') : null);
+    sr ? h('a', { class: 'btn xs ghost', href: sr, download: '', title: 'Dose SR (IHE REM RDSR) of this study, pseudonymised (exporter role)' }, 'Dose SR') : null);
 }
 
 async function render() {
