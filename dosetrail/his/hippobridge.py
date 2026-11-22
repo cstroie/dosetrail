@@ -6,13 +6,17 @@ categories); the rest of DoseTrail sees `HisPatient` and `HisRequest`.
 Calls used (one patient, one study ≈ 3 calls):
   GET /fhir/Patient?q=<national id>          bare Patient (1 hit) | Bundle (several) | 404
   GET /fhir/Patient/<id>                     full record (chart weight / height, undated)
-  GET /fhir/ServiceRequest?patient=<id>&type=<radio|ct|rads|…>   the patient's requests
+  GET /fhir/ServiceRequest?patient=<id>&type=<radio|ct|rads|…>&dt=<exam time>
+                                             the patient's requests of that type and year
   GET /fhir/ServiceRequest/<id>              order form: weight, height, indication, ward…
-Never list requests without `type`: the gateway would scrape every department.
+Never list requests without `type` (the gateway would scrape every department) nor without
+`dt` (every year, at most 100 rows: recent requests of a long history can be cut off).
+Every call carries `background=1`: the gateway then never holds its users' work for ours.
 
-Authentication is HTTP Basic, passed through to the HIS login. Beware: a search made with
-wrong credentials answers 404 "no patients" instead of 401, so the login is verified
-separately (GET /api/whoami) before trusting "not found" answers.
+Authentication is HTTP Basic, passed through to the HIS login. Wrong credentials, like a
+broken HIS session, make searches answer 404 "no patients" rather than 401, and
+/api/whoami answers 404 now and then even when everything works – so "not found" is
+checked against a patient found before (see enrich.py), not against whoami.
 """
 
 from __future__ import annotations
@@ -200,7 +204,8 @@ class Client:
 
     def _get(self, path: str, params: dict | None = None) -> dict | None:
         """JSON body; None for 404 (not found / no results)."""
-        url = self.base + path + ("?" + urllib.parse.urlencode(params) if params else "")
+        params = {**(params or {}), "background": "1"}  # never delay the gateway's users
+        url = self.base + path + "?" + urllib.parse.urlencode(params)
         req = urllib.request.Request(url, headers=self.headers)
         self.calls += 1
         try:
@@ -242,8 +247,13 @@ class Client:
         full = self._get(f"/fhir/Patient/{urllib.parse.quote(str(exact[0].get('id')))}")
         return parse_patient(full or exact[0])
 
-    def list_requests(self, patient_id: str, kind: str) -> list[HisRequestStub]:
-        body = self._get("/fhir/ServiceRequest", {"patient": patient_id, "type": kind})
+    def list_requests(self, patient_id: str, kind: str,
+                      year: int | None = None) -> list[HisRequestStub]:
+        """The patient's requests of one type; with `year`, only that year's (lighter)."""
+        params = {"patient": patient_id, "type": kind}
+        if year:
+            params["dt"] = f"{year}-07-01T00:00:00"  # the gateway keeps only the year
+        body = self._get("/fhir/ServiceRequest", params)
         return [parse_request_stub(e["resource"]) for e in (body or {}).get("entry") or []
                 if (e.get("resource") or {}).get("resourceType") == "ServiceRequest"]
 
@@ -252,11 +262,9 @@ class Client:
         return parse_request(body) if body else None
 
     def verify_login(self) -> None:
-        """Raise HisError('auth') when the HIS rejects the credentials (401/403), and
-        HisError('retry') when it accepts them but cannot show the user (404: the gateway's
-        HIS session is broken – its searches then answer "not found" for everyone)."""
-        if self._get("/api/whoami") is None:
-            raise HisError("retry", "HIS session not usable (login check answered 404)")
+        """Raise HisError('auth') when the HIS rejects the credentials (401/403). Any other
+        answer passes: /api/whoami answers 404 now and then even when searches work."""
+        self._get("/api/whoami")
 
     def check(self) -> dict:
         """Reachability and credentials: {ok, ms, error}."""

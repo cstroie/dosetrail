@@ -16,8 +16,9 @@ Flow per study (queued in ``his_lookup`` when the study is first stored):
 Retries: a new study whose request isn't found (forms are often completed after the exam)
 or a HIS that is busy is tried again after 15 min, 2 h and 24 h. History (backfill) studies
 get a second try a day later, and run only within the server's backfill hours.
-The gateway's login is checked before every batch and after a run of "not found" answers:
-a broken HIS session makes every search look empty.
+A broken HIS session (or a rejected login) makes every search look empty, so after a run of
+"not found" answers a patient found earlier is searched again: if it is "not found" too, the
+batch stops and the studies stay queued.
 """
 
 from __future__ import annotations
@@ -203,6 +204,7 @@ class Context:
     patients: dict = field(default_factory=dict)
     listings: dict = field(default_factory=dict)
     not_found_streak: int = 0
+    canary: str | None = None  # an ID the HIS found: re-searched to tell "absent" from "broken"
     retry: bool = False  # the last study may gain data later (request form, patient record)
 
 
@@ -241,6 +243,7 @@ def process(session: Session, lookup: HisLookup, server: HisServer, client, ctx:
         lookup.status, lookup.detail = "no_patient", detail or None
         return lookup.status
     ctx.not_found_streak = 0
+    ctx.canary = pat.patient_id
     lookup.his_patient_id = hp.id[:32]
     if demographics.reconcile(pat, his_sex=hp.sex, his_birth=hp.birth_date):
         demographics.refresh_ages(session, [pat.id])
@@ -249,12 +252,18 @@ def process(session: Session, lookup: HisLookup, server: HisServer, client, ctx:
 
     req: HisRequest | None = None
     if policy == "full" and study.study_datetime is not None:
+        when = study.study_datetime
+        years = sorted({(when - dt.timedelta(hours=server.window_before_h)).year,
+                        (when + dt.timedelta(hours=server.window_after_h)).year})
         for kind in kinds_for(modality):
-            key = (hp.id, kind)
-            if key not in ctx.listings:
-                ctx.listings[key] = client.list_requests(hp.id, kind)
-            stub, score = choose_request(ctx.listings[key], study.study_datetime,
-                                         server.window_before_h, server.window_after_h)
+            stubs = []
+            for year in years:  # the gateway lists one year at a time
+                key = (hp.id, kind, year)
+                if key not in ctx.listings:
+                    ctx.listings[key] = client.list_requests(hp.id, kind, year)
+                stubs += ctx.listings[key]
+            stub, score = choose_request(stubs, when, server.window_before_h,
+                                         server.window_after_h)
             if stub is not None:
                 req = client.get_request(stub.id)
                 lookup.request_id, lookup.match_score = stub.id[:32], score
@@ -375,6 +384,24 @@ def backfill_candidates(session: Session, since: dt.datetime | None, until: dt.d
     return ids, counts
 
 
+def _canary(session: Session) -> str | None:
+    """The patient ID of the latest study the HIS matched (a known-present patient)."""
+    return session.scalar(
+        select(Patient.patient_id).join(Study, Study.patient_id == Patient.id)
+        .join(HisLookup, HisLookup.study_id == Study.id)
+        .where(HisLookup.his_patient_id.is_not(None))  # the HIS returned this patient
+        .order_by(HisLookup.fetched_at.desc()).limit(1))
+
+
+def _check_canary(client, ctx: Context) -> None:
+    """After a run of "not found": is a known patient still found? If not, the HIS (or the
+    login) is broken, and the run stops before more studies are marked "not found"."""
+    if ctx.canary and client.find_patient(ctx.canary) is None:
+        raise HisError("retry", "a patient found before is now 'not found': HIS session "
+                                "broken or login rejected")
+    ctx.not_found_streak = 0
+
+
 def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool = False,
               now: dt.datetime | None = None, client=None, sleep=time.sleep,
               report=None) -> Counter:
@@ -392,8 +419,8 @@ def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool
     if not rows:
         return stats
     client = client or servers.client(server, secret)
-    client.verify_login()  # a "not found" means something only after this
-    ctx = Context()
+    client.verify_login()  # 401 = credentials rejected: stop (other answers pass)
+    ctx = Context(canary=_canary(session))
     for row in rows:
         study_when = session.scalar(select(Study.study_datetime)
                                     .where(Study.id == row.study_id))
@@ -422,8 +449,7 @@ def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool
         else:
             session.commit()
         if ctx.not_found_streak >= NOT_FOUND_RECHECK:
-            client.verify_login()
-            ctx.not_found_streak = 0
+            _check_canary(client, ctx)
         sleep(server.min_interval_s * max(1, client.calls - calls))
     stats["calls"] = client.calls
     return stats

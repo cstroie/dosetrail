@@ -161,16 +161,48 @@ def test_choose_request():
     assert enrich.choose_request(s[3:], when, 72, 2) == (None, None)
 
 
-def test_a_broken_his_session_pauses_instead_of_marking_not_found(session, stub, his):
+def test_a_broken_his_session_stops_the_batch(session, stub, his):
     stub.patients[GIRL] = his_stub.patient("77", GIRL, weight="22")
-    st = _ingest(session, "1.9.90")
-    stub.broken_session = True
+    _ingest(session, "1.9.90")
+    _run(session)  # the HIS finds this girl: she becomes the known patient
+    stub.broken_session = True  # whoami 404 and every search empty, as seen live
+    later = [_ingest(session, f"1.9.9{i}", pid=GIRL) for i in range(1, 8)]
     with pytest.raises(HisError) as e:
         _run(session)
-    assert e.value.kind == "retry"
-    assert session.get(HisLookup, st.id).status == "pending"
-    assert session.get(HisLookup, st.id).attempts == 0
+    assert e.value.kind == "retry" and "found before" in str(e.value)
+    states = [session.get(HisLookup, st.id) for st in later]
+    assert sum(lk.attempts == 0 for lk in states) == 2  # the batch stopped after 5
+    assert all(lk.status == "pending" for lk in states)  # the 5 are retried later
 
+
+def test_whoami_404_alone_does_not_stop_the_worker(session, stub, his):
+    stub.patients[GIRL] = his_stub.patient("77", GIRL, weight="22")
+    st = _ingest(session, "1.9.89")
+    real = stub.httpd.RequestHandlerClass.do_GET
+
+    def flaky(handler):
+        if handler.path.startswith("/api/whoami"):
+            return handler._send(404, {"message": "User identity not found"})
+        return real(handler)
+
+    stub.httpd.RequestHandlerClass.do_GET = flaky
+    try:
+        assert _run(session)["patient_only"] == 1
+    finally:
+        stub.httpd.RequestHandlerClass.do_GET = real
+    assert session.get(HisLookup, st.id).his_patient_id == "77"
+
+
+def test_listings_ask_for_the_exam_year_and_in_background(session, stub, his):
+    stub.patients[GIRL] = his_stub.patient("77", GIRL)
+    stub.requests["77"] = [his_stub.request("R-NY", "2024-12-31T20:00:00", national_id=GIRL)]
+    st = _ingest(session, "1.9.88")
+    st.study_datetime = dt.datetime(2025, 1, 1, 9)  # New Year: window reaches into 2024
+    session.get(HisLookup, st.id).next_try_at = None
+    enrich.run_batch(session, SECRET, now=dt.datetime(2025, 1, 1, 12), sleep=lambda s: None)
+    assert session.get(HisLookup, st.id).request_id == "R-NY"
+    assert sorted(d[:4] for d in stub.dts) == ["2024", "2025"]
+    assert set(stub.background) == {"1"}
 
 def test_outputs_study_summary_quality_and_survey(session, stub, his):
     from dosetrail import quality

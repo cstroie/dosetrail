@@ -58,6 +58,8 @@ class Stub:
         self.patients: dict[str, dict] = {}
         self.requests: dict[str, list[dict]] = {}
         self.calls: list[str] = []
+        self.dts: list[str | None] = []  # dt of each request listing
+        self.background: list[str | None] = []
         self.fail_with: int | None = None
         self.broken_session = False  # login accepted, but whoami 404 and searches empty
         stub = self
@@ -78,6 +80,7 @@ class Stub:
                 u = urllib.parse.urlsplit(self.path)
                 q = dict(urllib.parse.parse_qsl(u.query))
                 stub.calls.append(u.path)
+                stub.background.append(q.get("background"))
                 if stub.fail_with:
                     return self._send(stub.fail_with, {"error": "busy"})
                 good = self.headers.get("Authorization") == "Basic " + base64.b64encode(
@@ -102,6 +105,9 @@ class Stub:
                     if "type" not in q:
                         return self._send(400, {"error": "type required in tests"})
                     rs = stub.requests.get(q.get("patient", ""), [])
+                    if q.get("dt"):  # like the gateway: that year only
+                        rs = [r for r in rs if r["authoredOn"][:4] == q["dt"][:4]]
+                    stub.dts.append(q.get("dt"))
                     return self._send(200, {"resourceType": "Bundle", "total": len(rs),
                                             "entry": [{"resource": r} for r in rs]})
                 if u.path.startswith("/fhir/ServiceRequest/"):
