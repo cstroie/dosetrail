@@ -411,3 +411,18 @@ def test_alerts_page_api(client):
     acked = client.get("/api/alerts", params={"status": "acknowledged", "modality": "XA"}).json()
     assert "reviewed" in {a["ack_note"] for a in acked}
     assert client.post("/api/alerts/ack", json={"ids": []}).status_code == 400
+
+
+def test_grid_report_endpoint(client):
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/reports/grid", params={"year": 2026, "quarter": 4, "q": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["grid"].startswith("ICRP 135") and "rows" in r.json()
+    x = client.get("/api/reports/grid", params={"year": 2026, "quarter": 4, "format": "xlsx"})
+    assert x.status_code == 200 and x.content[:2] == b"PK"
+    assert client.get("/api/reports/grid", params={"year": 2026, "quarter": 5}).status_code == 400
+    s = client.get("/api/stats", params={"q": "", "metric": "dlp", "by": "exam,ref_group",
+                                         "system": "ro-nom-ct"})
+    assert s.status_code == 200 and "ref_group" in s.json()["orders"]
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/reports/grid", params={"year": 2026, "quarter": 4}).status_code == 403

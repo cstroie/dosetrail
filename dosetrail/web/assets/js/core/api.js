@@ -271,6 +271,20 @@ export function inspReport(params) {
   return isSample ? serverOnly('Reports') : remote('/api/reports/insp1255', params);
 }
 
+/** GET /api/reports/grid?year=&quarter=&q= → { grid, start, end, min_n, notes, rows: [{ exam,
+ *  exam_meaning, parameter (age|weight), group, group_label, quantity, unit, n, n_studies,
+ *  excluded, mean, median, p75, edrl, ratio, status }] } (second grid: ICRP 135 / RP 185) */
+export function gridReport(params) {
+  return isSample ? serverOnly('Reports') : remote('/api/reports/grid', params);
+}
+
+export function gridReportUrl({ year, quarter, q = 'origin:local' }) {
+  if (isSample) return null;
+  const u = new URL('/api/reports/grid', MODE);
+  for (const [k, v] of Object.entries({ year, quarter, q, format: 'xlsx' })) u.searchParams.set(k, String(v));
+  return u.href;
+}
+
 /** Download link for the same report as XLSX (official column order). */
 export function inspReportUrl({ year, quarter, q = 'origin:local' }) {
   if (isSample) return null;

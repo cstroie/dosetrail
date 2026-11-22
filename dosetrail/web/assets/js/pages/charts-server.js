@@ -22,7 +22,7 @@ const METRICS = {
 };
 METRICS.CR = METRICS.DX;
 METRICS.XA = METRICS.RF;
-const DIMS = { exam: 'Exam', device: 'Device', age_band: 'Age group', weight_band: 'Weight group', view: 'Projection', protocol: 'Protocol (raw)', sex: 'Sex', year: 'Year' };
+const DIMS = { exam: 'Exam', device: 'Device', age_band: 'Age group', weight_band: 'Weight group', ref_group: 'ICRP 135 group', view: 'Projection', protocol: 'Protocol (raw)', sex: 'Sex', year: 'Year' };
 const PERIODS = { month: 'Month', quarter: 'Quarter', year: 'Year' };
 const SYSTEMS = { '': 'Local nomenclator', 'ro-drl-ms838-2025': 'National DRL exams', 'ec-rp185': 'RP 185 exams' };
 const AGE = { 'ro-drl-age': 'National 1–4/5–9/10–14/15+', 'rp185-head-age': 'RP 185 head', 'ext-head-age': 'RP 185 head + adults' };
@@ -89,7 +89,7 @@ export async function buildServer(cfg, q, devColor) {
   }
   const isTime = ['month', 'quarter', 'year'].includes(d1);
   let shown = isTime ? cats : cats.filter((c) => catN.get(c) >= (cfg.min_n ?? 5));
-  if (!isTime && d1 !== 'age_band' && d1 !== 'weight_band' && shown.length > TOP) shown = [...shown].sort((a, b) => catN.get(b) - catN.get(a)).slice(0, TOP);
+  if (!isTime && !['age_band', 'weight_band', 'ref_group'].includes(d1) && shown.length > TOP) shown = [...shown].sort((a, b) => catN.get(b) - catN.get(a)).slice(0, TOP);
   let serNames = d2 ? [...new Set(res.groups.map((g) => lab(g, d2)))] : ['all'];
   const order = res.orders?.[d2];
   if (order) serNames = [...order.filter((x) => serNames.includes(x)), ...serNames.filter((x) => !order.includes(x))];

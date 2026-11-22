@@ -1,0 +1,29 @@
+# Second patient-group grid, following ICRP 135 and RP 185 (extended with ≥18 y,
+# 80–110 kg and ≥110 kg): head examinations are grouped by AGE, body examinations by
+# WEIGHT. It is reported next to the national grid (OMS 838/2025, OMS 1255/2016), which
+# stays the official one.
+#
+# How an exam code gets its parameter (first match wins):
+#   1. [codes] below (per system and code);
+#   2. the RP 185 exam it maps to in crosswalk.csv (head = age, body = weight);
+#   3. the chapter of the code in its nomenclator ([chapters]);
+#   4. for codes of other systems (national DRL, INSP 1255): the parameter shared by the
+#      nomenclator codes mapped to them in crosswalk.csv;
+#   5. `default`.
+
+age_scheme = "ext-head-age"
+weight_scheme = "ext-body-weight"
+default = "weight"
+
+[chapters]
+# head
+"CRANIU ŞI FAȚĂ" = "age"
+"CAP" = "age"
+"CEREBRAL ŞI CERVICAL" = "age"
+# limbs: not covered by ICRP 135 / RP 185 groups; the limb size follows age, and age is
+# always known (weight rarely is). Change to "weight" here if preferred.
+"MEMBRE SUPERIOARE" = "age"
+"MEMBRE INFERIOARE" = "age"
+
+[codes]
+# "ro-nom-ct:CT-XYZ" = "weight"

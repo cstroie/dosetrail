@@ -66,8 +66,8 @@ METRICS: dict[str, Metric] = {
     "di": Metric("event", Event.deviation_index, "1", "Deviation index"),
     "sid": Metric("event", Event.sid_mm, "mm", "Source–image distance"),
 }
-DIMENSIONS = ("exam", "device", "age_band", "weight_band", "month", "quarter", "year",
-              "modality", "sex", "protocol", "view")
+DIMENSIONS = ("exam", "device", "age_band", "weight_band", "ref_group", "month", "quarter",
+              "year", "modality", "sex", "protocol", "view")
 EXPOSURE_EXAM = ("DX", "CR", "MG", "PX")  # modalities classified per exposure
 
 
@@ -175,7 +175,8 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
         raise StatsError(f"unknown dimension(s) {', '.join(bad)}; one of {', '.join(DIMENSIONS)}")
     m = METRICS[metric]
     on_events = m.level == "event"
-    need_exam = "exam" in group_by or bool(exams)
+    # ref_group: head exams by age, body exams by weight (grid.py); needs the exam code
+    need_exam = "exam" in group_by or "ref_group" in group_by or bool(exams)
 
     cols = [m.column.label("value"), Study.id.label("sid"), Study.study_datetime,
             Study.device_id, Study.modality, Study.age_days, Study.weight_kg]
@@ -209,6 +210,11 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
 
     age = BandLookup(session, age_scheme, "age") if "age_band" in group_by else None
     weight = BandLookup(session, weight_scheme, "weight") if "weight_band" in group_by else None
+    grid = None
+    if "ref_group" in group_by:
+        from .grid import Grid
+
+        grid = Grid(session)
     if "device" in group_by and (physical is None or names is None):
         physical = physical or {i: (mm or i) for i, mm in
                                 session.execute(select(Device.id, Device.merged_into_id))}
@@ -225,6 +231,10 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
         n_rows += 1
         key = []
         for g in group_by:
+            if g == "ref_group":
+                key.append(grid.group(system, r.exam, r.age_days, r.weight_kg))
+                labels[g][key[-1]] = grid.labels[key[-1]]
+                continue
             key.append(_dim(g, r, age, weight, physical, names, labels))
         k = tuple(key)
         groups[k].append(r.value)
@@ -245,7 +255,7 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
         if edges:
             item["hist"] = histogram(vals, edges)
         out_groups.append(item)
-    out_groups.sort(key=lambda it: _sort_key(it, group_by, age, weight))
+    out_groups.sort(key=lambda it: _sort_key(it, group_by, age, weight, grid))
     return {
         "metric": metric, "unit": m.unit, "label": m.label, "level": m.level,
         "group_by": group_by, "system": system if need_exam else None,
@@ -256,7 +266,8 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
         "groups": out_groups[:MAX_GROUPS], "groups_total": len(out_groups),
         # band labels in their natural order, for legends and axes
         "orders": {**({"age_band": [b.label for b in age.bands]} if age else {}),
-                   **({"weight_band": [b.label for b in weight.bands]} if weight else {})},
+                   **({"weight_band": [b.label for b in weight.bands]} if weight else {}),
+                   **({"ref_group": grid.ordered_labels()} if grid else {})},
     }
 
 
@@ -313,7 +324,7 @@ def _edges(values: list[float], bins: int) -> list[float] | None:
     return [lo + i * step for i in range(bins + 1)]
 
 
-def _sort_key(item, group_by, age, weight):
+def _sort_key(item, group_by, age, weight, grid=None):
     out = []
     for g in group_by:
         v = item["key"][g]
@@ -321,6 +332,8 @@ def _sort_key(item, group_by, age, weight):
             out.append((0, age.order.get(v, 99), ""))
         elif g == "weight_band" and weight:
             out.append((0, weight.order.get(v, 99), ""))
+        elif g == "ref_group" and grid:
+            out.append((0, grid.order.get(v, 999), ""))
         elif v is None:
             out.append((1, 0, ""))
         elif isinstance(v, (int, float)):

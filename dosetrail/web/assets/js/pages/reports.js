@@ -5,7 +5,7 @@
 import '../components/dt-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
-import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl } from '../core/api.js';
+import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
@@ -36,6 +36,16 @@ function render() {
       } }, 'Download XLSX'),
       h('span', { class: 'muted small' }, 'Quarterly mean / national DRL; median shown to spot outliers. Rows above the DRL most often first.')),
     h('div', { id: 'trend' }),
+    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Grila ICRP 135 / RP 185 (extinsă) — alături de grila națională'),
+    h('div', { class: 'toolbar' },
+      h('button', { class: 'btn primary', type: 'button', onclick: loadGrid }, 'Show the selected quarter'),
+      h('button', { class: 'btn', type: 'button', onclick: () => {
+        const href = gridReportUrl({ year: state.year, quarter: state.quarter });
+        if (!href) { toast('Reports need the server'); return; }
+        h('a', { href, download: '' }).click();
+      } }, 'Download XLSX'),
+      h('span', { class: 'muted small' }, 'Head exams by age (0–<3 mo, 3 mo–<1 y, 1–<6 y, 6–<18 y, ≥18 y), body exams by weight (<5 … ≥110 kg). Median vs RP 185 EDRL where it exists.')),
+    h('div', { id: 'grid' }),
     h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Studiul național de dozimetrie pediatrică (plan draft)'),
     surveyBar(),
   );
@@ -61,6 +71,37 @@ async function loadTrend() {
       h('td', { class: 'r' }, `${smart(x.reference)} ${x.unit}`), x.quarters.map(cell),
       h('td', { class: 'r' }, `${x.quarters_above}/${x.quarters_with_data}`),
       h('td', { class: 'r' }, x.trend_pct_per_quarter == null ? '' : `${x.trend_pct_per_quarter > 0 ? '+' : ''}${num(x.trend_pct_per_quarter, 0)} %/q`)))))))); 
+}
+
+async function loadGrid() {
+  const host = document.getElementById('grid');
+  clear(host).append(h('p', { class: 'muted' }, 'Loading…'));
+  let r;
+  try { r = await gridReport({ year: state.year, quarter: state.quarter }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
+  const tone = { below: 'ok', above: 'warn', well_above: 'alert', insufficient: '' };
+  const label = { below: '≤ EDRL', above: '≤ 1.5×', well_above: '> 1.5×', insufficient: `n < ${r.min_n}` };
+  const n = r.notes;
+  clear(host).append(h('p', { class: 'muted small' }, `${r.start} – ${r.end} · body values without a weight: ${num(n.body_weight_unknown)} of ${num(n.body_values)}`
+    + (n.body_values && n.body_weight_unknown / n.body_values > 0.5 ? ' — the weight grid needs weights (RIS or entered at the modality).' : '')));
+  for (const [param, title] of [['age', 'Head examinations · by age'], ['weight', 'Body examinations · by weight']]) {
+    const rows = r.rows.filter((x) => x.parameter === param);
+    let last = null;
+    const body = h('tbody', {}, rows.map((x) => {
+      const first = `${x.exam}|${x.quantity}` !== last;
+      last = `${x.exam}|${x.quantity}`;
+      return h('tr', { class: first ? 'group-start' : '' },
+        h('td', { title: x.exam }, first ? x.exam_meaning : ''), h('td', {}, first ? `${x.quantity} (${x.unit})` : ''),
+        h('td', {}, x.group_label), h('td', { class: 'r' }, num(x.n)), h('td', { class: 'r muted' }, x.excluded ? num(x.excluded) : ''),
+        h('td', { class: 'r' }, x.median == null ? '' : smart(x.median)), h('td', { class: 'r' }, x.p75 == null ? '' : smart(x.p75)),
+        h('td', { class: 'r' }, x.mean == null ? '' : smart(x.mean)),
+        h('td', { class: 'r' }, x.edrl == null ? '—' : smart(x.edrl)),
+        h('td', { class: 'r' }, x.status ? h('span', { class: `tag ${tone[x.status]}`, title: x.ratio ? `median / EDRL = ${num(x.ratio, 2)}` : '' }, x.ratio && x.status !== 'insufficient' ? `${num(x.ratio, 2)}×` : label[x.status]) : ''));
+    }));
+    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'No examination in this quarter.')));
+    append(host, [h('h2', { class: 'section-title' }, title),
+      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
+        h('thead', {}, h('tr', {}, ['Exam', 'Quantity', 'Group', 'n', 'Excl.', 'Median', 'P75', 'Mean', 'EDRL', 'vs EDRL'].map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
+  }
 }
 
 function surveyBar() {

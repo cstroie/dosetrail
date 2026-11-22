@@ -833,6 +833,33 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return _file(lambda fh: insp1255.write_xlsx(report, fh, info), "xlsx",
                      f"insp-1255-{year}-T{quarter}", now)
 
+    @app.get("/api/reports/grid")
+    def report_grid(request: Request, year: int, quarter: int, q: str = "origin:local",
+                    format: str = "json", min_n: int = 10,
+                    user: User = Depends(current_user), session: Session = Depends(db)):
+        """The second grid: ICRP 135 / RP 185 groups (head by age, body by weight)."""
+        from ..reports import grid
+        from ..reports.insp1255 import quarter_range
+
+        _exporter(user)
+        try:
+            start, end = quarter_range(year, quarter)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if format not in ("json", "xlsx"):
+            raise HTTPException(400, "format is json|xlsx")
+        now = clock()
+        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        report = grid.build(session, conds, start, end, max(min_n, 1))
+        _audit(session, request, user, "report", f"grid:{year}Q{quarter}:{format}", {"q": q})
+        session.commit()
+        if format == "json":
+            return report
+        info = {"Generat": now.isoformat(sep=" ", timespec="seconds"),
+                "De": user.display_name or user.username, "Selecție": q or "(toate)"}
+        return _file(lambda fh: grid.write_xlsx(report, fh, info), "xlsx",
+                     f"grila-icrp135-{year}-T{quarter}", now)
+
     @app.get("/api/lookup")
     def lookup(q: str = "", limit: int = 6, user: User = Depends(current_user),
                session: Session = Depends(db)):
