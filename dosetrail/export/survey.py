@@ -59,7 +59,7 @@ DICTIONARY: list[tuple[str, str, str]] = [
     ("age_days", "d", "Age in completed days, below 1 year only"),
     ("age_months", "mo", "Age in completed months, below 24 months only"),
     ("age_years", "a", "Age in completed years"),
-    ("head_age_group", "", "RP 185 head group: 0-3mo, 3mo-1y, 1-6y, 6y+"),
+    ("head_age_group", "", "RP 185 head group: 0-3mo, 3mo-1y, 1-6y, 6y+ (= 6-<18 y)"),
     ("weight_kg", "kg", "Patient weight"),
     ("weight_source", "", "measured / chart_same_day / chart_72h / estimated_* / dicom_unknown"),
     ("weight_group", "", "RP 185 body group (with 80-110kg, 110kg+)"),

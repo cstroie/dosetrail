@@ -11,7 +11,9 @@ bands = [
   { key = "0-3mo", label = "0–<3 months", upper = 3, upper_unit = "mo" },
   { key = "3mo-1y", label = "3 months–<1 y", lower = 3, lower_unit = "mo", upper = 1, upper_unit = "y" },
   { key = "1-6y", label = "1–<6 y", lower = 1, lower_unit = "y", upper = 6, upper_unit = "y" },
-  { key = "6y+", label = "≥6 y", lower = 6, lower_unit = "y" },
+  # RP 185 writes "≥6 y" but its DRLs are paediatric: capped at 18 y so adults scanned
+  # here are never compared with them (adults: ext-head-age "≥18 y", no EDRL)
+  { key = "6y+", label = "6–<18 y", lower = 6, lower_unit = "y", upper = 18, upper_unit = "y" },
 ]
 
 [[scheme]]

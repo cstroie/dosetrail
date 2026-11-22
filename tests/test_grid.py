@@ -92,3 +92,18 @@ def test_report(session, studies):
     buf = io.BytesIO()
     grid_report.write_xlsx(r, buf, {"Generat": "test"})
     assert buf.getvalue()[:2] == b"PK"
+
+
+def test_rp185_head_groups_stop_at_18(session):
+    """RP 185 '≥6 y' is paediatric: adults are never compared with its head EDRLs."""
+    from dosetrail.reference import CTReference
+    from dosetrail.stats import BandLookup
+
+    load_all(session)
+    head = BandLookup(session, "rp185-head-age", "age")
+    assert head(int(17 * 365.25)) == "6y+" and head(int(25 * 365.25)) is None
+    ref = CTReference(session)
+    codes = {"ec-rp185": "CT-HEAD"}
+    assert ref.for_series(codes, int(10 * 365.25), None)["dlp"] == 650.0
+    assert ref.for_series(codes, int(25 * 365.25), None)["dlp"] is None
+    assert Grid(session).group("ro-nom-ct", "CT-CR", int(25 * 365.25), None) == "age:18y+"

@@ -38,8 +38,8 @@ PARTS = [
     (("DX", "CR"), "dap", "dap", "Gy.cm2"),
     (("RF",), "dap_total", "dap", "Gy.cm2"),
 ]
-# RP 185 band keys that differ from the extended scheme: "≥6 y" covers 6–<18 y (the
-# extended ≥18 y group has no paediatric EDRL)
+# RP 185 band keys that differ from the extended scheme: its "6y+" band is 6–<18 y
+# (capped in group_schemes.toml; the extended ≥18 y group has no paediatric EDRL)
 BAND_ALIAS = {"6y+": "6-18y"}
 STATUS_RO = {"below": "sub EDRL", "above": "peste EDRL (≤1,5×)",
              "well_above": "peste 1,5 × EDRL", "insufficient": "n insuficient", None: ""}
