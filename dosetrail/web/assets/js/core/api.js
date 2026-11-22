@@ -63,6 +63,18 @@ export async function now() {
   return (await sample('overview.json')).generated;
 }
 
+/** GET /api/me → { username, name, roles } (null with the sample data) */
+export async function me() {
+  return isSample ? null : remote('/api/me');
+}
+
+/** POST /api/logout, then the login page. */
+export async function logout() {
+  await fetch(new URL('/api/logout', MODE).href, { method: 'POST' }).catch(() => {});
+  cache.clear();
+  location.href = '/login';
+}
+
 /** GET /api/overview */
 export async function overview() {
   return isSample ? sample('overview.json') : remote('/api/overview');

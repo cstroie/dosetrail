@@ -8,6 +8,7 @@ import { h, icon } from '../core/dom.js';
 import { t, lang } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
 import './dt-command-palette.js';
+import { me, logout } from '../core/api.js';
 
 const NAV = [
   ['overview', 'index.html', 'overview'],
@@ -49,7 +50,7 @@ class DtShell extends HTMLElement {
         onclick: () => { prefs.set('lang', lang() === 'en' ? 'ro' : 'en'); location.reload(); } }, lang().toUpperCase()),
       h('button', { id: 'dt-theme-btn', class: 'icon-btn', type: 'button', 'aria-label': t(`shell.theme.${theme}`), title: t(`shell.theme.${theme}`),
         onclick: () => toggleTheme() }, icon(theme === 'dark' ? 'sun' : 'moon', 15, 2)),
-      h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('shell.user'), title: 'M. Stan · medical physicist' }, 'MS'));
+      userMenu());
 
     const skip = h('a', { class: 'sr-only', href: '#main' }, 'Skip to content');
     this.append(skip, h('div', { class: 'shell' }, rail, h('div', { class: 'content' }, ctx, work)), palette);
@@ -60,6 +61,39 @@ class DtShell extends HTMLElement {
       else if (e.key === '/' && !typing) { e.preventDefault(); palette.open(); }
     });
   }
+}
+
+// The signed-in user: initials on the button; the menu has the name, roles and sign-out.
+function userMenu() {
+  const btn = h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('shell.user'), 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '·');
+  const menu = h('div', { class: 'menu', role: 'menu', hidden: true });
+  const wrap = h('span', { class: 'menu-wrap' }, btn, menu);
+  const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+    btn.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  me().then((u) => {
+    if (!u) {
+      btn.textContent = '?';
+      btn.title = t('shell.sample');
+      menu.append(h('div', { class: 'menu-item muted' }, t('shell.sample')));
+      return;
+    }
+    const label = u.name || u.username;
+    const words = label.split(/[\s._-]+/).filter(Boolean);
+    btn.textContent = (words.length > 1 ? words[0][0] + words[words.length - 1][0] : label.slice(0, 2)).toUpperCase();
+    btn.title = `${label} (${u.username})`;
+    menu.append(
+      h('div', { style: { padding: '5px 6px' } }, h('strong', {}, label), h('div', { class: 'muted small' }, u.username),
+        h('div', { class: 'muted small' }, `${t('shell.roles')}: ${u.roles.join(', ')}`)),
+      u.roles.includes('admin') ? h('a', { class: 'menu-item', role: 'menuitem', href: 'users.html' }, t('shell.users')) : null,
+      h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: () => logout() }, t('shell.signout')));
+  }).catch(() => { btn.textContent = '?'; });
+  return wrap;
 }
 
 export function toggleTheme() {
