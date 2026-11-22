@@ -249,8 +249,8 @@ def parse_nm(ds) -> ParsedObject:
         agent = _s(rp.get("Radiopharmaceutical")) or (
             _s(rp.RadiopharmaceuticalCodeSequence[0].get("CodeMeaning"))
             if rp.get("RadiopharmaceuticalCodeSequence") else None)
-        if not bq and not agent:
-            continue
+        if not (bq or agent or nuclide):
+            continue  # an empty sequence (some vendors fill only the radionuclide)
         key = f"{study['study_uid']}|{start}|{agent}|{bq}"
         events.append({
             "event_uid": "rp-" + hashlib.sha1(key.encode()).hexdigest()[:40],

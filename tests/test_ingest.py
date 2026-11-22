@@ -208,3 +208,13 @@ def test_pet_header_administered_activity(session):
     store.store(parse(f.pet_image(sop_uid="1.2.3.500.2")))  # another image, same injection
     s = session.scalar(select(Study).filter_by(study_uid="1.2.3.500"))
     assert s.n_events == 1 and s.admin_activity_mbq == pytest.approx(185.0)
+
+
+def test_nm_header_with_only_the_radionuclide():
+    ds = f.pet_image(study_uid="1.2.3.600", sop_uid="1.2.3.600.1")
+    rp = ds.RadiopharmaceuticalInformationSequence[0]
+    del rp.Radiopharmaceutical, rp.RadionuclideTotalDose, rp.RadiopharmaceuticalStartDateTime
+    (ev,) = parse(ds).events  # Mediso NM: Tc-99m, no agent, no activity
+    assert ev["comment"] == "^18^Fluorine" and ev["extra_json"]["activity_mbq"] is None
+    del rp.RadionuclideCodeSequence
+    assert parse(ds).kind == "ignored"
