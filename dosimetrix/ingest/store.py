@@ -6,8 +6,9 @@ Rules
   cumulative RDSR (Siemens sends one after every series) only adds the new events.
 * Projection dose reports are authoritative over image headers for the same study: header
   events are removed when an RDSR arrives, and later headers are not added ("superseded").
-* An exact duplicate exposure (same second, DAP, kVp, mAs) is not added twice – e.g. the
-  'for processing' and 'for presentation' copies of one radiograph.
+* An exact duplicate exposure (same second, DAP or glandular dose, kVp, mAs, side) is not
+  added twice – e.g. the 'for processing' and 'for presentation' copies of one radiograph
+  or mammogram.
 * Study totals and derived columns are recomputed for the touched study.
 """
 
@@ -56,7 +57,9 @@ def _sig(e) -> tuple:
     t = get("event_datetime")
     return (t.replace(microsecond=0) if t else None,
             round(get("dap"), 9) if get("dap") is not None else None,
-            get("kvp"), round(get("mas"), 3) if get("mas") is not None else None)
+            get("kvp"), round(get("mas"), 3) if get("mas") is not None else None,
+            round(get("agd"), 6) if get("agd") is not None else None,
+            get("laterality"))
 
 
 def _source(e) -> str | None:
@@ -178,7 +181,9 @@ class Store:
             ev = zero_as_missing(ev)
             if ev.get("event_uid") and ev["event_uid"] in uids:
                 continue
-            if projection and ev.get("dap") is not None and _sig(ev) in sigs:
+            # mammograms carry a glandular dose instead of a DAP
+            if projection and (ev.get("dap") is not None or ev.get("agd") is not None) \
+                    and _sig(ev) in sigs:
                 self.stats["duplicate_exposures"] += 1
                 continue
             self.session.add(Event(study_id=study.id, **ev))

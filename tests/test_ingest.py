@@ -228,3 +228,14 @@ def test_mammography_header_organ_dose_is_in_dgy():
     ds.BodyPartThickness = "52"
     (ev,) = parse(ds).events
     assert ev["agd"] == pytest.approx(1.23) and ev["compression_thickness_mm"] == 52
+
+
+def test_mammogram_copies_are_not_counted_twice(session):
+    store = Store(session, SECRET)
+    for sop, cls in (("1.2.3.710.1", MG_PRES), ("1.2.3.710.2", "1.2.840.10008.5.1.4.1.1.1.2.1")):
+        ds = f.dx_image(study_uid="1.2.3.710", sop_uid=sop, sop_class=cls)
+        ds.Modality, ds.OrganDose, ds.ImageLaterality = "MG", "0.0125", "L"
+        del ds.ImageAndFluoroscopyAreaDoseProduct
+        store.store(parse(ds))
+    s = session.scalar(select(Study).filter_by(study_uid="1.2.3.710"))
+    assert s.n_events == 1 and s.agd_left == pytest.approx(1.25)
