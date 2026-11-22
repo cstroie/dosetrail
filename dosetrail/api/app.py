@@ -47,7 +47,8 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "reports.html": "reports.html", "quality.html": "quality.html",
          "rules.html": "rules.html", "dicom.html": "dicom.html",
          "users.html": "users.html", "audit.html": "audit.html",
-         "alerts.html": "alerts.html", "local-drl.html": "local-drl.html"}
+         "alerts.html": "alerts.html", "local-drl.html": "local-drl.html",
+         "indications.html": "indications.html"}
 
 
 class LoginIn(BaseModel):
@@ -64,6 +65,15 @@ class LocalDRLIn(BaseModel):
     q: str = "origin:local"
     estimated: bool = True
     rows: list[dict]
+
+
+class IndicationIn(BaseModel):
+    code: str | None = None
+
+
+class IndicationMapIn(BaseModel):
+    text: str
+    code: str | None = None
 
 
 class TokenIn(BaseModel):
@@ -500,7 +510,59 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if out is None:
             raise HTTPException(404, "study not found")
         out["quality"] = quality.study_findings(session, study_id)
+        from .. import indications
+
+        out["indication"] = indications.of_study(session, study_id)
         return out
+
+    @app.put("/api/studies/{study_id}/indication")
+    def study_indication(study_id: int, body: IndicationIn, request: Request,
+                         user: User = Depends(admin_user), session: Session = Depends(db)):
+        """Code one study by hand (``code`` null: back to automatic matching)."""
+        from .. import indications
+
+        if session.get(Study, study_id) is None:
+            raise HTTPException(404, "study not found")
+        code = _indication_code(session, body.code)
+        indications.set_study(session, study_id, code)
+        _audit(session, request, user, "indication.study", f"study:{study_id}",
+               {"code": body.code})
+        session.commit()
+        return indications.of_study(session, study_id)
+
+    def _indication_code(session: Session, code: str | None):
+        from ..db.models import Code, CodeSystem
+        from ..indications import SYSTEM
+
+        if code is None:
+            return None
+        c = session.scalar(select(Code).join(CodeSystem).where(
+            CodeSystem.key == SYSTEM, Code.code == code))
+        if c is None:
+            raise HTTPException(400, f"unknown indication code {code!r}")
+        return c
+
+    @app.get("/api/indications/review")
+    def indications_review(limit: int = 200, user: User = Depends(admin_user),
+                           session: Session = Depends(db)):
+        from .. import indications
+
+        return indications.review(session, min(max(limit, 1), 1000))
+
+    @app.put("/api/indications/mappings")
+    def indications_decide(body: IndicationMapIn, request: Request,
+                           user: User = Depends(admin_user), session: Session = Depends(db)):
+        """One text -> one code for every study with it (``code`` null removes it)."""
+        from .. import indications
+
+        code = _indication_code(session, body.code)
+        indications.set_mapping(session, body.text, code)
+        ids = indications.studies_with_text(session, body.text)
+        stats = indications.update(session, ids)
+        _audit(session, request, user, "indication.decide", body.text[:120],
+               {"code": body.code, "studies": len(ids)})
+        session.commit()
+        return {"studies": len(ids), "coded": dict(stats)}
 
     @app.post("/api/studies/{study_id}/his")
     def study_his_requery(study_id: int, request: Request, user: User = Depends(admin_user),

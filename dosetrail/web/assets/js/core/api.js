@@ -215,6 +215,13 @@ export function drlSets() {
 
 /** GET /api/drl/sets/{key} → { key, name, source, notes, values: [{ exam, exam_meaning, modality,
  *  scheme, band, band_label, quantity, value, unit, applies_to }] } */
+/** PUT /api/studies/{id}/indication {code|null} (admin); PUT /api/indications/mappings. */
+export const setStudyIndication = (id, code) => send('PUT', `/api/studies/${id}/indication`, { code });
+export const decideIndication = (text, code) => send('PUT', '/api/indications/mappings', { text, code });
+export function indicationReview() {
+  return isSample ? serverOnly('Indications') : remote('/api/indications/review');
+}
+
 /** Local DRLs (localdrl.py): proposal, adoption (admin), review (json / xlsx), deletion. */
 export function localDrlPropose(params) {
   return isSample ? serverOnly('Local DRLs') : remote('/api/drl/local/propose', params);

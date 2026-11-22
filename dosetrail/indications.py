@@ -292,6 +292,21 @@ def review(session: Session, limit: int = 200) -> dict:
             "decisions": decisions}
 
 
+def of_study(session: Session, study_id: int) -> dict | None:
+    """The study's indication for the detail page (code, meaning, how it was found)."""
+    row = session.execute(select(StudyIndication, Code)
+                          .join(Code, Code.id == StudyIndication.code_id)
+                          .where(StudyIndication.study_id == study_id)).first()
+    st = session.get(Study, study_id)
+    req = session.get(StudyRequest, study_id)
+    text = (req.indication if req is not None else None) or (st.indication_text if st else None)
+    if row is None:
+        return {"code": None, "text": text} if text else None
+    si, code = row
+    return {"code": code.code, "meaning": code.meaning, "status": si.status,
+            "source": si.source, "score": si.score, "text": text}
+
+
 def summary(session: Session) -> dict:
     return dict(session.execute(select(StudyIndication.status, func.count())
                                 .group_by(StudyIndication.status)).all())

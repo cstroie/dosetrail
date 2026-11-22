@@ -3,6 +3,7 @@
 // Clicking an event bar selects the row in the table, and selecting a row highlights the bar.
 
 import '../components/dt-shell.js';
+import { indicationRow } from '../components/indication.js';
 import '../components/dt-data-grid.js';
 import '../components/dt-chart.js';
 import { baseOption } from '../components/dt-chart.js';
@@ -218,6 +219,7 @@ async function render() {
           h('dl', { class: 'kv' },
             h('dt', {}, 'Accession'), h('dd', { class: 'mono' }, s.accession),
             h('dt', {}, 'Patient'), h('dd', {}, identity, ' ', revealBtn),
+            ...indicationRow(s),
             h('dt', {}, 'Age · sex'), h('dd', { class: 'mono' }, `${p.age} y · ${p.sex}`),
             h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm ?? '—'} cm · ${p.weight_kg ?? '—'} kg`, weightNote(p)),
             h('dt', {}, 'Date'), h('dd', { class: 'mono' }, `${s.start.replace('T', ' ')}–${s.end.slice(11)}`),

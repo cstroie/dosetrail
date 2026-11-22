@@ -494,3 +494,19 @@ def test_study_rdsr_download(client):
     ds = pydicom.dcmread(io.BytesIO(r.content))
     assert ds.PatientID == "P-ABCDE-12345" and ds.PatientName == ""
     assert client.get("/api/studies/1/rdsr?pid=1").status_code == 403
+
+
+def test_indication_endpoints(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.put("/api/studies/1/indication", json={"code": "RSP-PNM"}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    assert client.put("/api/studies/1/indication", json={"code": "NOPE"}).status_code == 400
+    r = client.put("/api/studies/1/indication", json={"code": "RSP-PNM"})
+    assert r.status_code == 200 and r.json()["status"] == "manual"
+    assert client.get("/api/studies/1").json()["indication"]["code"] == "RSP-PNM"
+    assert client.put("/api/studies/1/indication", json={"code": None}).json() is None
+    r = client.put("/api/indications/mappings", json={"text": "tuse seaca", "code": "PED-TUS"})
+    assert r.status_code == 200 and r.json()["studies"] == 0
+    rev = client.get("/api/indications/review").json()
+    assert rev["decisions"][0]["code"] == "PED-TUS"
+    client.put("/api/indications/mappings", json={"text": "tuse seaca", "code": None})

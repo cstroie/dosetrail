@@ -4,6 +4,7 @@
 // and the series / exposures with the DRL that applies to each (exam + age group).
 
 import '../components/dt-data-grid.js';
+import { indicationRow } from '../components/indication.js';
 import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
@@ -120,7 +121,8 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
             h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm ?? '—'} cm · ${p.weight_kg ?? '—'} kg`, weightNote(p)),
             h('dt', {}, 'Date'), h('dd', { class: 'mono' }, (s.start || '').replace('T', ' ')),
             h('dt', {}, 'Device'), h('dd', {}, s.device.name || '—'),
-            h('dt', {}, 'Modality'), h('dd', {}, s.modality))),
+            h('dt', {}, 'Modality'), h('dd', {}, s.modality),
+            ...indicationRow(s))),
         h('section', { class: 'panel', 'aria-labelledby': 'h-ro' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ro' }, t('study.readouts'))), ...ro),
         h('section', { class: 'panel', 'aria-labelledby': 'h-ex' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ex' }, 'Exam codes')),
           (s.exams || []).length ? s.exams.map((x) => h('div', { class: 'readout' }, h('span', { class: 'l' }, SYSTEMS[x.system] || x.system),
