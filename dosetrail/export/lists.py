@@ -57,6 +57,7 @@ STUDY_COLUMNS: list[Col] = [
     ("Age precision", lambda r: str(r["s"].age_precision.value) if r["s"].age_precision else None),
     ("Weight [kg]", lambda r: r["s"].weight_kg),
     ("Weight source", lambda r: r["s"].weight_source.value if r["s"].weight_source else None),
+    ("Weight reported [kg]", lambda r: r["s"].weight_reported_kg),
     ("Height [m]", lambda r: r["s"].height_m),
     ("Study description", lambda r: r["s"].study_description),
     ("Exam code", lambda r: "; ".join(r["exam"])),

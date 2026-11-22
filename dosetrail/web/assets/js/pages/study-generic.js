@@ -115,7 +115,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
             h('dt', {}, 'Accession'), h('dd', { class: 'mono' }, s.accession || '—'),
             h('dt', {}, 'Patient'), h('dd', {}, identity, ' ', revealButton(s, identity)),
             h('dt', {}, 'Age · sex'), h('dd', { class: 'mono' }, `${p.age_display || (p.age != null ? `${p.age} y` : '—')} · ${p.sex || '—'}`),
-            h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm ?? '—'} cm · ${p.weight_kg ?? '—'} kg`),
+            h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm ?? '—'} cm · ${p.weight_kg ?? '—'} kg`, weightNote(p)),
             h('dt', {}, 'Date'), h('dd', { class: 'mono' }, (s.start || '').replace('T', ' ')),
             h('dt', {}, 'Device'), h('dd', {}, s.device.name || '—'),
             h('dt', {}, 'Modality'), h('dd', {}, s.modality))),
@@ -140,4 +140,14 @@ function exportRows(s, ct) {
   const esc = (v) => (v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v).replace(/^([=+\-@])/, "'$1"));
   const text = [cols.join(',')].concat(s.events.map((e) => cols.map((c) => esc(e[c])).join(','))).join('\r\n');
   h('a', { href: URL.createObjectURL(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' })), download: `${s.accession || s.id}-${ct ? 'series' : 'exposures'}.csv` }).click();
+}
+
+// An estimated weight (median for age and sex) is always marked; a replaced report is shown.
+function weightNote(p) {
+  if (!p.weight_estimated) return null;
+  const why = p.weight_reported != null
+    ? `reported ${p.weight_reported} kg is implausible for age and sex (outside P1–P99); `
+    : 'no weight reported; ';
+  return h('span', { class: 'tag', style: { 'margin-left': '6px' }, title: `${why}estimate = median weight for age and sex (WHO to 10 y, CDC 2000 to 20 y)` },
+    p.weight_reported != null ? `est. (reported ${p.weight_reported})` : 'est.');
 }

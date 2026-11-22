@@ -165,6 +165,9 @@ class Study(TimestampMixin, Base):
     )
     weight_kg: Mapped[float | None] = mapped_column(Float)
     weight_source: Mapped[SizeSource | None] = mapped_column(_enum(SizeSource, "size_source"))
+    # the weight the source reported, kept when it was implausible (outside P1-P99 for age
+    # and sex) and replaced by an estimate (weight_source = estimated_reference)
+    weight_reported_kg: Mapped[float | None] = mapped_column(Float)
     height_m: Mapped[float | None] = mapped_column(Float)
     height_source: Mapped[SizeSource | None] = mapped_column(_enum(SizeSource, "size_source"))
     pregnant: Mapped[bool | None] = mapped_column(Boolean)

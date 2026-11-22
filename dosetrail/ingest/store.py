@@ -211,8 +211,11 @@ class Store:
             days, precision = age_from(s, obj.patient)
             if days is not None:
                 study.age_days, study.age_precision = days, AgePrecision(precision)
-        if study.weight_kg is None and s.get("weight_kg"):
+        if s.get("weight_kg") and (study.weight_kg is None
+                                   or study.weight_source == SizeSource.estimated_reference):
+            # a reported weight replaces an estimate (it is checked again in _classify)
             study.weight_kg, study.weight_source = s["weight_kg"], SizeSource.dicom_unknown
+            study.weight_reported_kg = None
         if study.height_m is None and s.get("height_m"):
             study.height_m, study.height_source = s["height_m"], SizeSource.dicom_unknown
         if obj.kind in ("ct_rdsr", "proj_rdsr") and study.modality in ("SR", "OT", None):
@@ -229,6 +232,7 @@ class Store:
         try:
             with self.session.begin_nested():
                 classify.run(self.session, [study_id])
+                growth.estimate_weights(self.session, [study_id])
                 growth.apply_exclusions(self.session, [study_id])
                 skindose.update_psd(self.session, [study_id])
                 alerts.evaluate(self.session, [study_id])

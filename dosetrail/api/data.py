@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from sqlalchemy import and_, asc, desc, func, select
 from sqlalchemy.orm import Session
 
-from ..db.models import Device, Event, Patient, Study
+from ..db.models import Device, Event, Patient, SizeSource, Study
 from ..patient_age import format_age
 from .query import conditions, parse
 
@@ -247,6 +247,8 @@ def _patient_summary(s: Study, p: Patient | None) -> dict:
             "age_precision": str(s.age_precision) if s.age_precision else None,
             "sex": p.sex if p else None, "weight": s.weight_kg,
             "weight_source": str(s.weight_source) if s.weight_source else None,
+            "weight_estimated": s.weight_source == SizeSource.estimated_reference,
+            "weight_reported": s.weight_reported_kg,
             "pseudo_id": p.pseudo_id if p else None}
 
 

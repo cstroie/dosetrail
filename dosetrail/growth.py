@@ -241,3 +241,61 @@ def apply_exclusions(session, study_ids=None) -> dict:
             stats["cleared"] += 1
     session.flush()
     return stats
+
+
+def estimate_weights(session, study_ids=None, batch: int = 5000) -> dict:
+    """Missing or implausible weights -> the growth-reference median for age and sex.
+
+    * no weight: ``weight_kg`` = median (P50) of the table for the patient's age and sex,
+      ``weight_source`` = ``estimated_reference``;
+    * a reported weight outside P1–P99: kept in ``weight_reported_kg``, replaced the same
+      way (the quality rule ``weight_implausible`` still reports it);
+    * an earlier estimate is refreshed (e.g. after a table update);
+    * needs age, sex M/F and an age the tables cover (0–20 years with the CDC table;
+      0–10 years with WHO only). Others keep their weight, or none.
+
+    The estimate is the protocol's lowest-priority weight source: it puts body exams in a
+    weight group, and is always marked as estimated (study page, exports, reports).
+    """
+    from sqlalchemy import select, update
+
+    from .db.models import Patient, SizeSource, Study
+
+    g = tables()
+    stats = {"estimated_missing": 0, "replaced_implausible": 0, "refreshed": 0}
+    if g is None:
+        return {**stats, "error": "growth tables not installed (dosetrail growth install)"}
+    est_src = SizeSource.estimated_reference
+    q = (select(Study.id, Study.age_days, Study.weight_kg, Study.weight_source, Patient.sex)
+         .join(Patient, Patient.id == Study.patient_id)
+         .where(Study.age_days.is_not(None), Patient.sex.in_(["M", "F", "m", "f"]),
+                Study.age_days <= int(g.max_months * DAYS_PER_MONTH)))
+    if study_ids is not None:
+        q = q.where(Study.id.in_(list(study_ids)))
+    changes = []
+    for sid, age, w, src, sex in session.execute(q):
+        lms = g.lms(sex, age)
+        if lms is None:
+            continue
+        est = round(lms.m, 1)
+        if src == est_src:
+            if w != est:
+                changes.append({"id": sid, "weight_kg": est})
+                stats["refreshed"] += 1
+            continue
+        if not w or w <= 0:
+            changes.append({"id": sid, "weight_kg": est, "weight_source": est_src})
+            stats["estimated_missing"] += 1
+            continue
+        a = g.assess(sex, age, w)
+        if a is not None and a["implausible"]:
+            changes.append({"id": sid, "weight_kg": est, "weight_source": est_src,
+                            "weight_reported_kg": w})
+            stats["replaced_implausible"] += 1
+    for i in range(0, len(changes), batch):
+        part = changes[i:i + batch]
+        for keys in {tuple(sorted(c)) for c in part}:  # one statement per column set
+            rows = [c for c in part if tuple(sorted(c)) == keys]
+            session.execute(update(Study), rows)
+    session.flush()
+    return stats

@@ -91,3 +91,40 @@ def test_cdc_beyond_ten_years(tmp_path):
     assert g.assess("F", int(162 * growth.DAYS_PER_MONTH), 90)["implausible"] is True
     assert g.assess("M", int(120 * growth.DAYS_PER_MONTH), 31.2)["source"] == "WHO"
     assert g.assess("M", int(21 * 365.25), 70) is None  # beyond 20 y: no table
+
+
+def test_estimate_weights(session, tables, monkeypatch):
+    from dosetrail.db.models import SizeSource
+
+    monkeypatch.setattr(growth, "tables", lambda directory=None: tables)
+    boy, nosex = Patient(pseudo_id="P-E1", sex="M"), Patient(pseudo_id="P-E2", sex=None)
+    session.add_all([boy, nosex])
+    session.flush()
+    t = dt.datetime(2026, 1, 5)
+
+    def st(uid, pat, age, w, src=None):
+        s = Study(study_uid=uid, modality="CT", study_datetime=t, patient_id=pat.id,
+                  age_days=age, weight_kg=w, weight_source=src, source_kind="test")
+        session.add(s)
+        return s
+
+    missing = st("e.1", boy, 0, None)
+    typo = st("e.2", boy, 0, 0.3, SizeSource.dicom_unknown)
+    fine = st("e.3", boy, 0, 3.4, SizeSource.dicom_unknown)
+    unknown_sex = st("e.4", nosex, 0, None)
+    adult = st("e.5", boy, int(30 * 365.25), None)
+    session.flush()
+    out = growth.estimate_weights(session)
+    assert out == {"estimated_missing": 1, "replaced_implausible": 1, "refreshed": 0}
+    for s in (missing, typo, fine, unknown_sex, adult):
+        session.refresh(s)
+    assert missing.weight_kg == 3.3 and missing.weight_source == SizeSource.estimated_reference
+    assert missing.weight_reported_kg is None
+    assert typo.weight_kg == 3.3 and typo.weight_reported_kg == 0.3
+    assert fine.weight_kg == 3.4 and fine.weight_source == SizeSource.dicom_unknown
+    assert unknown_sex.weight_kg is None and adult.weight_kg is None
+    # idempotent; the estimate is never excluded from DRL statistics (it is the median)
+    assert growth.estimate_weights(session)["estimated_missing"] == 0
+    growth.apply_exclusions(session)
+    session.refresh(typo)
+    assert typo.drl_exclusion is None

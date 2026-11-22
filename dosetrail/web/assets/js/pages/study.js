@@ -216,7 +216,7 @@ async function render() {
             h('dt', {}, 'Accession'), h('dd', { class: 'mono' }, s.accession),
             h('dt', {}, 'Patient'), h('dd', {}, identity, ' ', revealBtn),
             h('dt', {}, 'Age · sex'), h('dd', { class: 'mono' }, `${p.age} y · ${p.sex}`),
-            h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm ?? '—'} cm · ${p.weight_kg ?? '—'} kg`),
+            h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm ?? '—'} cm · ${p.weight_kg ?? '—'} kg`, weightNote(p)),
             h('dt', {}, 'Date'), h('dd', { class: 'mono' }, `${s.start.replace('T', ' ')}–${s.end.slice(11)}`),
             h('dt', {}, 'Device'), h('dd', {}, `${s.device.name}${s.device.biplane ? ' (biplane)' : ''}`),
             h('dt', {}, 'Physician'), h('dd', {}, s.physician))),
@@ -292,3 +292,13 @@ function exportEvents(s) {
 }
 
 render().catch((err) => page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'), h('span', { class: 'muted mono' }, err.message))));
+
+// An estimated weight (median for age and sex) is always marked; a replaced report is shown.
+function weightNote(p) {
+  if (!p.weight_estimated) return null;
+  const why = p.weight_reported != null
+    ? `reported ${p.weight_reported} kg is implausible for age and sex (outside P1–P99); `
+    : 'no weight reported; ';
+  return h('span', { class: 'tag', style: { 'margin-left': '6px' }, title: `${why}estimate = median weight for age and sex (WHO to 10 y, CDC 2000 to 20 y)` },
+    p.weight_reported != null ? `est. (reported ${p.weight_reported})` : 'est.');
+}

@@ -90,3 +90,19 @@ def test_zero_dap_is_missing(session):
     session.refresh(s)
     assert s.total_dap is None and all(e.dap is None for e in s.events)
     assert "dap_missing" in _rules(quality.study_findings(session, s.id))
+
+
+def test_replaced_weight_is_reported(session):
+    load_all(session)
+    dev = Device(display_name="CT W", identity_key="q-w", is_local=True)
+    kid = Patient(pseudo_id="P-W1", sex="M")
+    session.add_all([dev, kid])
+    session.flush()
+    s = Study(study_uid="w.1", modality="CT", device_id=dev.id, patient_id=kid.id,
+              study_datetime=T, age_days=2000, weight_kg=18.4,
+              weight_source=SizeSource.estimated_reference, weight_reported_kg=185.0,
+              source_kind="test", study_description="Head")
+    session.add(s)
+    session.flush()
+    (f,) = [x for x in quality.study_findings(session, s.id) if x["rule"] == "weight_implausible"]
+    assert "reported 185 kg" in f["detail"] and "estimate 18.4 kg" in f["detail"]

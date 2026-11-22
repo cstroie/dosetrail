@@ -132,7 +132,11 @@ class Checker:
             out.append(Finding("age_missing", ""))
         if p is None or not p.sex or p.sex.upper() not in ("M", "F"):
             out.append(Finding("sex_missing", ""))
-        if s.weight_kg:
+        if s.weight_reported_kg:  # replaced by an estimate (growth.estimate_weights)
+            out.append(Finding("weight_implausible",
+                               f"reported {s.weight_reported_kg:g} kg; estimate "
+                               f"{s.weight_kg:g} kg used (median for age and sex)"))
+        elif s.weight_kg and s.weight_source != SizeSource.estimated_reference:
             who = self.growth.assess(p.sex if p else None, s.age_days, s.weight_kg) \
                 if self.growth else None
             if who is not None:  # weight-for-age (WHO, CDC beyond 10 y): outside P1-P99

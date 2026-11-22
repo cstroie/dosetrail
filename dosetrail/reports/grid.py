@@ -12,9 +12,11 @@ Values:
 
 Dose statistics leave out the studies with a DRL exclusion (weight below WHO P5 or above
 P95 for age, prematurity); they are counted in "excluded". Body exams without a weight are
-in "Weight unknown". Where RP 185 has a European DRL for the exam and group, the median is
-compared with it: below, above (up to 1.5×) or well above; fewer than ``min_n`` values is
-"insufficient" (the national survey plan asks for 10 per group).
+in "Weight unknown". Weights estimated from the growth charts (missing or implausible
+reported weights; growth.estimate_weights) are counted per group in "estimated". Where
+RP 185 has a European DRL for the exam and group, the median is compared with it: below,
+above (up to 1.5×) or well above; fewer than ``min_n`` values is "insufficient" (the
+national survey plan asks for 10 per group).
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from typing import IO
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db.models import Code, GroupBand, ReferenceSet, ReferenceValue, Study
+from ..db.models import Code, GroupBand, ReferenceSet, ReferenceValue, SizeSource, Study
 from ..export.xlsx import XlsxWriter
 from ..grid import LABEL, Grid, crosswalk
 from ..stats import compute
@@ -95,6 +97,10 @@ def build(session: Session, conds: list, start: dt.datetime, end: dt.datetime,
         kept = compute(session, [*base, Study.drl_exclusion.is_(None)], metric,
                        ["exam", "ref_group"], system=NATIONAL)
         kept_by = {(g["key"]["exam"], g["key"]["ref_group"]): g for g in kept["groups"]}
+        est = compute(session, [*base, Study.drl_exclusion.is_(None),
+                                Study.weight_source == SizeSource.estimated_reference],
+                      metric, ["exam", "ref_group"], system=NATIONAL)
+        est_by = {(g["key"]["exam"], g["key"]["ref_group"]): g["n"] for g in est["groups"]}
         for g in every["groups"]:
             exam, group = g["key"]["exam"], g["key"]["ref_group"]
             if exam is None:
@@ -107,7 +113,10 @@ def build(session: Session, conds: list, start: dt.datetime, end: dt.datetime,
                    "group_label": g["label"]["ref_group"], "order": grid.order.get(group, 999),
                    "quantity": quantity, "metric": metric, "unit": unit,
                    "n_all": g["n"], "n": k["n"], "n_studies": k.get("n_studies", 0),
-                   "excluded": g["n"] - k["n"], "mean": k.get("mean"),
+                   "excluded": g["n"] - k["n"],
+                   "estimated": est_by.get((exam, group), 0) if group.startswith("weight:")
+                   else 0,
+                   "mean": k.get("mean"),
                    "median": k.get("median"), "p75": k.get("p75"), "edrl": ref,
                    "ratio": k["median"] / ref if ref and k.get("median") else None}
             row["status"] = _status(k["median"], ref, k["n"], min_n) if k["n"] else None
@@ -115,9 +124,11 @@ def build(session: Session, conds: list, start: dt.datetime, end: dt.datetime,
     rows.sort(key=lambda r: (r["exam"], r["quantity"], r["order"]))
     n_body = sum(r["n_all"] for r in rows if r["parameter"] == "weight")
     n_body_unknown = sum(r["n_all"] for r in rows if r["group"] == "weight:?")
+    n_body_est = sum(r["estimated"] for r in rows if r["parameter"] == "weight")
     return {"grid": LABEL, "start": start.date().isoformat(), "end": end.date().isoformat(),
             "min_n": min_n, "rows": rows,
-            "notes": {"body_values": n_body, "body_weight_unknown": n_body_unknown}}
+            "notes": {"body_values": n_body, "body_weight_unknown": n_body_unknown,
+                      "body_weight_estimated": n_body_est}}
 
 
 def write_xlsx(report: dict, target: IO, info: dict[str, object]) -> None:
@@ -134,6 +145,9 @@ def write_xlsx(report: dict, target: IO, info: dict[str, object]) -> None:
                      ("Limite", "intervale semi-deschise: la limita exactă, grupa superioară"),
                      ("Valori corp fără greutate", f"{n['body_weight_unknown']} din "
                                                    f"{n['body_values']}"),
+                     ("Valori corp cu greutate estimată", f"{n['body_weight_estimated']} din "
+                      f"{n['body_values']} (mediana pentru vârstă și sex: OMS până la 10 ani, "
+                      "CDC 2000 până la 20 ani; greutăți lipsă sau în afara P1–P99)"),
                      ("Notă", "CT: DLP și CTDIvol pe secvență; radiografie: DAP pe expunere; "
                               "radioscopie: DAP al studiului. Statisticile exclud studiile "
                               "cu greutate sub P5 / peste P95 OMS pentru vârstă și "
@@ -141,15 +155,17 @@ def write_xlsx(report: dict, target: IO, info: dict[str, object]) -> None:
                               f"Sub {report['min_n']} valori: n insuficient.")]:
             about.row([k, v])
         head = ["Examinare", "Cod", "Parametru", "Grupa", "Mărime", "Unitate", "n", "Studii",
-                "Excluse", "Medie", "Mediană", "P75", "EDRL RP 185", "Mediană/EDRL", "Stare"]
+                "Excluse", "Greutate estimată", "Medie", "Mediană", "P75", "EDRL RP 185",
+                "Mediană/EDRL", "Stare"]
         for title, param in (("Cap (varsta)", "age"), ("Corp (greutate)", "weight")):
-            ws = wb.sheet(title, head, [30, 18, 10, 16, 9, 9, 7, 7, 7, 10, 10, 10, 10, 10, 18])
+            ws = wb.sheet(title, head, [30, 18, 10, 16, 9, 9, 7, 7, 7, 9, 10, 10, 10, 10, 10, 18])
             for r in report["rows"]:
                 if r["parameter"] != param:
                     continue
                 ws.row([r["exam_meaning"], r["exam"],
                         "vârstă" if param == "age" else "greutate", r["group_label"],
                         r["quantity"], r["unit"], r["n"], r["n_studies"], r["excluded"] or None,
+                        r["estimated"] or None,
                         _round(r["mean"]), _round(r["median"]), _round(r["p75"]), r["edrl"],
                         round(r["ratio"], 3) if r["ratio"] else None,
                         STATUS_RO[r["status"]]])

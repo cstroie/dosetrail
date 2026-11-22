@@ -71,7 +71,7 @@ systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
   - the WHO 2007 Growth Reference for 5–10 years;
   - the CDC 2000 growth charts (2–20 years), used only beyond 10 years, where WHO has no weight-for-age reference. Rerun `install` on older setups to add it.
 - They are WHO and CDC data under their publishers' terms (see `SOURCE.txt` there), so they are not shipped with DoseTrail. `dosetrail growth status` shows whether they are installed.
-- With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Run `dosetrail growth check` after importing weights, e.g. from the RIS; new studies are checked as they arrive.
+- With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Missing or implausible weights (outside P1–P99) are replaced by the median weight for age and sex (`weight_source = estimated_reference`; an implausible reported value is kept in `weight_reported_kg` and still reported by data quality). Estimates are marked on the study page, in exports and in the second-grid report; patients over 20 years, or without age or sex, keep no weight. Run `dosetrail growth check` after importing weights, e.g. from the RIS (a reported weight replaces an estimate); new studies are estimated and checked as they arrive.
 
 ## DICOM nodes
 - Remote AEs are managed in Admin → DICOM nodes:

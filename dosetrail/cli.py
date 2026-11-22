@@ -56,6 +56,10 @@ def _cmd_openrem_import(args: argparse.Namespace) -> int:
         session.commit()
         for line in stats.lines():
             print(line)
+        from . import growth
+
+        print("weights:", growth.estimate_weights(session), growth.apply_exclusions(session))
+        session.commit()
         detail, _ = reconcile(session, Path(args.dump))
         lines, ok = reconcile_by_year(session, Path(args.dump))
     print("\nPer modality/year (informational; OpenREM CR/DX copies are relabelled):")
@@ -212,9 +216,11 @@ def _cmd_growth(args: argparse.Namespace) -> int:
     from .db.session import make_engine, make_sessionmaker
 
     with make_sessionmaker(make_engine(args.url or s.database_url))() as session:
+        est = growth.estimate_weights(session)  # missing / implausible -> estimate
         stats = growth.apply_exclusions(session)
         session.commit()
-    print(stats)
+    print("estimates:", est)
+    print("DRL exclusions:", stats)
     return 0 if "error" not in stats else 1
 
 
@@ -727,8 +733,9 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--url")
     rp.set_defaults(func=_cmd_report_1255)
 
-    gr = sub.add_parser("growth", help="WHO weight-for-age tables: install (setup) or check "
-                                         "studies (DRL exclusions P5/P95)")
+    gr = sub.add_parser("growth", help="weight-for-age tables: install (setup), or check "
+                                       "(estimate missing / implausible weights, then "
+                                       "DRL exclusions P5/P95)")
     gr.add_argument("action", choices=["install", "check", "status"])
     gr.add_argument("--url")
     gr.set_defaults(func=_cmd_growth)

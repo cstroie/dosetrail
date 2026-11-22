@@ -81,8 +81,9 @@ async function loadGrid() {
   const tone = { below: 'ok', above: 'warn', well_above: 'alert', insufficient: '' };
   const label = { below: '≤ EDRL', above: '≤ 1.5×', well_above: '> 1.5×', insufficient: `n < ${r.min_n}` };
   const n = r.notes;
-  clear(host).append(h('p', { class: 'muted small' }, `${r.start} – ${r.end} · body values without a weight: ${num(n.body_weight_unknown)} of ${num(n.body_values)}`
-    + (n.body_values && n.body_weight_unknown / n.body_values > 0.5 ? ' — the weight grid needs weights (RIS or entered at the modality).' : '')));
+  clear(host).append(h('p', { class: 'muted small' }, `${r.start} – ${r.end} · body values: ${num(n.body_values)}, of which weight estimated (median for age and sex, WHO / CDC) ${num(n.body_weight_estimated || 0)}, no weight ${num(n.body_weight_unknown)}`
+    + (n.body_values && n.body_weight_unknown / n.body_values > 0.5 ? ' — the weight grid needs weights (RIS or entered at the modality).' : '')
+    + '. Estimated weights fill the weight groups; they are never measured values.'));
   for (const [param, title] of [['age', 'Head examinations · by age'], ['weight', 'Body examinations · by weight']]) {
     const rows = r.rows.filter((x) => x.parameter === param);
     let last = null;
@@ -92,15 +93,16 @@ async function loadGrid() {
       return h('tr', { class: first ? 'group-start' : '' },
         h('td', { title: x.exam }, first ? x.exam_meaning : ''), h('td', {}, first ? `${x.quantity} (${x.unit})` : ''),
         h('td', {}, x.group_label), h('td', { class: 'r' }, num(x.n)), h('td', { class: 'r muted' }, x.excluded ? num(x.excluded) : ''),
+        h('td', { class: 'r muted', title: 'values with an estimated weight' }, x.estimated ? num(x.estimated) : ''),
         h('td', { class: 'r' }, x.median == null ? '' : smart(x.median)), h('td', { class: 'r' }, x.p75 == null ? '' : smart(x.p75)),
         h('td', { class: 'r' }, x.mean == null ? '' : smart(x.mean)),
         h('td', { class: 'r' }, x.edrl == null ? '—' : smart(x.edrl)),
         h('td', { class: 'r' }, x.status ? h('span', { class: `tag ${tone[x.status]}`, title: x.ratio ? `median / EDRL = ${num(x.ratio, 2)}` : '' }, x.ratio && x.status !== 'insufficient' ? `${num(x.ratio, 2)}×` : label[x.status]) : ''));
     }));
-    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 10, class: 'empty' }, 'No examination in this quarter.')));
+    if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'No examination in this quarter.')));
     append(host, [h('h2', { class: 'section-title' }, title),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
-        h('thead', {}, h('tr', {}, ['Exam', 'Quantity', 'Group', 'n', 'Excl.', 'Median', 'P75', 'Mean', 'EDRL', 'vs EDRL'].map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
+        h('thead', {}, h('tr', {}, ['Exam', 'Quantity', 'Group', 'n', 'Excl.', 'Est. wt', 'Median', 'P75', 'Mean', 'EDRL', 'vs EDRL'].map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
   }
 }
 
