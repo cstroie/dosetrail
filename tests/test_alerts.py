@@ -136,3 +136,8 @@ def test_per_patient_rules_alert_once_per_window(session, world):
     rule = session.scalar(select(AlertRule).filter_by(key="rx-count-paed-12m"))
     raised = list(session.scalars(select(Alert).filter_by(rule_id=rule.id)))
     assert len(raised) == 1 and raised[0].value >= 10
+    # the alert lists every study of the patient in its window, the triggering one flagged
+    rows = alerts.window_studies(session, raised[0].id)
+    assert len(rows) == raised[0].value and sum(r["current"] for r in rows) == 1
+    assert rows[-1]["current"] and [r["time"] for r in rows] == sorted(r["time"] for r in rows)
+    assert alerts.window_studies(session, 10**9) is None

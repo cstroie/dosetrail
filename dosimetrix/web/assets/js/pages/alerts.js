@@ -4,8 +4,8 @@
 
 import '../components/dt-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
-import { num } from '../core/format.js';
-import { alertList, alertSummary, ackAlerts, studyHref } from '../core/api.js';
+import { num, smart } from '../core/format.js';
+import { alertList, alertStudies, alertSummary, ackAlerts, studyHref } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
 const page = document.getElementById('page');
@@ -33,6 +33,24 @@ async function load() {
 function select(label, key, options) {
   return h('label', { class: 'chk' }, label, ' ', h('select', { class: 'input', onchange: (e) => { f[key] = e.target.value; offset = 0; load(); } },
     options.map(([v, l]) => h('option', { value: v, selected: f[key] === v }, l))));
+}
+
+// The patient's studies behind a repeat / cumulative alert, as a sub-row under the alert.
+async function toggleStudies(tr, a) {
+  if (tr.nextElementSibling?.classList.contains('exposures')) { tr.nextElementSibling.remove(); return; }
+  const cell = h('td', { colspan: 7 }, h('span', { class: 'muted small' }, 'Loading…'));
+  const sub = h('tr', { class: 'exposures' }, cell);
+  tr.after(sub);
+  try {
+    const list = await alertStudies(a.id);
+    const dose = (x) => [x.dlp != null ? `DLP ${num(x.dlp, 0)} mGy·cm` : null, x.ctdivol_max != null ? `CTDIvol ${num(x.ctdivol_max, 1)} mGy` : null,
+      x.dap != null ? `DAP ${smart(x.dap)} Gy·cm²` : null, x.kar != null ? `Ka,r ${num(x.kar, 2)} Gy` : null].filter(Boolean).join(' · ');
+    cell.replaceChildren(h('table', { class: 'grid' }, h('tbody', {}, list.map((x) => h('tr', { class: x.current ? 'hot' : '' },
+      h('td', { class: 'mono small' }, x.time.replace('T', ' ')), h('td', { class: 'mono' }, x.modality || ''),
+      h('td', {}, h('a', { href: studyHref({ id: x.id }) }, x.description || x.modality), h('span', { class: 'muted small' }, x.device ? ` · ${x.device}` : '')),
+      h('td', { class: 'r mono small' }, dose(x)), h('td', {}, x.current ? h('span', { class: 'tag warn' }, 'this alert') : '')))),
+    ), h('div', { class: 'muted small' }, `${list.length} studies in the window, the one that raised the alert included.`));
+  } catch (e) { cell.replaceChildren(h('span', { class: 'error' }, e.message)); }
 }
 
 function draw(sum, rows) {
@@ -65,7 +83,8 @@ function draw(sum, rows) {
     } }) : ''),
     h('td', { class: 'mono small' }, (a.time || '').replace('T', ' ')),
     h('td', {}, h('span', { class: `tag ${a.level}` }, a.kind)),
-    h('td', {}, h('a', { href: studyHref({ id: a.study_id }) }, a.title), h('div', { class: 'muted small' }, a.rule_name)),
+    h('td', {}, h('a', { href: studyHref({ id: a.study_id }) }, a.title), h('div', { class: 'muted small' }, a.rule_name),
+      a.kind === 'REPEAT' || a.kind === 'CUMUL.' ? h('button', { class: 'btn ghost small', type: 'button', onclick: (e) => toggleStudies(e.target.closest('tr'), a) }, 'All exposures ▾') : null),
     h('td', { class: 'mono' }, a.modality || ''),
     h('td', { class: 'r' }, h('span', { class: 'mono' }, a.value), h('div', { class: 'muted small' }, a.limit)),
     h('td', {}, a.status === 'open' ? h('span', { class: 'tag warn' }, 'open')

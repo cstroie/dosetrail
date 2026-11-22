@@ -951,6 +951,16 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         session.commit()
         return {"acknowledged": n}
 
+    @app.get("/api/alerts/{alert_id}/studies")
+    def alert_studies(alert_id: int, user: User = Depends(current_user),
+                      session: Session = Depends(db)):
+        from .. import alerts
+
+        rows = alerts.window_studies(session, alert_id, names=data.device_names(session))
+        if rows is None:
+            raise HTTPException(404, "alert not found")
+        return rows
+
     @app.post("/api/alerts/{alert_id}/ack")
     def alert_ack(alert_id: int, body: AckIn, request: Request,
                   user: User = Depends(current_user), session: Session = Depends(db)):

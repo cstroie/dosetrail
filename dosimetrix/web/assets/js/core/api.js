@@ -435,6 +435,8 @@ export function alertSummary(params = {}) {
 export function alertList(params = {}) {
   return isSample ? sample('overview.json').then((o) => o.alerts) : remote('/api/alerts', params);
 }
+/** GET /api/alerts/{id}/studies → the patient's studies in the window of a cumulative / count alert */
+export const alertStudies = (id) => remote(`/api/alerts/${id}/studies`);
 /** POST /api/alerts/ack {ids, note} (audit-logged) */
 export const ackAlerts = (ids, note) => send('POST', '/api/alerts/ack', { ids, note });
 

@@ -215,7 +215,7 @@ def counts(session: Session, status: str | None = None, **filters) -> dict:
     by_rule: dict[str, dict] = {}
     by_level: Counter = Counter()
     by_mod: Counter = Counter()
-    for key, name, sev, mod, n in rows:
+    for _key, _name, sev, mod, n in rows:
         by_level[sev] += n
         by_mod[mod] += n
     # the per-rule counts ignore the rule filter, so the rule dropdown keeps listing every rule
@@ -308,3 +308,30 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
             "ack_note": a.ack_note, "modality": s.modality, "severity": a.severity,
         })
     return out
+
+
+def window_studies(session: Session, alert_id: int,
+                   names: dict[int, str] | None = None) -> list[dict] | None:
+    """The patient's studies behind a per-patient (cumulative / count) alert: every study in
+    the rule's window ending at the alert's study, the study itself included (``current``).
+    None if the alert does not exist; an empty list for rules that are not per-patient."""
+    a = session.get(Alert, alert_id)
+    if a is None:
+        return None
+    r, s = session.get(AlertRule, a.rule_id), session.get(Study, a.study_id)
+    if r.kind not in ("cumulative", "count") or not s.patient_id or not s.study_datetime:
+        return []
+    names = names or {d.id: d.display_name or f"Device {d.id}"
+                      for d in session.scalars(select(Device))}
+    lo = s.study_datetime - dt.timedelta(days=r.window_days or 0)
+    q = select(Study).where(Study.patient_id == s.patient_id, Study.study_datetime > lo,
+                            Study.study_datetime <= s.study_datetime)
+    if r.modality:
+        q = q.where(Study.modality.in_([m.strip().upper() for m in r.modality.split(",")]))
+    return [{"id": x.id, "current": x.id == s.id,
+             "accession": None if x.accession_is_hashed else x.accession,
+             "time": x.study_datetime.isoformat(timespec="minutes"), "modality": x.modality,
+             "description": x.study_description, "device": names.get(x.device_id),
+             "dap": x.total_dap, "dlp": x.total_dlp, "ctdivol_max": x.ctdivol_max,
+             "kar": x.total_rp_dose}
+            for x in session.scalars(q.order_by(Study.study_datetime, Study.id))]
