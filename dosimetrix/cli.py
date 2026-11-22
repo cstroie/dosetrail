@@ -430,6 +430,11 @@ def _cmd_alerts(args: argparse.Namespace) -> int:
             end = dt.datetime.fromisoformat(args.until) if args.until else None
             stats = alerts.evaluate_range(session, start, end, progress=print)
             print(", ".join(f"{k}: {v}" for k, v in sorted(stats.items())))
+            # device rules (silent device, dose drift) as of each day of the period, or now
+            dev = alerts.evaluate_devices_range(session, start or dt.datetime.now(), end,
+                                                progress=print)
+            session.commit()
+            print("devices:", ", ".join(f"{k}: {v}" for k, v in sorted(dev.items())) or "—")
         elif args.action == "notify":
             stats = notify.dispatch(session, cfg)
             session.commit()
@@ -759,7 +764,7 @@ def _cmd_receive(args: argparse.Namespace) -> int:
     from .notify import NotifySettings
 
     worker = SpoolWorker(spool, maker, _secret(), keep=s.keep_received,
-                         notify=NotifySettings.from_dict(s.notify))
+                         notify=NotifySettings.from_dict(s.notify), device_alerts=True)
     from .net import nodes
 
     with maker() as session:

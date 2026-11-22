@@ -7,7 +7,7 @@ import { h, clear, toast } from '../core/dom.js';
 import { alertRules, updateAlertRule } from '../core/api.js';
 
 const page = document.getElementById('page');
-const KIND = { threshold: 'Threshold', drl_ratio: '× national DRL', cumulative: 'Cumulative / patient', count: 'Studies / patient', pregnant: 'Pregnant patient' };
+const KIND = { threshold: 'Threshold', drl_ratio: '× national DRL', cumulative: 'Cumulative / patient', count: 'Studies / patient', pregnant: 'Pregnant patient', device_silent: 'Silent device', device_drift: 'Device dose drift' };
 
 async function render() {
   clear(page).append(adminTabs('rules.html'));
@@ -30,7 +30,7 @@ async function render() {
     body.append(h('tr', {},
       h('td', {}, enabled), h('td', { title: r.note || '' }, h('div', {}, r.name), h('div', { class: 'muted small' }, r.note || '')),
       h('td', {}, KIND[r.kind] || r.kind), h('td', {}, scope || 'all'),
-      h('td', {}, r.kind === 'pregnant' ? h('span', { class: 'muted' }, '—') : [threshold, ' ', h('span', { class: 'muted small' }, r.unit || (r.kind === 'drl_ratio' ? '× DRL' : r.kind === 'count' ? 'studies' : ''))]),
+      h('td', {}, r.kind === 'pregnant' ? h('span', { class: 'muted' }, '—') : [threshold, ' ', h('span', { class: 'muted small' }, r.unit || (r.kind === 'drl_ratio' ? '× DRL' : r.kind === 'count' ? 'studies' : r.kind === 'device_drift' ? '× usual' : ''))]),
       h('td', {}, severity), h('td', {}, notifyBox), h('td', {}, save)));
   }
   page.append(h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },

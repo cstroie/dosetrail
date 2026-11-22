@@ -530,6 +530,10 @@ class AlertRule(TimestampMixin, Base):
     * ``count``: the patient's number of studies (of ``modality``) over ``window_days``
       ``>= threshold``;
     * ``pregnant``: the study is marked as pregnant (``threshold`` unused).
+    * ``device_silent``: a local device that averaged a study a day over ``window_days``
+      has sent none for ``threshold`` days;
+    * ``device_drift``: a device's median dose (exam, age group), two weeks running,
+      ``>= threshold`` × its median over the 12 weeks before.
     """
 
     __tablename__ = "alert_rule"

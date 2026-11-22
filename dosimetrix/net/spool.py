@@ -84,12 +84,14 @@ class SpoolWorker(threading.Thread):
 
     def __init__(self, spool: Spool, maker: sessionmaker[Session], secret: bytes,
                  keep: bool = False, interval: float = 1.0, batch: int = 100,
-                 notify=None):
+                 notify=None, device_alerts: bool = False):
         super().__init__(name="dosimetrix-spool", daemon=True)
         self.spool, self.maker, self.secret = spool, maker, secret
         self.keep, self.interval, self.batch = keep, interval, batch
         self.notify = notify  # notify.NotifySettings: send alert notifications when idle
         self._last_dispatch = 0.0
+        self.run_device_alerts = device_alerts  # the live receiver: hourly device rules
+        self._last_devices = 0.0
         self.stop_event = threading.Event()
         self.stats: dict[str, int] = {}
 
@@ -97,6 +99,7 @@ class SpoolWorker(threading.Thread):
         while not self.stop_event.is_set():
             try:
                 if not self.drain():
+                    self.device_alerts()
                     self.dispatch()
                     self.stop_event.wait(self.interval)
             except Exception:  # keep the worker alive; the object stays in incoming/
@@ -105,6 +108,24 @@ class SpoolWorker(threading.Thread):
 
     def stop(self) -> None:
         self.stop_event.set()
+
+    def device_alerts(self, every: float = 3600.0) -> None:
+        """Device rules (silent device, dose drift), at most every ``every`` seconds."""
+        import time
+
+        if not self.run_device_alerts or time.monotonic() - self._last_devices < every:
+            return
+        self._last_devices = time.monotonic()
+        from ..alerts import evaluate_devices
+
+        try:
+            with self.maker() as session:
+                stats = evaluate_devices(session)
+                session.commit()
+            if stats.get("new"):
+                log.info("device alerts: %s", dict(stats))
+        except Exception:  # noqa: BLE001 – alerts must never stop the importer
+            log.exception("device alert evaluation failed")
 
     def dispatch(self, every: float = 30.0) -> None:
         """Send pending alert notifications, at most every ``every`` seconds."""

@@ -6,6 +6,11 @@ alert for the same rule and study is kept as it is, with its acknowledgement.
 
 Notifications are separate (``notify.dispatch``), so a slow mail server never delays
 ingestion.
+
+Device rules (``device_silent``, ``device_drift``) look at a device over time, not at one
+study: ``evaluate_devices`` runs them as of a moment (hourly from the receiver, and over
+history from ``dosimetrix alerts evaluate``). Their alert hangs on the device's latest
+study, and its ``study_datetime`` is the moment the condition was seen.
 """
 
 from __future__ import annotations
@@ -18,12 +23,25 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .db.models import Alert, AlertRule, Device, Event, Study
+from .db.models import (
+    Alert,
+    AlertRule,
+    Classification,
+    Code,
+    CodeSystem,
+    Device,
+    Event,
+    Study,
+)
 from .stats import METRICS
 
 STUDY_METRICS = {k: m.column for k, m in METRICS.items() if m.level == "study"}
 UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "s": "s"}
 BATCH = 1000
+DEVICE_KINDS = ("device_silent", "device_drift")
+# device drift: the last two weeks, each against the 12 weeks before them
+DRIFT_WEEK, DRIFT_BASE = dt.timedelta(days=7), dt.timedelta(days=84)
+DRIFT_MIN_WEEK, DRIFT_MIN_BASE = 10, 30
 
 
 def _fmt(v: float, unit: str | None) -> str:
@@ -262,6 +280,10 @@ def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
         return f"Σ {_fmt(v, a.unit)}", f"≥ {_fmt(r.threshold, a.unit)} / {r.window_days} d"
     if r.kind == "count":
         return f"{v:.0f} studies", f"≥ {r.threshold:.0f} / {r.window_days} d"
+    if r.kind == "device_silent":
+        return f"{v:.1f} days", f"≥ {r.threshold:g} d"
+    if r.kind == "device_drift":
+        return f"{v:.2f}×", f"≥ {r.threshold:g}× (2 weeks)"
     if r.kind == "pregnant":
         return (f"{v:.0f} weeks" if v else "pregnant"), "—"
     return _fmt(v, a.unit), f"≥ {_fmt(a.limit_value or r.threshold, a.unit)}"
@@ -294,7 +316,7 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
     names = names or {d.id: d.display_name or f"Device {d.id}"
                       for d in session.scalars(select(Device))}
     kinds = {"threshold": None, "drl_ratio": "> DRL", "cumulative": "CUMUL.", "count": "REPEAT",
-             "pregnant": "PREGNANT"}
+             "pregnant": "PREGNANT", "device_silent": "SILENT", "device_drift": "DRIFT"}
     out = []
     for a, r, s in session.execute(q):
         kind = kinds.get(r.kind) or {"kar_total": "KA,R", "dap_total": "DAP",
@@ -308,7 +330,8 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
             "rule": r.key, "rule_name": r.name,
             "title": " · ".join(x for x in (
                 a.message.split(":")[0] if r.kind == "drl_ratio" else None,
-                s.study_description or s.modality, names.get(s.device_id)) if x),
+                None if r.kind in DEVICE_KINDS else s.study_description or s.modality,
+                names.get(s.device_id)) if x),
             "accession": acc or f"#{s.id}",
             "time": a.study_datetime.isoformat(timespec="minutes") if a.study_datetime else None,
             "value": value, "limit": limit,
@@ -344,3 +367,197 @@ def window_studies(session: Session, alert_id: int,
              "dap": x.total_dap, "dlp": x.total_dlp, "ctdivol_max": x.ctdivol_max,
              "kar": x.total_rp_dose}
             for x in session.scalars(q.order_by(Study.study_datetime, Study.id))]
+
+
+# ------------------------------------------------------------------ device rules
+
+
+def _local_devices(session: Session) -> dict[int, str]:
+    return {d.id: d.display_name or d.station_name or f"Device {d.id}"
+            for d in session.scalars(select(Device).where(Device.is_local.is_(True),
+                                                          Device.merged_into_id.is_(None)))}
+
+
+def _modalities(rule: AlertRule) -> list[str] | None:
+    return [m.strip().upper() for m in rule.modality.split(",")] if rule.modality else None
+
+
+def _latest_study(session: Session, device_id: int, lo: dt.datetime, hi: dt.datetime,
+                  mods: list[str] | None) -> int | None:
+    q = select(Study.id).where(Study.device_id == device_id, Study.study_datetime > lo,
+                               Study.study_datetime <= hi)
+    if mods:
+        q = q.where(Study.modality.in_(mods))
+    return session.scalar(q.order_by(Study.study_datetime.desc(), Study.id.desc()).limit(1))
+
+
+def _silent(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
+    """Local devices with no study for ``threshold`` days that, over the ``window_days``
+    (default 28) before their last study, averaged at least one study a day: a broken
+    dose report export or PACS link rather than a quiet room."""
+    window = dt.timedelta(days=rule.window_days or 28)
+    mods = _modalities(rule)
+    devices = _local_devices(session)
+    q = (select(Study.device_id, func.max(Study.study_datetime))
+         .where(Study.device_id.in_(devices), Study.study_datetime <= now)
+         .group_by(Study.device_id))
+    if mods:
+        q = q.where(Study.modality.in_(mods))
+    out = []
+    for did, last in session.execute(q):
+        days = (now - last).total_seconds() / 86400
+        if days < rule.threshold:
+            continue
+        cq = select(func.count()).where(Study.device_id == did,
+                                        Study.study_datetime > last - window,
+                                        Study.study_datetime <= last)
+        if mods:
+            cq = cq.where(Study.modality.in_(mods))
+        n = session.scalar(cq)
+        if n < window.days:
+            continue
+        out.append({"study_id": _latest_study(session, did, last - dt.timedelta(seconds=1),
+                                              last, mods),
+                    "value": days, "limit_value": rule.threshold, "unit": "d",
+                    "message": f"{devices[did]}: no studies for {days:.1f} days (last "
+                               f"{last:%Y-%m-%d %H:%M}; {n} in the {window.days} days "
+                               "before)"})
+    return out
+
+
+def _drift_samples(session: Session, lo: dt.datetime, hi: dt.datetime,
+                   devices: list[int], mods: list[str] | None) -> list[tuple]:
+    """(device, national exam code, age days, time, dose, study id): CT DLP and
+    fluoroscopy DAP per study, radiography DAP per projection."""
+    sys_id = session.scalar(select(CodeSystem.id).where(CodeSystem.key == "ro-drl-ms838-2025"))
+    if sys_id is None:
+        return []
+    base = [Study.device_id.in_(devices), Study.study_datetime > lo, Study.study_datetime <= hi]
+    out = []
+    study_mods = [m for m in ("CT", "RF", "XA") if not mods or m in mods]
+    if study_mods:
+        dose = func.coalesce(Study.total_dlp, Study.total_dap)
+        out += session.execute(
+            select(Study.device_id, Code.code, Study.age_days, Study.study_datetime, dose,
+                   Study.id)
+            .join(Classification, (Classification.study_id == Study.id)
+                  & Classification.event_id.is_(None))
+            .join(Code, (Code.id == Classification.code_id) & (Code.system_id == sys_id))
+            .where(*base, Study.modality.in_(study_mods), dose > 0)).all()
+    rx_mods = [m for m in ("DX", "CR") if not mods or m in mods]
+    if rx_mods:
+        out += session.execute(
+            select(Study.device_id, Code.code, Study.age_days, Study.study_datetime, Event.dap,
+                   Study.id)
+            .join(Event, Event.study_id == Study.id)
+            .join(Classification, Classification.event_id == Event.id)
+            .join(Code, (Code.id == Classification.code_id) & (Code.system_id == sys_id))
+            .where(*base, Study.modality.in_(rx_mods), Event.dap > 0)).all()
+    return out
+
+
+def _median(xs: list[float]) -> float:
+    xs = sorted(xs)
+    n = len(xs)
+    return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+
+def _drift(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
+    """A device's median dose for an exam and age group, in each of the last two weeks, at
+    least ``threshold`` × its median over the 12 weeks before (≥ 10 values a week, ≥ 30
+    before). Age groups and two weeks running keep case mix from raising it. Not raised
+    again for the same device, exam and group within ``window_days`` (default 28)."""
+    from .stats import BandLookup
+
+    devices = _local_devices(session)
+    if not devices:
+        return []
+    band = BandLookup(session, "ro-drl-age", "age")
+    w1, w2, w0 = now - DRIFT_WEEK, now - 2 * DRIFT_WEEK, now - 2 * DRIFT_WEEK - DRIFT_BASE
+    groups: dict[tuple, dict[str, list]] = defaultdict(lambda: defaultdict(list))
+    for did, code, age, t, v, sid in _drift_samples(session, w0, now, list(devices),
+                                                    _modalities(rule)):
+        b = band(age)
+        if b is None:
+            continue
+        part = "w1" if t > w1 else "w2" if t > w2 else "base"
+        groups[(did, code, b)][part].append((t, v, sid))
+    quiet = dt.timedelta(days=rule.window_days or 28)
+    out = []
+    for (did, code, b), g in sorted(groups.items()):
+        if len(g["base"]) < DRIFT_MIN_BASE or min(len(g["w1"]), len(g["w2"])) < DRIFT_MIN_WEEK:
+            continue
+        ref = _median([v for _, v, _ in g["base"]])
+        r1, r2 = (_median([v for _, v, _ in g[w]]) / ref for w in ("w1", "w2"))
+        if min(r1, r2) < rule.threshold:
+            continue
+        key = f"{code} {band.label.get(b, b)} · {devices[did]}"
+        if session.scalar(
+                select(func.count()).select_from(Alert).join(Study, Study.id == Alert.study_id)
+                .where(Alert.rule_id == rule.id, Study.device_id == did,
+                       Alert.study_datetime > now - quiet, Alert.study_datetime <= now,
+                       Alert.message.startswith(key + ":"))):
+            continue
+        unit = "mGy·cm" if code.startswith("CT") else "Gy·cm²"
+        out.append({"study_id": max(g["w1"])[2], "value": r1, "limit_value": rule.threshold,
+                    "unit": None,
+                    "message": f"{key}: median {_median([v for _, v, _ in g['w1']]):.3g} "
+                               f"{unit} this week ({len(g['w1'])}), {r2:.2f}× the week "
+                               f"before; 12 weeks before {ref:.3g} {unit} "
+                               f"({len(g['base'])})"})
+    return out
+
+
+DEVICE_CHECKS = {"device_silent": _silent, "device_drift": _drift}
+
+
+def evaluate_devices(session: Session, now: dt.datetime | None = None,
+                     kinds: Iterable[str] = DEVICE_KINDS) -> Counter:
+    """Run the enabled device rules as of ``now``; insert new alerts, refresh open ones."""
+    now = now or dt.datetime.now()
+    stats: Counter = Counter()
+    rules = list(session.scalars(select(AlertRule).where(AlertRule.enabled.is_(True),
+                                                         AlertRule.kind.in_(list(kinds)))))
+    for rule in rules:
+        for h in DEVICE_CHECKS[rule.kind](session, rule, now):
+            if h["study_id"] is None:
+                continue
+            old = session.scalar(select(Alert).filter_by(rule_id=rule.id,
+                                                         study_id=h["study_id"]))
+            if old is not None:
+                if old.status == "open" and old.value != h["value"]:
+                    old.value, old.message = h["value"], h["message"][:512]
+                    stats["updated"] += 1
+                else:
+                    stats["kept"] += 1
+                continue
+            try:
+                with session.begin_nested():
+                    session.add(Alert(rule_id=rule.id, study_datetime=now,
+                                      severity=rule.severity, status="open",
+                                      **{**h, "message": h["message"][:512]}))
+            except IntegrityError:
+                stats["kept"] += 1
+                continue
+            stats["new"] += 1
+            stats[f"new_{rule.severity}"] += 1
+    session.flush()
+    return stats
+
+
+def evaluate_devices_range(session: Session, start: dt.datetime, end: dt.datetime | None = None,
+                           progress=None) -> Counter:
+    """Device rules over history: silence day by day, drift week by week (and at the end)."""
+    end = end or dt.datetime.now()
+    steps = [start + dt.timedelta(days=d) for d in range(max((end - start).days, 0) + 1)]
+    if not steps or steps[-1] < end:
+        steps.append(end)
+    total: Counter = Counter()
+    for i, t in enumerate(steps):
+        last = i == len(steps) - 1
+        total += evaluate_devices(session, t, DEVICE_KINDS if i % 7 == 0 or last
+                                  else ("device_silent",))
+        session.commit()
+        if progress and (i % 30 == 0 or last):
+            progress(f"devices as of {t:%Y-%m-%d}: {total['new']} new alerts")
+    return total

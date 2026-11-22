@@ -39,6 +39,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .alerts import DEVICE_KINDS
 from .db.models import Alert, AlertRule, Device, Study
 
 log = logging.getLogger(__name__)
@@ -97,9 +98,14 @@ def compose(a: Alert, rule: AlertRule, s: Study, device: str | None, base_url: s
             ) -> Message:
     link = f"{base_url.rstrip('/')}/study.html?id={s.id}" if base_url else None
     when = s.study_datetime.strftime("%Y-%m-%d %H:%M") if s.study_datetime else "?"
-    lines = [rule.name, "", a.message, "",
-             f"Study: {s.modality} · {s.study_description or '—'}",
-             f"Device: {device or '—'}", f"Date: {when}", f"Study id: {s.id}"]
+    if rule.kind in DEVICE_KINDS:  # about the device; the study is its latest one
+        seen = a.study_datetime.strftime("%Y-%m-%d %H:%M") if a.study_datetime else "?"
+        lines = [rule.name, "", a.message, "", f"Device: {device or '—'}", f"Seen: {seen}",
+                 f"Latest study: {s.modality} · {when} · id {s.id}"]
+    else:
+        lines = [rule.name, "", a.message, "",
+                 f"Study: {s.modality} · {s.study_description or '—'}",
+                 f"Device: {device or '—'}", f"Date: {when}", f"Study id: {s.id}"]
     if link:
         lines += ["", link]
     if rule.note:
@@ -165,7 +171,9 @@ def dispatch(session: Session, cfg: NotifySettings, now: dt.datetime | None = No
     channels = cfg.channels
     horizon = now - dt.timedelta(hours=cfg.max_age_hours)
     for a, rule, s in rows:
-        if not s.study_datetime or s.study_datetime < horizon:
+        # a device alert is dated when its condition was seen, a study alert by its study
+        when = a.study_datetime if rule.kind in DEVICE_KINDS else s.study_datetime
+        if not when or when < horizon:
             a.notified_at, a.notify_error = now, "not sent (historical)"
             stats["historical"] += 1
             continue

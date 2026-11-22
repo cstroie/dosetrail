@@ -6,6 +6,8 @@
 # kind = cumulative : patient's sum of metric over window_days >= threshold
 # kind = count      : patient's number of studies (modality) over window_days >= threshold
 # kind = pregnant   : the study is marked as pregnant
+# kind = device_silent : a busy device sends no study for threshold days
+# kind = device_drift  : a device's median dose (exam, age group) >= threshold x its usual one
 
 [[rule]]
 key = "fluoro-kar-5gy"
@@ -198,3 +200,24 @@ threshold = 0.0
 severity = "alert"
 notify = true
 note = "The study is marked as pregnant (DICOM Pregnancy Status, HIS or entered): estimate and document the conceptus dose, especially when the uterus was in or near the beam (ICRP 84)."
+
+[[rule]]
+key = "device-silent-4d"
+name = "Device: no studies for 4 days"
+kind = "device_silent"
+threshold = 4.0
+unit = "d"
+window_days = 28
+severity = "warn"
+notify = true
+note = "Only devices that averaged at least one study a day over the 28 days before: a broken dose report export, PACS link or receiver rather than a quiet room. 4 days cover a long weekend."
+
+[[rule]]
+key = "device-drift-1.5x"
+name = "Device: exam dose ≥ 1.5 × its usual level, 2 weeks running"
+kind = "device_drift"
+threshold = 1.5
+window_days = 28
+severity = "warn"
+notify = true
+note = "Median per device, national exam code and age group, in each of the last two weeks, against the 12 weeks before (≥ 10 values a week, ≥ 30 before): a protocol change, software update, detector or AEC fault. CT DLP and fluoroscopy DAP per study, radiography DAP per projection. 2025–2026: 6 episodes."

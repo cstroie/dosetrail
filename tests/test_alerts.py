@@ -197,3 +197,65 @@ def test_pregnant_patient(session, world):
         assert "pregnant" not in _alerts(session, s)
     row = next(x for x in alerts.listing(session) if x["rule"] == "pregnant")
     assert (row["kind"], row["value"]) == ("PREGNANT", "12 weeks")
+
+
+def test_silent_device(session, world):
+    dev, kid = world
+    quiet = Device(display_name="Quiet room", identity_key="al-2", is_local=True)
+    session.add(quiet)
+    session.flush()
+    last = NOW - dt.timedelta(days=5)
+    for d in range(30):  # one study a day on the busy device, then nothing for 5 days
+        _study(session, dev, kid, f"sl.{d}", last - dt.timedelta(days=d), modality="DX")
+    for d in range(3):  # a room that is quiet anyway never counts as silent
+        _study(session, quiet, kid, f"sq.{d}", last - dt.timedelta(days=7 * d), modality="DX")
+    assert alerts.evaluate_devices(session, NOW - dt.timedelta(days=2)) == {}
+    stats = alerts.evaluate_devices(session, NOW)
+    assert stats["new"] == 1
+    a = session.scalar(select(Alert))
+    assert a.value == pytest.approx(5.0) and a.study_datetime == NOW
+    assert a.message.startswith("Angio: no studies for 5.0 days")
+    assert session.get(Study, a.study_id).study_uid == "sl.0"  # the device's latest study
+    # one alert per silent spell: a later run refreshes its value
+    assert alerts.evaluate_devices(session, NOW + dt.timedelta(days=1))["updated"] == 1
+    row = alerts.listing(session)[0]
+    assert (row["kind"], row["value"], row["title"]) == ("SILENT", "6.0 days", "Angio")
+    assert alerts.window_studies(session, a.id) == []
+    # notifications date it when seen, not by the (old) study
+    sent = []
+    cfg = notify.NotifySettings(ntfy_url="https://ntfy.invalid/x")
+    notify.dispatch(session, cfg, NOW + dt.timedelta(days=1, hours=1),
+                    {"ntfy": lambda c, m: sent.append(m)})
+    assert len(sent) == 1 and "Latest study: DX" in sent[0].body
+
+
+def test_device_drift(session, world):
+    dev, kid = world
+    start = NOW - dt.timedelta(days=98)
+    n = 0
+
+    def ct(when, dlp):
+        nonlocal n
+        n += 1
+        s = _study(session, dev, kid, f"dr.{n}", when, modality="CT", total_dlp=dlp,
+                   age_days=900, study_description="Head^CEREBRAL_SPIRAL_NATIV (Child)")
+        s.events = [Event(protocol="Head", ctdivol=30.0, dlp=dlp)]
+
+    for i in range(40):  # 12 weeks at ~400 mGy·cm, then two weeks at ~800
+        ct(start + dt.timedelta(days=2 * i), 380.0 + i % 5 * 10)
+    for i in range(12):
+        ct(NOW - dt.timedelta(days=13) + dt.timedelta(hours=12 * i), 800.0)
+    session.flush()
+    classify.run(session)
+    assert alerts.evaluate_devices(session, NOW - dt.timedelta(days=7))["new"] == 0  # 1 week
+    for i in range(12):
+        ct(NOW - dt.timedelta(days=6) + dt.timedelta(hours=12 * i), 820.0)
+    session.flush()
+    classify.run(session)
+    assert alerts.evaluate_devices(session, NOW)["new"] == 1
+    a = session.scalar(select(Alert))
+    assert a.value == pytest.approx(820 / 400) and a.message.startswith("CT-CAP ")
+    assert "· Angio: median 820 mGy·cm this week (12), 2.00× the week before" in a.message
+    # not again for the same device, exam and age group within 28 days
+    assert alerts.evaluate_devices(session, NOW + dt.timedelta(days=1))["new"] == 0
+    assert alerts.listing(session)[0]["kind"] == "DRIFT"
