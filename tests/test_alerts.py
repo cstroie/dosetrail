@@ -221,6 +221,14 @@ def test_silent_device(session, world):
     row = alerts.listing(session)[0]
     assert (row["kind"], row["value"], row["title"]) == ("SILENT", "6.0 days", "Angio")
     assert alerts.window_studies(session, a.id) == []
+    # silent for longer than 90 days: a retired room, not raised
+    retired = Device(display_name="Old room", identity_key="al-3", is_local=True)
+    session.add(retired)
+    session.flush()
+    for d in range(30):
+        _study(session, retired, kid, f"so.{d}", NOW - dt.timedelta(days=100 + d),
+               modality="DX")
+    assert alerts.evaluate_devices(session, NOW + dt.timedelta(days=1))["new"] == 0
     # notifications date it when seen, not by the (old) study
     sent = []
     cfg = notify.NotifySettings(ntfy_url="https://ntfy.invalid/x")

@@ -41,6 +41,7 @@ EVENT_VALUE = {"ssde": lambda e: e.ssde if e.ssde is not None else e.ssde_calc}
 UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "s": "s"}
 BATCH = 1000
 DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained")
+RETIRED_DAYS = 90  # a device silent for longer is retired, not broken (it alerted at day 4)
 SUSTAINED_MIN_N = 20  # as the DRL page: fewer values per room and quarter are not compared
 # device drift: the last two weeks, each against the 12 weeks before them
 DRIFT_WEEK, DRIFT_BASE = dt.timedelta(days=7), dt.timedelta(days=84)
@@ -420,7 +421,7 @@ def _latest_study(session: Session, device_id: int, lo: dt.datetime, hi: dt.date
 def _silent(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
     """Local devices with no study for ``threshold`` days that, over the ``window_days``
     (default 28) before their last study, averaged at least one study a day: a broken
-    dose report export or PACS link rather than a quiet room."""
+    dose report export or PACS link rather than a quiet room. Not after 90 days (retired)."""
     window = dt.timedelta(days=rule.window_days or 28)
     mods = _modalities(rule)
     devices = _local_devices(session)
@@ -432,7 +433,7 @@ def _silent(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
     out = []
     for did, last in session.execute(q):
         days = (now - last).total_seconds() / 86400
-        if days < rule.threshold:
+        if not rule.threshold <= days <= RETIRED_DAYS:  # longer: a retired room
             continue
         cq = select(func.count()).where(Study.device_id == did,
                                         Study.study_datetime > last - window,
