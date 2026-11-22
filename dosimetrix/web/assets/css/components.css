@@ -224,6 +224,9 @@ dt-chart { display: block; min-width: 0; }
 .small { font-size: var(--fs-xs); }
 .drl-kpis { margin: var(--sp-3) 0 var(--sp-2); }
 .drl-kpis .kpi .v { text-align: right; }
+.drl-kpis .kpi .m { grid-column: 1 / -1; }
+.drl-kpis .kpi { grid-row: span 2; grid-template-rows: subgrid; row-gap: 2px; }
+.drl-kpis { grid-auto-rows: auto; }
 .drl-ratio { position: relative; display: inline-block; width: 120px; height: 14px; background: var(--panel-2); border-radius: 2px; vertical-align: middle; }
 .drl-ratio-fill { position: absolute; inset: 0 auto 0 0; border-radius: 2px; opacity: .55; }
 .drl-ratio-fill.ok { background: var(--ok); }
