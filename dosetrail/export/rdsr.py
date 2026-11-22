@@ -114,10 +114,12 @@ def _uid(secret: bytes, *parts: str) -> str:
     return generate_uid(entropy_srcs=[secret.hex(), "dosetrail-rdsr", *parts])
 
 
-def _event_uid(secret: bytes, study_uid: str, ev: Event) -> str:
-    if ev.event_uid and _is_uid(ev.event_uid):
+def _event_uid(secret: bytes, study_uid: str, ev: Event, identified: bool) -> str:
+    """The stored UID when identified (and valid); else derived: stored event UIDs can be
+    image SOP Instance UIDs or share the study's root, i.e. link back to the PACS."""
+    if identified and ev.event_uid and _is_uid(ev.event_uid):
         return ev.event_uid
-    return _uid(secret, study_uid, "event", str(ev.id))
+    return _uid(secret, study_uid, "event", ev.event_uid or str(ev.id))
 
 
 def _is_uid(v: str) -> bool:
@@ -159,7 +161,8 @@ def _patient_characteristics(study: Study) -> list[Dataset]:
     return [_item("CONTAINER", ("121118", "DCM", "Patient Characteristics"), children=ch)]
 
 
-def _ct_content(study: Study, events: list[Event], secret: bytes) -> list[Dataset]:
+def _ct_content(study: Study, events: list[Event], secret: bytes,
+                identified: bool) -> list[Dataset]:
     acqs = []
     for ev in events:
         params: list[Dataset] = []
@@ -192,7 +195,7 @@ def _ct_content(study: Study, events: list[Event], secret: bytes) -> list[Datase
         if etype in CT_TYPE:
             ch.append(_item("CODE", ("113820", "DCM", "CT Acquisition Type"), CT_TYPE[etype]))
         ch.append(_item("UIDREF", ("113769", "DCM", "Irradiation Event UID"),
-                        _event_uid(secret, study.study_uid, ev)))
+                        _event_uid(secret, study.study_uid, ev, identified)))
         if ev.event_datetime:
             ch.append(_item("DATETIME", ("111526", "DCM", "DateTime Started"),
                             ev.event_datetime))
@@ -213,7 +216,8 @@ def _ct_content(study: Study, events: list[Event], secret: bytes) -> list[Datase
             *acqs]
 
 
-def _proj_content(study: Study, events: list[Event], secret: bytes) -> list[Dataset]:
+def _proj_content(study: Study, events: list[Event], secret: bytes,
+                  identified: bool) -> list[Dataset]:
     out = []
     for plane in sorted({e.plane for e in events}, key=lambda p: p or ""):
         evs = [e for e in events if e.plane == plane]
@@ -253,7 +257,7 @@ def _proj_content(study: Study, events: list[Event], secret: bytes) -> list[Data
         if ev.view:
             ch.append(_item("CODE", ("111031", "DCM", "Image View"), _local(ev.view)))
         ch.append(_item("UIDREF", ("113769", "DCM", "Irradiation Event UID"),
-                        _event_uid(secret, study.study_uid, ev)))
+                        _event_uid(secret, study.study_uid, ev, identified)))
         _text(ch, ("121106", "DCM", "Comment"), ev.comment)
         for concept, attr, unit in (
                 (("122130", "DCM", "Dose Area Product"), "dap", "Gy.cm2"),
@@ -379,8 +383,8 @@ def build(study: Study, secret: bytes, *, identified: bool = False,
         content.append(_item("DATETIME", ("113809", "DCM", "Start of X-Ray Irradiation"),
                              start))
     content += _patient_characteristics(study)
-    content += _ct_content(study, events, secret) if is_ct else \
-        _proj_content(study, events, secret)
+    content += _ct_content(study, events, secret, identified) if is_ct else \
+        _proj_content(study, events, secret, identified)
     content.append(_item("CODE", ("113854", "DCM", "Source of Dose Information"),
                          ("113856", "DCM", "Automated Data Collection")))
     ds.ContentSequence = Sequence(content)

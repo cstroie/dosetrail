@@ -56,6 +56,8 @@ def test_ct_roundtrip_anonymised(session):
     assert back.StudyInstanceUID != st.study_uid
     assert rdsr.build(st, SECRET).SOPInstanceUID == ds.SOPInstanceUID
     assert p.device["manufacturer"] == st.device.manufacturer
+    stored = {e.event_uid for e in st.events}
+    assert not stored & {e["event_uid"] for e in p.events}
 
 
 def test_projection_roundtrip_identified(session):
@@ -78,4 +80,7 @@ def test_header_study_and_estimated_weight(session, tmp_path):
     back = pydicom.dcmread(paths[0])
     p = parse(back)
     assert p.kind == "proj_rdsr" and p.events[0]["dap"] == pytest.approx(st.events[0].dap)
+    assert p.events[0]["event_uid"] != st.events[0].event_uid  # the image SOP UID
+    same = parse(rdsr.build(st, SECRET, identified=True))
+    assert same.events[0]["event_uid"] == st.events[0].event_uid
     assert "PatientWeight" not in back and p.study["weight_kg"] is None
