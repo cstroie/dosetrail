@@ -131,6 +131,9 @@ class Patient(TimestampMixin, Base):
     pseudo_id: Mapped[str | None] = mapped_column(AsciiId(16))
     is_test: Mapped[bool] = mapped_column(Boolean, default=False)
     test_reason: Mapped[str | None] = mapped_column(Text(255))
+    # where sex / birth date came from (cnp / his / dicom) and any disagreement seen
+    demo_source: Mapped[str | None] = mapped_column(AsciiId(8))
+    demo_conflict: Mapped[str | None] = mapped_column(Text(255))
 
     studies: Mapped[list[Study]] = relationship(back_populates="patient")
 

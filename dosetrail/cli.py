@@ -224,6 +224,31 @@ def _cmd_growth(args: argparse.Namespace) -> int:
     return 0 if "error" not in stats else 1
 
 
+def _cmd_cnp(args: argparse.Namespace) -> int:
+    """Sex, birth date and exact ages from national IDs (offline; CNP > HIS > DICOM)."""
+    import getpass
+
+    from . import demographics, growth
+    from .db.models import AuditLog
+    from .db.session import make_engine, make_sessionmaker
+
+    with make_sessionmaker(make_engine(args.url or load_settings().database_url))() as session:
+        counts, studies = demographics.backfill(session)
+        if not args.apply:
+            session.rollback()
+            print("dry run (--apply writes):", counts)
+            return 0
+        for i in range(0, len(studies), 5000):
+            chunk = studies[i:i + 5000]
+            growth.estimate_weights(session, chunk)
+            growth.apply_exclusions(session, chunk)
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="cnp_backfill",
+                             target="patients", detail=counts))
+        session.commit()
+    print(counts)
+    return 0
+
+
 def _cmd_refetch(args: argparse.Namespace) -> int:
     import datetime as dt
 
@@ -739,6 +764,13 @@ def build_parser() -> argparse.ArgumentParser:
     gr.add_argument("action", choices=["install", "check", "status"])
     gr.add_argument("--url")
     gr.set_defaults(func=_cmd_growth)
+
+    cn = sub.add_parser("cnp", help="national IDs (CNP): fill or correct sex and birth date, "
+                                    "recompute exact ages (offline)")
+    cn.add_argument("action", choices=["backfill"])
+    cn.add_argument("--apply", action="store_true", help="write (default: dry run)")
+    cn.add_argument("--url")
+    cn.set_defaults(func=_cmd_cnp)
 
     fg = sub.add_parser("refetch", help="forget studies imported with missing doses so that "
                                          "qr retrieves them again (repair)")

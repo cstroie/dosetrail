@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import demographics
 from ..db.models import (
     AgePrecision,
     Device,
@@ -119,8 +120,7 @@ class Store:
         pat.patient_id = pat.patient_id or pid
         pat.issuer = pat.issuer or p.get("issuer")
         pat.name = pat.name or p.get("name")
-        pat.birth_date = pat.birth_date or p.get("birth_date")
-        pat.sex = pat.sex or p.get("sex")
+        demographics.reconcile(pat, dicom_sex=p.get("sex"), dicom_birth=p.get("birth_date"))
         self.session.flush()
         return pat
 
@@ -207,7 +207,8 @@ class Store:
             study.device_id = device.id
         if study.patient_id is None and patient is not None:
             study.patient_id = patient.id
-        if study.age_days is None:
+        birth = patient.birth_date if patient is not None else None
+        if not demographics.exact_age(study, birth) and study.age_days is None:
             days, precision = age_from(s, obj.patient)
             if days is not None:
                 study.age_days, study.age_precision = days, AgePrecision(precision)
