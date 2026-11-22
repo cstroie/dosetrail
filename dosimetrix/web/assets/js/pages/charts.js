@@ -60,6 +60,16 @@ function protoRef(metric, protocol) {
   const refs = rows.filter((r) => r.protocol === protocol).map((r) => refOf(r, metric)).filter((v) => v != null);
   return refs.length ? summary(refs).median : undefined;
 }
+/** Which set the references come from ("OMS 838", "RP 185", or both): the API names it per
+ *  row (DLP: national, else RP 185; CTDIvol: RP 185 only); sample data names none. */
+function refSources(metric, protocols) {
+  const keep = protocols ? new Set([].concat(protocols)) : null;
+  const short = (s) => (s.startsWith('OMS 838') ? 'OMS 838' : s.startsWith('RP 185') ? 'RP 185' : s.split(' ')[0]);
+  const found = new Set(rows.filter((r) => !keep || keep.has(r.protocol)).map((r) => r.drl?.source?.[metric]).filter(Boolean).map(short));
+  return [...found].sort().join(' + ');
+}
+function drlLabel(metric, protocols) { const src = refSources(metric, protocols); return src ? `DRL ${src}` : 'DRL'; }
+function rowSource(r, metric) { return r.drl?.source?.[metric] || ''; }
 function refRange(metric, protocol) {
   const refs = [...new Set(rows.filter((r) => r.protocol === protocol).map((r) => refOf(r, metric)).filter((v) => v != null))].sort((a, b) => a - b);
   if (!refs.length) return '—';
@@ -134,21 +144,21 @@ function buildDots(cfg) {
         if (!rs.length) return;
         const y = i + (k - (devIds.length - 1) / 2) * 0.26;
         const pct = rs.map((r) => (r[metric.field] / refOf(r, cfg.metric)) * 100);
-        rs.forEach((r, j) => pts.push([pct[j], y + (rnd() - 0.5) * 0.16, r[metric.field]]));
+        rs.forEach((r, j) => pts.push([pct[j], y + (rnd() - 0.5) * 0.16, r[metric.field], rowSource(r, cfg.metric)]));
         meds.push([summary(pct).median, y]);
       });
       const name = devices[deviceIndex(dev)]?.display_name || `Device ${dev}`;
       series.push({ name, type: 'scatter', data: pts, symbolSize: 4, itemStyle: { color: devColor(th, dev), opacity: 0.45 }, large: true });
       series.push({ name, type: 'scatter', data: meds, symbol: 'rect', symbolSize: [3, 18], itemStyle: { color: devColor(th, dev) }, z: 5,
-        tooltip: { formatter: (p) => `${name} · median ${num(p.value[0])}% of DRL` } });
+        tooltip: { formatter: (p) => `${name} · median ${num(p.value[0])}% of ${drlLabel(cfg.metric, protos[Math.round(p.value[1])])}` } });
     });
     series[0].markLine = { silent: true, symbol: 'none', data: [{ xAxis: 100 }], lineStyle: { color: th.ref, type: 'dashed', width: 2 },
-      label: { formatter: 'DRL', position: 'start', color: th.ref, fontFamily: th.mono } };
+      label: { formatter: drlLabel(cfg.metric, protos), position: 'start', color: th.ref, fontFamily: th.mono } };
     return {
       ...base,
       legend: { ...base.legend, data: devIds.map((d) => devices[deviceIndex(d)]?.display_name) },
       grid: { left: 8, right: 24, top: 34, bottom: 40, containLabel: true },
-      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${p.seriesName}<br>${smart(p.value[2])} ${metric.unit} · ${num(p.value[0])}% of DRL` },
+      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${p.seriesName}<br>${smart(p.value[2])} ${metric.unit} · ${num(p.value[0])}% of DRL${p.value[3] ? ` (${p.value[3]})` : ''}` },
       xAxis: { type: 'value', min: 0, max: 200, name: `% of applicable DRL (${metric.label}, exam + age/weight group)`, nameLocation: 'middle', nameGap: 24, ...base._axis, axisLine: { ...base._axis.axisLine, onZero: false } },
       yAxis: [
         { type: 'value', min: -0.5, max: protos.length - 0.5, inverse: true, show: false },
@@ -187,11 +197,12 @@ function buildBoxOrBar(cfg) {
         ? { name, type: 'boxplot', data, itemStyle: { color: 'transparent', borderColor: devColor(th, d), borderWidth: 1.5 }, boxWidth: [4, 10] }
         : { name, type: 'bar', data, itemStyle: { color: devColor(th, d) }, barMaxWidth: 10 };
     });
-    series.push({ name: 'DRL', type: 'scatter', symbol: 'rect', symbolSize: [2, 26], data: protos.map((p, i) => [protoRef(cfg.metric, p) ?? null, i]),
-      itemStyle: { color: th.ref }, z: 6, tooltip: { formatter: (p) => `Applicable DRL (median) ${num(p.value[0])} ${metric.unit}` } });
+    const drlName = drlLabel(cfg.metric, protos);
+    series.push({ name: drlName, type: 'scatter', symbol: 'rect', symbolSize: [2, 26], data: protos.map((p, i) => [protoRef(cfg.metric, p) ?? null, i]),
+      itemStyle: { color: th.ref }, z: 6, tooltip: { formatter: (p) => `Applicable ${drlLabel(cfg.metric, protos[p.dataIndex])} (median) ${num(p.value[0])} ${metric.unit}` } });
     return {
       ...base,
-      legend: { ...base.legend, data: [...devIds.map((d) => devices[deviceIndex(d)]?.display_name), 'DRL'] },
+      legend: { ...base.legend, data: [...devIds.map((d) => devices[deviceIndex(d)]?.display_name), drlName] },
       grid: { left: 8, right: 20, top: 34, bottom: 40, containLabel: true },
       tooltip: { ...base.tooltip, trigger: 'item' },
       xAxis: { type: 'log', name: `${metric.label} ${metric.unit} (log)`, nameLocation: 'middle', nameGap: 24, ...base._axis },
@@ -227,7 +238,7 @@ function buildHist(cfg) {
         const p1 = api.coord([b.to, 0]);
         return { type: 'rect', shape: { x: p0[0] + 1, y: p0[1], width: Math.max(1, p1[0] - p0[0] - 2), height: p1[1] - p0[1] }, style: { fill: th.seq } };
       }, data: bins.map((b) => [b.from, b.n]), encode: { x: 0, y: 1 },
-      markLine: ref ? { silent: true, symbol: 'none', data: [{ xAxis: ref }], lineStyle: { color: th.ref, type: 'dashed', width: 2 }, label: { formatter: `DRL ${num(ref)}`, color: th.ref } } : undefined }],
+      markLine: ref ? { silent: true, symbol: 'none', data: [{ xAxis: ref }], lineStyle: { color: th.ref, type: 'dashed', width: 2 }, label: { formatter: `${drlLabel(cfg.metric, proto)} ${num(ref)}`, color: th.ref } } : undefined }],
     };
   };
   return { option, csv: [['from', 'to', 'n']].concat(bins.map((b) => [b.from.toFixed(2), b.to.toFixed(2), b.n])), title: `Histogram · ${metric.label}, ${proto}`, summary: summaryRows(cfg.metric, proto), protocol: proto };
@@ -249,7 +260,7 @@ function buildTrend(cfg) {
       name: devices[deviceIndex(dev)]?.display_name, type: 'line', symbolSize: 5, lineStyle: { width: 2, color: devColor(th, dev) }, itemStyle: { color: devColor(th, dev) },
       data: periods.map((p) => { const v = m.get(p); if (!v) return null; const s = summary(v.map((r) => r[metric.field])); return stat === 'mean' ? s.mean : s.median; }),
     }));
-    if (ref && series[0]) series[0].markLine = { silent: true, symbol: 'none', data: [{ yAxis: ref }], lineStyle: { color: th.ref, type: 'dashed' }, label: { formatter: 'DRL', color: th.ref } };
+    if (ref && series[0]) series[0].markLine = { silent: true, symbol: 'none', data: [{ yAxis: ref }], lineStyle: { color: th.ref, type: 'dashed' }, label: { formatter: drlLabel(cfg.metric, proto), color: th.ref } };
     return {
       ...base,
       legend: { ...base.legend, data: series.map((s) => s.name) },
