@@ -13,11 +13,12 @@ import { num, smart } from '../core/format.js';
 import { ctAcquisitions, physicalDevices, drl, isSample } from '../core/api.js';
 import { summary, groupBy, histogram } from '../core/stats.js';
 import { prefs } from '../core/prefs.js';
+import { SERVER_TYPES, buildServer, serverOptions, serverSummary, defaultsFor } from './charts-server.js';
 
 const page = document.getElementById('page');
 
 const METRICS = { ctdivol: { label: 'CTDIvol', unit: 'mGy', field: 'ctdivol' }, dlp: { label: 'DLP', unit: 'mGy·cm', field: 'dlp' } };
-const TYPES = { dots: 'Dots vs DRL', box: 'Boxplot', bar: 'Median / mean bar', hist: 'Histogram', trend: 'Trend', scatter: 'DLP vs weight', heat: 'Workload' };
+const TYPES = { dots: 'CT dots vs DRL', box: 'CT boxplot', bar: 'CT median / mean bar', hist: 'CT histogram', trend: 'CT trend', scatter: 'CT DLP vs weight', heat: 'CT workload' };
 const SPANS = { S: 4, M: 6, L: 8, XL: 12 };
 const PERIODS = { week: 'Week', month: 'Month', quarter: 'Quarter', year: 'Year' };
 const DEFAULT_Q = 'date:2026-07-01..2026-11-21 origin:local';
@@ -28,8 +29,11 @@ const DEFAULT_PANELS = [
   { type: 'scatter', metric: 'dlp', span: 'M', protocol: 'Abdomen-pelvis' },
   { type: 'hist', metric: 'dlp', span: 'M', protocol: 'Head routine' },
   { type: 'heat', metric: 'ctdivol', span: 'M' },
+  { ...defaultsFor('sdrl'), span: 'L' },
+  { ...defaultsFor('sbox'), modality: 'DX', metric: 'dap', by: 'exam', series: 'age_band', system: 'ro-drl-ms838-2025', span: 'L' },
 ];
 
+Object.assign(TYPES, SERVER_TYPES);
 let ws;         // { name, q, panels }
 let rows = [];  // acquisitions for the current query
 let devices = [];
@@ -316,11 +320,14 @@ function select(label, value, options, onChange) {
 }
 
 function renderPanel(cfg, index) {
-  const built = rows.length ? BUILDERS[cfg.type](cfg) : null;
-  const chart = h('dt-chart', { label: built?.title || 'Chart', height: cfg.type === 'dots' ? '380' : '280' });
+  const server = cfg.type in SERVER_TYPES;
+  const built = server ? null : rows.length ? BUILDERS[cfg.type](cfg) : null;
+  const chart = h('dt-chart', { label: built?.title || 'Chart', height: cfg.type === 'dots' ? '380' : cfg.type === 'sdrl' ? '420' : '320' });
   const update = (patch) => { Object.assign(cfg, patch); saveWs(); renderAll(); };
   const protos = Object.fromEntries(protocolsBy('name', 'ctdivol').map((p) => [p, p]));
-  const opts = [
+  const opts = server ? [select('Type', cfg.type, TYPES, (v) => update({ ...defaultsFor(v), modality: cfg.modality, span: cfg.span, type: v })),
+    ...serverOptions(cfg, update, select), h('span', { class: 'spacer' }),
+    h('span', { class: 'seg', role: 'group', 'aria-label': 'Panel width' }, Object.keys(SPANS).map((s) => h('button', { type: 'button', 'aria-pressed': String(cfg.span === s), onclick: () => update({ span: s }) }, s)))] : [
     select('Type', cfg.type, TYPES, (v) => update({ type: v })),
     cfg.type !== 'scatter' && cfg.type !== 'heat' ? select('Metric', cfg.metric, { ctdivol: 'CTDIvol', dlp: 'DLP' }, (v) => update({ metric: v })) : null,
     ['hist', 'trend', 'scatter'].includes(cfg.type) ? select('Protocol', built?.protocol, protos, (v) => update({ protocol: v })) : null,
@@ -345,10 +352,22 @@ function renderPanel(cfg, index) {
     h('button', { class: 'btn xs', type: 'button', onclick: () => chart.downloadCSV(slug(built?.title)) }, 'CSV'),
     h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Remove panel', onclick: () => { ws.panels.splice(index, 1); saveWs(); renderAll(); } }, '×')),
   h('div', { class: 'ws-opts' }, opts),
-  h('div', { class: 'ws-body' }, built ? chart : h('p', { class: 'muted' }, t('state.empty')), built ? summaryTable(built.summary) : null));
+  server ? h('div', { class: 'ws-body' }, chart, h('div', { class: 'srv-summary' }))
+    : h('div', { class: 'ws-body' }, built ? chart : h('p', { class: 'muted' }, t('state.empty')), built ? summaryTable(built.summary) : null));
   if (built) {
     chart.csv = built.csv;
     queueMicrotask(() => chart.draw(built.option));
+  }
+  if (server) {
+    const head = panel.querySelector('h3');
+    head.textContent = 'Loading…';
+    buildServer(cfg, ws.q).then((b) => {
+      head.textContent = b.title;
+      if (b.height) chart.setAttribute('height', b.height);
+      chart.csv = b.csv;
+      chart.draw(b.option);
+      panel.querySelector('.srv-summary').replaceChildren(serverSummary(b.summary, b.unit) || '');
+    }).catch((err) => { head.textContent = TYPES[cfg.type]; chart.replaceWith(h('p', { class: 'error' }, err.message)); });
   }
   return panel;
 }
@@ -371,7 +390,7 @@ function renderAll() {
   ws.panels.forEach((cfg, i) => gridHost.append(renderPanel(cfg, i)));
   gridHost.append(h('div', { class: 'ws-add' }, h('span', {}, `${t('charts.add')}:`),
     Object.entries(TYPES).map(([type, label]) => h('button', { class: 'btn', type: 'button', onclick: () => {
-      ws.panels.push({ type, metric: type === 'scatter' ? 'dlp' : 'ctdivol', span: 'M' });
+      ws.panels.push(type in SERVER_TYPES ? defaultsFor(type) : { type, metric: type === 'scatter' ? 'dlp' : 'ctdivol', span: 'M' });
       saveWs();
       renderAll();
       gridHost.lastElementChild.previousElementSibling.scrollIntoView({ behavior: 'smooth', block: 'center' });

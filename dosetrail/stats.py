@@ -253,6 +253,9 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
         "n": len(all_values), "n_studies": len({s for v in studies.values() for s in v}),
         "overall": describe(all_values), "bins": edges, "truncated": truncated,
         "groups": out_groups[:MAX_GROUPS], "groups_total": len(out_groups),
+        # band labels in their natural order, for legends and axes
+        "orders": {**({"age_band": [b.label for b in age.bands]} if age else {}),
+                   **({"weight_band": [b.label for b in weight.bands]} if weight else {})},
     }
 
 

@@ -15,7 +15,7 @@ export function chartTheme() {
   const v = (name) => cs.getPropertyValue(name).trim();
   return {
     text: v('--text'), muted: v('--muted'), line: v('--line'), line2: v('--line-2'), panel: v('--panel'), bg: v('--bg'),
-    accent: v('--accent'), ref: v('--ref'), warn: v('--warn'), alert: v('--alert'), seq: v('--seq'),
+    accent: v('--accent'), ref: v('--ref'), warn: v('--warn'), alert: v('--alert'), seq: v('--seq'), ok: v('--ok'),
     devices: [1, 2, 3, 4, 5, 6, 7, 8].map((i) => v(`--d${i}`)),
     mono: v('--font-mono'), sans: v('--font-sans'),
   };
