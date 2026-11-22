@@ -227,22 +227,35 @@ def _cmd_refetch(args: argparse.Namespace) -> int:
     from .db.session import make_engine, make_sessionmaker
     from .maintenance import forget_studies
 
-    kind, col = (("proj_rdsr", Study.total_dap) if args.missing == "dap"
-                 else ("ct_rdsr", Study.total_dlp))
+    if not args.missing and not args.device:
+        print("give --missing dap|dlp or --device ID")
+        return 2
+    kind, col = (("ct_rdsr", Study.total_dlp) if args.missing == "dlp"
+                 else ("proj_rdsr", Study.total_dap))
     with make_sessionmaker(make_engine(args.url or load_settings().database_url))() as session:
-        q = select(Study.id).where(Study.source_kind == kind, col.is_(None))
+        q = select(Study.id).where(Study.source_kind == kind)
+        if args.missing:
+            q = q.where(col.is_(None))
+        if args.device:
+            from .db.models import Device
+
+            ids_ = [args.device, *session.scalars(select(Device.id).where(
+                Device.merged_into_id == args.device))]
+            q = q.where(Study.device_id.in_(ids_))
         if args.since:
             q = q.where(Study.study_datetime >= dt.datetime.fromisoformat(args.since))
         ids = list(session.scalars(q))
         if not args.apply:
-            print(f"{len(ids)} {kind} studies without {args.missing} (dry run; --apply deletes "
-                  "them so that qr fetches them again)")
+            what = f"without {args.missing}" if args.missing else f"of device {args.device}"
+            print(f"{len(ids)} {kind} studies {what} (dry run; --apply deletes them so that "
+                  "qr fetches them again)")
             return 0
         out = forget_studies(session, ids)
         import getpass
 
         session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="refetch",
-                             target=f"{kind}:{args.missing}", detail=out))
+                             target=f"{kind}:{args.missing or f'device {args.device}'}",
+                             detail=out))
         session.commit()
     print(f"forgot {out['studies']} studies ({out.get('objects', 0)} objects) on "
           f"{len(out['days'])} days: {', '.join(out['days'])}")
@@ -722,8 +735,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     fg = sub.add_parser("refetch", help="forget studies imported with missing doses so that "
                                          "qr retrieves them again (repair)")
-    fg.add_argument("--missing", choices=["dap", "dlp"], required=True,
+    fg.add_argument("--missing", choices=["dap", "dlp"],
                     help="dose reports (proj_rdsr: dap, ct_rdsr: dlp) without that total")
+    fg.add_argument("--device", type=int, help="all projection dose reports of this device id "
+                                               "(e.g. to gain fields the parser now reads)")
     fg.add_argument("--since", help="only studies from this date (YYYY-MM-DD)")
     fg.add_argument("--apply", action="store_true", help="really delete (default: dry run)")
     fg.add_argument("--url")
