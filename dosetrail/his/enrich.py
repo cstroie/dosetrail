@@ -16,9 +16,10 @@ Flow per study (queued in ``his_lookup`` when the study is first stored):
 Retries: a new study whose request isn't found (forms are often completed after the exam)
 or a HIS that is busy is tried again after 15 min, 2 h and 24 h. History (backfill) studies
 get a second try a day later, and run only within the server's backfill hours.
-A broken HIS session (or a rejected login) makes every search look empty, so after a run of
+The worker only fetches the data it needs (no login checks: the admin Test does that). A
+broken HIS session or a rejected login makes every search look empty, so after a run of
 "not found" answers a patient found earlier is searched again: if it is "not found" too, the
-batch stops and the studies stay queued.
+batch stops and the studies stay queued. A 401/403 on any call stops it too.
 """
 
 from __future__ import annotations
@@ -419,7 +420,6 @@ def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool
     if not rows:
         return stats
     client = client or servers.client(server, secret)
-    client.verify_login()  # 401 = credentials rejected: stop (other answers pass)
     ctx = Context(canary=_canary(session))
     for row in rows:
         study_when = session.scalar(select(Study.study_datetime)

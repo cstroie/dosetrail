@@ -71,7 +71,7 @@ def test_request_on_the_exam_day_gives_weight_height_and_indication(session, stu
     assert (st.height_m, st.height_source) == (1.18, SizeSource.chart_same_day)
     req = session.get(StudyRequest, st.id)
     assert req.indication == "cough, fever" and req.ward == "PEDIATRICS 1"
-    assert stats["calls"] == 4  # login, patient, listing, order form
+    assert stats["calls"] == 3  # patient, listing, order form: no login checks
 
 
 def test_no_request_uses_the_chart_and_retries_later(session, stub, his):
@@ -137,18 +137,22 @@ def test_patient_policy_skips_requests(session, stub, his):
     assert session.get(StudyRequest, st.id) is None
 
 
-def test_bad_login_stops_and_dry_run_writes_nothing(session, stub, his):
+def test_bad_login_is_caught_by_the_known_patient_and_dry_run_writes_nothing(session, stub,
+                                                                            his):
     stub.patients[GIRL] = his_stub.patient("77", GIRL, weight="22")
-    st = _ingest(session, "1.9.80")
+    _ingest(session, "1.9.80")
+    _run(session)  # found: the known patient
+    later = [_ingest(session, f"1.9.8{i}", pid=GIRL) for i in range(1, 7)]
     servers.update(session, SECRET, his.id, {"password": "wrong"})
     with pytest.raises(HisError):
         _run(session)
+    assert servers.check(session, SECRET, his.id)["ok"] is False  # the admin Test says why
     servers.update(session, SECRET, his.id, {"password": his_stub.PASSWORD})
+    for lk in session.query(HisLookup).filter(HisLookup.study_id.in_([s.id for s in later])):
+        lk.next_try_at = None
     session.commit()  # the dry run rolls back to here
-    assert _run(session, dry_run=True)["patient_only"] == 1
-    assert st.weight_source != SizeSource.his_chart_undated
-    assert session.get(HisLookup, st.id).status == "pending"
-
+    assert _run(session, dry_run=True)["patient_only"] >= 1
+    assert later[-1].weight_source != SizeSource.his_chart_undated
 
 def test_choose_request():
     when = dt.datetime(2025, 11, 6, 10)
