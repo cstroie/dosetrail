@@ -277,3 +277,41 @@ def test_ssde_takes_the_highest_series(session, world):
     assert got.message == "SSDE per series (reported, else calculated) 55 mGy ≥ 50 mGy " \
                           "(Abdomen late)"
     assert "ct-ssde-50" not in _alerts(session, low)
+
+
+def test_room_above_drl_two_quarters(session, world):
+    dev, kid = world
+    n = 0
+
+    def quarter(start, dlp, count=20):
+        nonlocal n
+        for i in range(count):
+            n += 1
+            s = _study(session, dev, kid, f"su.{n}", start + dt.timedelta(days=3 * i),
+                       modality="CT", age_days=900, total_dlp=dlp,
+                       study_description="Head^CEREBRAL_SPIRAL_NATIV (Child)")
+            s.events = [Event(protocol="Head", ctdivol=30.0, dlp=dlp)]  # CT-CAP 1-4 y: 800
+
+    quarter(dt.datetime(2026, 4, 1), 1000.0)
+    quarter(dt.datetime(2026, 7, 1), 900.0)
+    session.flush()
+    classify.run(session)
+    rule = session.scalar(select(AlertRule).filter_by(key="drl-sustained-2q"))
+    rule.threshold = 1.2  # Q2 1.25x, Q3 1.125x: not both
+    assert alerts.evaluate_devices(session, NOW, ["drl_sustained"])["new"] == 0
+    rule.threshold = 1.0
+    assert alerts.evaluate_devices(session, NOW, ["drl_sustained"])["new"] == 1
+    a = session.scalar(select(Alert).filter_by(rule_id=rule.id))
+    assert a.value == pytest.approx(1.125)
+    assert a.message.startswith("2026-Q3 CT-CAP ")
+    assert a.message.endswith("· Angio: median 900 mGy·cm = 1.12× DRL 800 (20); "
+                              "quarter before 1.25× (20)")
+    # once per room, exam, group and quarter
+    assert alerts.evaluate_devices(session, NOW + dt.timedelta(days=5))["new"] == 0
+    assert alerts.listing(session)[0]["value"] == "1.12× DRL"
+    # too few values in a quarter: not compared
+    session.delete(a)
+    for s in session.scalars(select(Study).where(Study.study_uid.in_(["su.39", "su.40"]))):
+        session.delete(s)
+    session.flush()
+    assert alerts.evaluate_devices(session, NOW, ["drl_sustained"])["new"] == 0

@@ -534,6 +534,8 @@ class AlertRule(TimestampMixin, Base):
       has sent none for ``threshold`` days;
     * ``device_drift``: a device's median dose (exam, age group), two weeks running,
       ``>= threshold`` × its median over the 12 weeks before.
+    * ``drl_sustained``: a room's median (exam, age group) ``>= threshold`` × the DRL of
+      the set ``metric`` (default national) in each of the last two complete quarters.
     """
 
     __tablename__ = "alert_rule"

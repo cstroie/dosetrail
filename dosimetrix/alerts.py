@@ -40,10 +40,16 @@ STUDY_METRICS = {k: m.column for k, m in METRICS.items() if m.level == "study"}
 EVENT_VALUE = {"ssde": lambda e: e.ssde if e.ssde is not None else e.ssde_calc}
 UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "s": "s"}
 BATCH = 1000
-DEVICE_KINDS = ("device_silent", "device_drift")
+DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained")
+SUSTAINED_MIN_N = 20  # as the DRL page: fewer values per room and quarter are not compared
 # device drift: the last two weeks, each against the 12 weeks before them
 DRIFT_WEEK, DRIFT_BASE = dt.timedelta(days=7), dt.timedelta(days=84)
 DRIFT_MIN_WEEK, DRIFT_MIN_BASE = 10, 30
+
+
+def _num(v: float) -> str:
+    """3 significant digits without exponents: 1130, 8.22, 0.92."""
+    return f"{v:.0f}" if abs(v) >= 100 else f"{v:.3g}"
 
 
 def _fmt(v: float, unit: str | None) -> str:
@@ -299,6 +305,8 @@ def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
         return f"{v:.0f} studies", f"≥ {r.threshold:.0f} / {r.window_days} d"
     if r.kind == "device_silent":
         return f"{v:.1f} days", f"≥ {r.threshold:g} d"
+    if r.kind == "drl_sustained":
+        return f"{v:.2f}× DRL", f"≥ {r.threshold:g}× (2 quarters)"
     if r.kind == "device_drift":
         return f"{v:.2f}×", f"≥ {r.threshold:g}× (2 weeks)"
     if r.kind == "pregnant":
@@ -333,7 +341,8 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
     names = names or {d.id: d.display_name or f"Device {d.id}"
                       for d in session.scalars(select(Device))}
     kinds = {"threshold": None, "drl_ratio": "> DRL", "cumulative": "CUMUL.", "count": "REPEAT",
-             "pregnant": "PREGNANT", "device_silent": "SILENT", "device_drift": "DRIFT"}
+             "pregnant": "PREGNANT", "device_silent": "SILENT", "device_drift": "DRIFT",
+             "drl_sustained": "> DRL ×2Q"}
     out = []
     for a, r, s in session.execute(q):
         kind = kinds.get(r.kind) or {"kar_total": "KA,R", "dap_total": "DAP",
@@ -518,14 +527,67 @@ def _drift(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
         unit = "mGy·cm" if code.startswith("CT") else "Gy·cm²"
         out.append({"study_id": max(g["w1"])[2], "value": r1, "limit_value": rule.threshold,
                     "unit": None,
-                    "message": f"{key}: median {_median([v for _, v, _ in g['w1']]):.3g} "
+                    "message": f"{key}: median {_num(_median([v for _, v, _ in g['w1']]))} "
                                f"{unit} this week ({len(g['w1'])}), {r2:.2f}× the week "
-                               f"before; 12 weeks before {ref:.3g} {unit} "
+                               f"before; 12 weeks before {_num(ref)} {unit} "
                                f"({len(g['base'])})"})
     return out
 
 
-DEVICE_CHECKS = {"device_silent": _silent, "device_drift": _drift}
+def _quarter_start(t: dt.datetime) -> dt.datetime:
+    return dt.datetime(t.year, 3 * ((t.month - 1) // 3) + 1, 1)
+
+
+def _prev_quarter(q: dt.datetime) -> dt.datetime:
+    return dt.datetime(q.year - (q.month == 1), (q.month - 4) % 12 + 1, 1)
+
+
+def _sustained(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
+    """Rooms whose median for an exam and age group was ``>= threshold`` × the DRL in each
+    of the last two complete quarters (≥ 20 values in each), as the DRL page computes it:
+    the trigger for an optimisation review. The reference set is ``metric`` (default the
+    national one; a local set's key works too). Once per room, exam, group and quarter."""
+    from . import drl as drl_mod
+    from .api.data import _physical_ids, device_names, overrides
+    from .api.query import conditions, parse
+
+    set_key = rule.metric or "ro-ms838-2025"
+    q2 = _prev_quarter(_quarter_start(now))
+    q1 = _prev_quarter(q2)
+    base = conditions(parse("origin:local"), now, overrides(session))
+    physical, names = _physical_ids(session), device_names(session)
+    found = []
+    for lo, hi in ((q1, q2), (q2, _quarter_start(now))):
+        try:
+            res = drl_mod.compare(session, [*base, Study.study_datetime >= lo,
+                                            Study.study_datetime < hi], set_key,
+                                  by_device=True, min_n=SUSTAINED_MIN_N, physical=physical,
+                                  names=names)
+        except drl_mod.DRLError:
+            return []
+        found.append({(r["exam"], r["band_label"], r["quantity"], g["device"]): (r, g)
+                      for r in res["rows"] for g in r.get("groups", ())
+                      if g["device"] and g["n"] >= SUSTAINED_MIN_N and g["ratio"]
+                      and g["ratio"] >= rule.threshold})
+    label = f"{q2.year}-Q{(q2.month - 1) // 3 + 1}"
+    out = []
+    for k in sorted(set(found[0]) & set(found[1]), key=str):
+        (r, g), (_, g0) = found[1][k], found[0][k]
+        exam, band, quantity, did = k
+        key = f"{label} {exam} {band or 'all ages'} {quantity} · {g['device_name']}"
+        if session.scalar(select(func.count()).select_from(Alert)
+                          .where(Alert.rule_id == rule.id, Alert.message.startswith(key + ":"))):
+            continue
+        unit = UNITS.get(r["unit"], r["unit"])
+        out.append({"study_id": _latest_study(session, did, q2, _quarter_start(now), None),
+                    "value": g["ratio"], "limit_value": rule.threshold, "unit": None,
+                    "message": f"{key}: median {_num(g['median'])} {unit} = {g['ratio']:.2f}× "
+                               f"DRL {_num(r['reference'])} ({g['n']}); quarter before "
+                               f"{g0['ratio']:.2f}× ({g0['n']})"})
+    return out
+
+
+DEVICE_CHECKS = {"device_silent": _silent, "device_drift": _drift, "drl_sustained": _sustained}
 
 
 def evaluate_devices(session: Session, now: dt.datetime | None = None,

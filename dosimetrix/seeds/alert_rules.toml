@@ -8,6 +8,7 @@
 # kind = pregnant   : the study is marked as pregnant
 # kind = device_silent : a busy device sends no study for threshold days
 # kind = device_drift  : a device's median dose (exam, age group) >= threshold x its usual one
+# kind = drl_sustained : a room's median (exam, age group) >= threshold x DRL, 2 quarters running
 
 [[rule]]
 key = "fluoro-kar-5gy"
@@ -233,3 +234,12 @@ unit = "mGy"
 severity = "warn"
 notify = false
 note = "Size-specific dose estimate (AAPM 204/220): unlike CTDIvol it follows the patient's size, so one value suits children and adults; 50 mGy is the AAPM adult body CTDIvol notification value. Reported by the scanner, else calculated; most scanners here report none (2025–2026: 7 child studies have it)."
+
+[[rule]]
+key = "drl-sustained-2q"
+name = "Room: median above the national DRL in 2 quarters running"
+kind = "drl_sustained"
+threshold = 1.0
+severity = "warn"
+notify = false
+note = "ICRP 135: a room whose median is above the DRL needs an optimisation review; two complete quarters running rule out a one-off. Per room, national exam code and age group, ≥ 20 values a quarter, computed as on the DRL page. Raised once per quarter while it lasts. Set metric to a local set's key to compare against it instead."
