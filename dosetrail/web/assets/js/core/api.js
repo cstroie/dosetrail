@@ -339,6 +339,16 @@ export const updateNode = (id, patch) => send('PATCH', `/api/dicom/nodes/${id}`,
 export const deleteNode = (id) => send('DELETE', `/api/dicom/nodes/${id}`);
 export const echoNode = (id) => send('POST', `/api/dicom/nodes/${id}/echo`);
 
+/* ---------------- HIS / RIS servers (admin) ---------------- */
+/** GET /api/his/status → { worker, queue: {status: n}, servers } */
+export function hisStatus() {
+  return isSample ? serverOnly('HIS servers') : remote('/api/his/status');
+}
+export const createHisServer = (s) => send('POST', '/api/his/servers', s);
+export const updateHisServer = (id, patch) => send('PATCH', `/api/his/servers/${id}`, patch);
+export const deleteHisServer = (id) => send('DELETE', `/api/his/servers/${id}`);
+export const checkHisServer = (id) => send('POST', `/api/his/servers/${id}/check`);
+
 /** POST /api/studies/{id}/identify → { name, id, birth_date } (pid role; audit-logged) */
 export function identifyStudy(id) {
   return isSample ? Promise.reject(new Error('sample mode')) : send('POST', `/api/studies/${id}/identify`);

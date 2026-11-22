@@ -155,7 +155,7 @@ def devices(session: Session) -> dict:
             "manufacturer": d.manufacturer, "model": d.model_name, "serial": d.serial_number,
             "station": d.station_name, "software": d.software_versions or "",
             "institution": d.institution_name, "modality": mods.most_common(1)[0][0] if mods
-            else None, "modality_override": d.modality_override,
+            else None, "modality_override": d.modality_override, "his_policy": d.his_policy,
             "origin": "local" if d.is_local else "external", "studies": d.n_studies or 0,
             "last_study": iso_min(d.last_study_at),
         })

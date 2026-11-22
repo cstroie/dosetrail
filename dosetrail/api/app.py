@@ -26,7 +26,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -58,6 +58,7 @@ class DevicePatch(BaseModel):
     display_name: str | None = None
     modality_override: str | None = None
     origin: str | None = None
+    his_policy: str | None = None
 
 
 class MergeIn(BaseModel):
@@ -92,6 +93,22 @@ class NodeIn(BaseModel):
     max_results: int | None = None
     timeout: int | None = None
     sync_days: int | None = None
+    notes: str | None = None
+
+
+class HisServerIn(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    base_url: str | None = None
+    username: str | None = None
+    password: str | None = None  # write-only; "" clears it
+    enabled: bool | None = None
+    timeout: int | None = None
+    modalities: str | None = None
+    window_before_h: int | None = None
+    window_after_h: int | None = None
+    min_interval_s: float | None = None
+    backfill_hours: str | None = None
     notes: str | None = None
 
 
@@ -488,6 +505,68 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def dicom_echo(node_id: int, request: Request, user: User = Depends(admin_user),
                    session: Session = Depends(db)):
         res = _nodes(lambda nodes: nodes.echo(session, node_id, settings.dicom_aet))
+        session.commit()
+        return res
+
+    # ------------------------------------------------------------------ HIS servers
+
+    def _his(fn):
+        from ..his import servers
+
+        try:
+            return fn(servers)
+        except servers.ServerError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/his/status")
+    def his_status(user: User = Depends(current_user), session: Session = Depends(db)):
+        from ..db.models import AppSetting, HisLookup, HisServer
+        from ..his import servers
+
+        row = session.get(AppSetting, servers.STATUS_KEY)
+        worker = dict(row.value or {}) if row else None
+        if worker and worker.get("at"):
+            age = (clock() - dt.datetime.fromisoformat(worker["at"])).total_seconds()
+            worker["stale"] = age > 600
+        queue = dict(session.execute(select(HisLookup.status, func.count())
+                                     .group_by(HisLookup.status)).all())
+        return {"worker": worker, "queue": queue,
+                "servers": [servers.as_dict(s) for s in session.scalars(
+                    select(HisServer).order_by(HisServer.name))]}
+
+    @app.post("/api/his/servers")
+    def his_create(body: HisServerIn, request: Request, user: User = Depends(admin_user),
+                   session: Session = Depends(db)):
+        s = _his(lambda sv: sv.create(session, secret, body.model_dump(exclude_unset=True)))
+        from ..his.servers import as_dict
+
+        out = as_dict(s)
+        _audit(session, request, user, "his_server.create", f"his:{s.name}",
+               {k: v for k, v in out.items() if k != "last_check"})
+        session.commit()
+        return out
+
+    @app.patch("/api/his/servers/{server_id}")
+    def his_update(server_id: int, body: HisServerIn, request: Request,
+                   user: User = Depends(admin_user), session: Session = Depends(db)):
+        s, changes = _his(lambda sv: sv.update(session, secret, server_id,
+                                               body.model_dump(exclude_unset=True)))
+        _audit(session, request, user, "his_server.update", f"his:{s.name}", changes)
+        session.commit()
+        return {"id": s.id, "changes": changes}
+
+    @app.delete("/api/his/servers/{server_id}")
+    def his_delete(server_id: int, request: Request, user: User = Depends(admin_user),
+                   session: Session = Depends(db)):
+        d = _his(lambda sv: sv.delete(session, server_id))
+        _audit(session, request, user, "his_server.delete", f"his:{d['name']}", d)
+        session.commit()
+        return {"deleted": d["name"]}
+
+    @app.post("/api/his/servers/{server_id}/check")
+    def his_check(server_id: int, user: User = Depends(admin_user),
+                  session: Session = Depends(db)):
+        res = _his(lambda sv: sv.check(session, secret, server_id))
         session.commit()
         return res
 

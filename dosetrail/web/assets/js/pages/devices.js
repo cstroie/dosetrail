@@ -6,14 +6,13 @@
 // renamed station…), and the selection can be marked local or external in one step.
 
 import '../components/dt-shell.js';
+import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
 import { devices, now, isSample, updateDevice, mergeDevices, splitDevice, dismissMerge } from '../core/api.js';
 
 const page = document.getElementById('page');
-const ADMIN_TABS = ['Devices', 'DICOM nodes', 'Protocol mappings', 'DRLs', 'Data quality', 'Alert rules', 'Users', 'Audit log'];
-const ADMIN_LINKS = { Users: 'users.html', 'Audit log': 'audit.html', 'DICOM nodes': 'dicom.html', 'Protocol mappings': 'review.html', DRLs: 'drl.html', 'Data quality': 'quality.html', 'Alert rules': 'rules.html' };
 
 let records = [];
 let suggestions = [];
@@ -102,6 +101,12 @@ function renderTable(tbody) {
           toast(`${main.display_name} is now ${e.target.value}`);
         } },
       ['local', 'external'].map((o) => h('option', { value: o, selected: o === main.origin }, o)))),
+      h('td', {}, h('select', { class: 'input', 'aria-label': `HIS lookups for ${main.display_name}`, style: { height: '26px' },
+        title: 'HIS lookups for this device: patient and request, patient only, or none',
+        onchange: (e) => (isSample ? toast(`HIS: ${e.target.value}`)
+          : save(updateDevice(main.id, { his_policy: e.target.value }), `${main.display_name}: HIS ${e.target.value}`)) },
+      [['full', 'full'], ['patient', 'patient'], ['none', 'off']].map(([v, l]) =>
+        h('option', { value: v, selected: v === (main.his_policy || 'full') }, l)))),
       h('td', { class: 'r num' }, num(total)),
       h('td', {}, lastTag(last))));
     if (recs.length > 1) {
@@ -112,6 +117,7 @@ function renderTable(tbody) {
           h('td', { class: 'muted' }, `${r.manufacturer} ${r.model}`),
           h('td', { class: 'mono' }, r.serial || '—'),
           h('td', { class: 'mono muted' }, r.software ? `sw ${r.software}` : ''),
+          h('td', {}),
           h('td', {}),
           h('td', {}, !isSample && r.id !== main.id
             ? h('button', { class: 'btn xs', type: 'button', title: 'Make this record a separate device again',
@@ -240,9 +246,7 @@ function render() {
   const left = suggestions.filter((s) => !s.done).length;
   const physical = new Set(records.map((r) => r.physical_id)).size;
   page.replaceChildren(
-    h('nav', { class: 'tabs', 'aria-label': 'Administration' },
-      ADMIN_TABS.map((x, i) => (ADMIN_LINKS[x] ? h('a', { href: ADMIN_LINKS[x] }, x)
-        : h('button', { type: 'button', 'aria-current': i === 0 ? 'page' : false, onclick: () => { if (i) toast(`${x}: not built yet`); } }, x)))),
+    adminTabs('devices.html'),
     h('div', { class: 'detail' },
       h('section', { class: 'panel', style: { flex: '999 1 760px', 'min-width': '0' }, 'aria-labelledby': 'h-dev' },
         h('div', { class: 'panel-head' }, h('h1', { id: 'h-dev', style: { 'font-size': '15px' } }, t('admin.devices')),
@@ -260,8 +264,8 @@ function render() {
             h('th', { scope: 'col' }, h('input', { type: 'checkbox', 'aria-label': 'Select all shown devices',
               checked: visibleGroups().length > 0 && visibleGroups().every((g) => selected.has(g[0].id)),
               onchange: (e) => { for (const g of visibleGroups()) { if (e.target.checked) selected.add(g[0].id); else selected.delete(g[0].id); } render(); } })),
-            ['Display name', 'Manufacturer · model', 'Serial', 'Station', 'Modality', 'Origin', 'Studies', 'Last study']
-              .map((x, i) => h('th', { scope: 'col', class: i === 6 ? 'r' : '' }, x)))),
+            ['Display name', 'Manufacturer · model', 'Serial', 'Station', 'Modality', 'Origin', 'HIS', 'Studies', 'Last study']
+              .map((x, i) => h('th', { scope: 'col', class: i === 7 ? 'r' : '' }, x)))),
           tbody))),
       inspector()));
   renderTable(tbody);

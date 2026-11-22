@@ -249,6 +249,31 @@ def _cmd_cnp(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_his(args: argparse.Namespace) -> int:
+    """HIS servers: check the login; run the lookup worker; queue the history."""
+    from .db.models import HisServer
+    from .db.session import make_engine, make_sessionmaker
+    from .his import servers
+
+    s = load_settings()
+    secret = _secret()
+    with make_sessionmaker(make_engine(args.url or s.database_url))() as session:
+        if args.action == "check":
+            rows = list(session.query(HisServer).order_by(HisServer.id))
+            if not rows:
+                print("no HIS server configured (Admin → Integration)")
+                return 1
+            bad = 0
+            for srv in rows:
+                res = servers.check(session, secret, srv.id)
+                bad += not res["ok"]
+                print(f"{srv.name}: {'OK' if res['ok'] else 'FAILED'} {res['ms']} ms"
+                      + (f" – {res['error']}" if res["error"] else ""))
+            session.commit()
+            return 1 if bad else 0
+    return 2
+
+
 def _cmd_refetch(args: argparse.Namespace) -> int:
     import datetime as dt
 
@@ -771,6 +796,11 @@ def build_parser() -> argparse.ArgumentParser:
     cn.add_argument("--apply", action="store_true", help="write (default: dry run)")
     cn.add_argument("--url")
     cn.set_defaults(func=_cmd_cnp)
+
+    hs = sub.add_parser("his", help="HIS / RIS: check the configured servers' login")
+    hs.add_argument("action", choices=["check"])
+    hs.add_argument("--url")
+    hs.set_defaults(func=_cmd_his)
 
     fg = sub.add_parser("refetch", help="forget studies imported with missing doses so that "
                                          "qr retrieves them again (repair)")

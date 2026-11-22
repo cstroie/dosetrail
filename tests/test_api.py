@@ -359,6 +359,38 @@ def test_dicom_node_endpoints(client):
     assert client.delete(f"/api/dicom/nodes/{nid}").json() == {"deleted": "CT 1"}
 
 
+def test_his_server_endpoints(client):
+    from tests import his_stub
+
+    stub = his_stub.Stub()
+    try:
+        login(client, "viewer", "viewer-pass-1")
+        assert client.get("/api/his/status").json()["servers"] == []
+        assert client.post("/api/his/servers", json={"name": "HIS"}).status_code == 403
+        login(client, "boss", "boss-pass-123")
+        assert client.post("/api/his/servers", json={"name": "HIS"}).status_code == 400
+        r = client.post("/api/his/servers", json={
+            "name": "HIS", "base_url": stub.url, "username": his_stub.USER, "password": "bad"})
+        assert r.status_code == 200, r.text
+        sid, body = r.json()["id"], r.json()
+        assert body["password_set"] and "bad" not in r.text
+        assert client.post(f"/api/his/servers/{sid}/check").json()["ok"] is False
+        r = client.patch(f"/api/his/servers/{sid}", json={"password": his_stub.PASSWORD})
+        assert r.json()["changes"] == {"password": "changed"}
+        assert client.post(f"/api/his/servers/{sid}/check").json()["ok"] is True
+        audit = client.get("/api/audit").text
+        assert his_stub.PASSWORD not in audit and '"bad"' not in audit
+        dev = client.get("/api/devices").json()["records"][0]
+        assert dev["his_policy"] == "full"
+        assert client.patch(f"/api/devices/{dev['id']}",
+                            json={"his_policy": "patient"}).status_code == 200
+        assert client.patch(f"/api/devices/{dev['id']}",
+                            json={"his_policy": "maybe"}).status_code == 400
+        assert client.delete(f"/api/his/servers/{sid}").json() == {"deleted": "HIS"}
+    finally:
+        stub.close()
+
+
 def test_users_and_audit(client):
     login(client, "viewer", "viewer-pass-1")
     assert client.get("/api/users").status_code == 403

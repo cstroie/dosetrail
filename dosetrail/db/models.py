@@ -61,6 +61,7 @@ class SizeSource(enum.StrEnum):
     estimated_visual = "estimated_visual"
     dicom_unknown = "dicom_unknown"  # present in DICOM, provenance unknown
     imported = "imported"  # bulk import (e.g. legacy system, CSV) – provenance unknown
+    his_chart_undated = "his_chart_undated"  # HIS patient record, date of measurement unknown
 
 
 class ClassificationStatus(enum.StrEnum):
@@ -107,6 +108,8 @@ class Device(TimestampMixin, Base):
     first_study_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
     last_study_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
     n_studies: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # HIS lookups for this device's studies: full (patient + request) | patient | none
+    his_policy: Mapped[str] = mapped_column(AsciiId(8), default="full", server_default="full")
 
     __table_args__ = (
         Index("ix_device_observer", "device_observer_uid"),
@@ -590,3 +593,74 @@ class DicomNode(TimestampMixin, Base):
     last_echo_ok: Mapped[bool | None] = mapped_column(Boolean)
     last_echo_ms: Mapped[int | None] = mapped_column(Integer)
     last_echo_error: Mapped[str | None] = mapped_column(Text(255))
+
+
+# ------------------------------------------------------------------------------- HIS / RIS
+
+
+class HisServer(TimestampMixin, Base):
+    """A hospital information system we read patients and imaging requests from."""
+
+    __tablename__ = "his_server"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(Text(64), unique=True)
+    kind: Mapped[str] = mapped_column(AsciiId(16), default="hippobridge")
+    base_url: Mapped[str] = mapped_column(AsciiId(255))
+    username: Mapped[str | None] = mapped_column(Text(128))
+    password_enc: Mapped[str | None] = mapped_column(AsciiId(512))  # secretbox token
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    timeout: Mapped[int] = mapped_column(Integer, default=120)
+    modalities: Mapped[str | None] = mapped_column(AsciiId(64))  # comma list; empty = all
+    window_before_h: Mapped[int] = mapped_column(Integer, default=72)
+    window_after_h: Mapped[int] = mapped_column(Integer, default=2)
+    min_interval_s: Mapped[float] = mapped_column(Float, default=2.0)
+    backfill_hours: Mapped[str | None] = mapped_column(AsciiId(16))  # e.g. "22-06"
+    notes: Mapped[str | None] = mapped_column(Text(1024))
+    last_check_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    last_check_ok: Mapped[bool | None] = mapped_column(Boolean)
+    last_check_ms: Mapped[int | None] = mapped_column(Integer)
+    last_check_error: Mapped[str | None] = mapped_column(Text(255))
+
+
+class HisLookup(TimestampMixin, Base):
+    """Queue and outcome of the HIS lookup for one study."""
+
+    __tablename__ = "his_lookup"
+    study_id: Mapped[int] = mapped_column(ForeignKey("study.id", ondelete="CASCADE"),
+                                          primary_key=True)
+    # pending | matched | patient_only | no_patient | skipped | error
+    status: Mapped[str] = mapped_column(AsciiId(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_try_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    his_server_id: Mapped[int | None] = mapped_column(ForeignKey("his_server.id",
+                                                                 ondelete="SET NULL"))
+    his_patient_id: Mapped[str | None] = mapped_column(AsciiId(32))
+    request_id: Mapped[str | None] = mapped_column(AsciiId(32))
+    match_score: Mapped[float | None] = mapped_column(Float)
+    fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    detail: Mapped[dict | None] = mapped_column(JSONType)
+
+    __table_args__ = (Index("ix_his_lookup_due", "status", "next_try_at"),)
+
+
+class StudyRequest(TimestampMixin, Base):
+    """The imaging request (order) matched to a study in the HIS."""
+
+    __tablename__ = "study_request"
+    study_id: Mapped[int] = mapped_column(ForeignKey("study.id", ondelete="CASCADE"),
+                                          primary_key=True)
+    his_server_id: Mapped[int | None] = mapped_column(ForeignKey("his_server.id",
+                                                                 ondelete="SET NULL"))
+    request_id: Mapped[str | None] = mapped_column(AsciiId(32), index=True)
+    authored_on: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    ward: Mapped[str | None] = mapped_column(Text(128))
+    requester: Mapped[str | None] = mapped_column(Text(128))
+    priority: Mapped[str | None] = mapped_column(AsciiId(16))
+    procedure: Mapped[str | None] = mapped_column(Text(255))
+    region: Mapped[str | None] = mapped_column(Text(64))
+    indication: Mapped[str | None] = mapped_column(Text(1024))
+    guideline: Mapped[str | None] = mapped_column(Text(1024))
+    prior_imaging: Mapped[str | None] = mapped_column(Text(1024))
+    pregnant: Mapped[bool | None] = mapped_column(Boolean)
+    weight_kg: Mapped[float | None] = mapped_column(Float)  # as written on the request
+    height_m: Mapped[float | None] = mapped_column(Float)
