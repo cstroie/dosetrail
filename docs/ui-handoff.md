@@ -74,6 +74,7 @@ Requested for the charts workspace:
 More plain working pages, yours to restyle:
 - `reports.html` (new rail entry "Reports"): the quarterly INSP report (OMS 1255/2016) preview with XLSX download, and the monthly anonymised paediatric survey export.
 - `quality.html` (admin tab "Data quality"): rule counts, completeness per device, and studies with findings.
+- `drl-sets.html` (admin tab "DRLs"): the reference sets and their values, read-only (seed-owned); the comparison stays on `drl.html`.
 - `rules.html` (admin tab "Alert rules"): enable, threshold, severity and notify per rule.
 - The overview alert queue now uses real alerts (`GET /api/alerts`). "Acknowledge" calls `POST /api/alerts/{id}/ack`.
   - API alerts carry `study_id`; their `id` is the alert's own id.

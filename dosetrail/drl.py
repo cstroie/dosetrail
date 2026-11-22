@@ -66,6 +66,28 @@ def reference_sets(session: Session) -> list[dict]:
     return out
 
 
+def reference_values(session: Session, set_key: str) -> dict:
+    """One set with its values, in code and band order (seeded sets are read-only)."""
+    rs = session.scalar(select(ReferenceSet).filter_by(key=set_key))
+    if rs is None:
+        raise DRLError(f"unknown reference set {set_key!r}")
+    rows = session.execute(
+        select(ReferenceValue, Code, GroupBand, GroupScheme)
+        .join(Code, Code.id == ReferenceValue.exam_code_id)
+        .outerjoin(GroupBand, GroupBand.id == ReferenceValue.band_id)
+        .outerjoin(GroupScheme, GroupScheme.id == GroupBand.scheme_id)
+        .where(ReferenceValue.set_id == rs.id)
+        .order_by(Code.sort_order, Code.code, GroupScheme.key, GroupBand.sort_order,
+                  ReferenceValue.quantity)).all()
+    return {"key": rs.key, "name": rs.name, "source": rs.source, "notes": rs.notes,
+            "valid_from": rs.valid_from.isoformat() if rs.valid_from else None,
+            "values": [{"exam": c.code, "exam_meaning": c.meaning, "modality": c.modality,
+                        "scheme": sc.key if sc else None, "band": b.key if b else None,
+                        "band_label": b.label if b else None, "quantity": v.quantity,
+                        "value": v.value, "unit": v.unit, "applies_to": v.applies_to}
+                       for v, c, b, sc in rows]}
+
+
 def compare(session: Session, conds: list, set_key: str, *, by_device: bool = False,
             min_n: int = 20, physical: dict[int, int] | None = None,
             names: dict[int, str] | None = None, include_excluded: bool = False) -> dict:

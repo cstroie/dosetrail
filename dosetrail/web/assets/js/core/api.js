@@ -190,6 +190,12 @@ export function drlSets() {
   return isSample ? serverOnly('Reference levels') : remote('/api/drl/sets');
 }
 
+/** GET /api/drl/sets/{key} → { key, name, source, notes, values: [{ exam, exam_meaning, modality,
+ *  scheme, band, band_label, quantity, value, unit, applies_to }] } */
+export function drlSet(key) {
+  return isSample ? serverOnly('Reference levels') : remote(`/api/drl/sets/${encodeURIComponent(key)}`);
+}
+
 /**
  * GET /api/drl/compare?q=&set=&by=facility|device&min_n=
  * → { set, name, source, notes, by, min_n, rows: [{ exam, exam_meaning, band, band_label,

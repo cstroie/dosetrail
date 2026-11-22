@@ -248,6 +248,11 @@ def test_drl_endpoints(client):
     r = client.get("/api/drl/compare", params={"q": "", "min_n": 1}).json()
     assert r["set"] == "ro-ms838-2025" and r["by"] == "facility"
     assert client.get("/api/drl/compare", params={"set": "x"}).status_code == 400
+    one = client.get("/api/drl/sets/ec-rp185-2018").json()
+    assert one["key"] == "ec-rp185-2018" and len(one["values"]) > 0
+    v = one["values"][0]
+    assert {"exam", "exam_meaning", "band_label", "quantity", "value", "unit"} <= v.keys()
+    assert client.get("/api/drl/sets/nope").status_code == 404
 
 
 def test_export_roles_and_formats(client):

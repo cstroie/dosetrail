@@ -41,7 +41,8 @@ LOGIN_HTML = Path(__file__).resolve().parent / "login.html"
 COOKIE = "dt_session"
 PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.html",
          "study.html": "study.html", "charts.html": "charts.html",
-         "devices.html": "devices.html", "drl.html": "drl.html", "review.html": "review.html",
+         "devices.html": "devices.html", "drl.html": "drl.html", "drl-sets.html": "drl-sets.html",
+         "review.html": "review.html",
          "reports.html": "reports.html", "quality.html": "quality.html",
          "rules.html": "rules.html", "dicom.html": "dicom.html",
          "users.html": "users.html", "audit.html": "audit.html",
@@ -238,6 +239,15 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         from .. import drl as drl_mod
 
         return drl_mod.reference_sets(session)
+
+    @app.get("/api/drl/sets/{key}")
+    def drl_set(key: str, user: User = Depends(current_user), session: Session = Depends(db)):
+        from .. import drl as drl_mod
+
+        try:
+            return drl_mod.reference_values(session, key)
+        except drl_mod.DRLError as e:
+            raise HTTPException(404, str(e)) from e
 
     @app.get("/api/drl/compare")
     def drl_compare(q: str = "origin:local", set: str = "ro-ms838-2025", by: str = "facility",
