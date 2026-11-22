@@ -5,6 +5,7 @@
 # kind = drl_ratio  : exam dose >= threshold x national DRL (exam and age group)
 # kind = cumulative : patient's sum of metric over window_days >= threshold
 # kind = count      : patient's number of studies (modality) over window_days >= threshold
+# kind = pregnant   : the study is marked as pregnant
 
 [[rule]]
 key = "fluoro-kar-5gy"
@@ -124,3 +125,76 @@ unit = "mGy"
 severity = "warn"
 notify = false
 note = "2 Gy: threshold of transient erythema (ICRP 85, NCRP 168). The peak skin dose is a model estimate: check the skin dose map and the procedure."
+
+[[rule]]
+key = "ct-dlp-4000"
+name = "CT: DLP ≥ 4000 mGy·cm in one study"
+kind = "threshold"
+modality = "CT"
+metric = "dlp_total"
+threshold = 4000.0
+unit = "mGy.cm"
+severity = "warn"
+notify = false
+note = "Catches long or multi-phase scans that a normal CTDIvol lets through. About the top 0.5 % here (2025–2026: 21 of 3,861 CT studies)."
+
+[[rule]]
+key = "ct-ctdivol-paed-60"
+name = "CT: CTDIvol ≥ 60 mGy in a child (under 18)"
+kind = "threshold"
+modality = "CT"
+metric = "ctdivol_max"
+threshold = 60.0
+unit = "mGy"
+max_age_days = 6574
+severity = "warn"
+notify = false
+note = "AAPM paediatric head notification value at 2–5 y; extends ct-ctdivol-paed-50 to older children (a child under 6 above 60 mGy raises both). 2025–2026: 13 studies at 6–17 y."
+
+[[rule]]
+key = "ct-dlp-cumulative-paed-12m"
+name = "Child: cumulative CT DLP ≥ 5000 mGy·cm in 12 months"
+kind = "cumulative"
+modality = "CT"
+metric = "dlp_total"
+threshold = 5000.0
+unit = "mGy.cm"
+window_days = 365
+max_age_days = 6574
+severity = "warn"
+notify = false
+note = "Weighs repeat CT by dose, not by count: two multi-phase abdomens outweigh five low-dose heads. 2025–2026: 41 children."
+
+[[rule]]
+key = "ct-repeat-48h"
+name = "Patient with ≥ 2 CT studies within 48 hours"
+kind = "count"
+modality = "CT"
+threshold = 2.0
+window_days = 2
+severity = "warn"
+notify = false
+note = "A repeat scan soon after the first: check the justification (technical failure, change of indication). Same-visit split accessions show up too (about 1 in 5 here). 2025–2026: 95."
+
+[[rule]]
+key = "fluoro-psd-cumulative-90d"
+name = "Fluoroscopy: cumulative peak skin dose ≥ 3 Gy in 90 days"
+kind = "cumulative"
+modality = "RF,XA"
+metric = "psd"
+threshold = 3000.0
+unit = "mGy"
+window_days = 90
+severity = "alert"
+notify = true
+note = "NCRP 168 substantial radiation dose level for peak skin dose. The sum assumes the same skin area, so it overestimates when the fields differ: check the skin dose maps."
+
+[[rule]]
+key = "pregnant"
+name = "Pregnant patient: CT or fluoroscopy"
+kind = "pregnant"
+modality = "CT,RF,XA"
+threshold = 0.0
+severity = "alert"
+notify = true
+note = "The study is marked as pregnant (DICOM Pregnancy Status, HIS or entered): estimate and document the conceptus dose, especially when the uterus was in or near the beam (ICRP 84)."

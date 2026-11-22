@@ -73,7 +73,10 @@ def test_paediatric_ct_and_drl_ratio(session, world):
     s = _study(session, dev, kid, "al.3", NOW, modality="CT", ctdivol_max=55.0,
                age_days=900, study_description="Head^CEREBRAL_SPIRAL_NATIV (Child)")
     s.events = [Event(protocol="Head", ctdivol=55.0, dlp=1700.0)]  # CT-CAP 1-4 y: 800
-    adult = _study(session, dev, kid, "al.4", NOW, modality="CT", ctdivol_max=55.0,
+    grown = Patient(pseudo_id="P-AL2", sex="F")  # another patient: no 48 h repeat-CT alert
+    session.add(grown)
+    session.flush()
+    adult = _study(session, dev, grown, "al.4", NOW, modality="CT", ctdivol_max=55.0,
                    age_days=40 * 366, study_description="Head^HeadRoutine (Adult)")
     session.flush()
     classify.run(session)
@@ -141,3 +144,56 @@ def test_per_patient_rules_alert_once_per_window(session, world):
     assert len(rows) == raised[0].value and sum(r["current"] for r in rows) == 1
     assert rows[-1]["current"] and [r["time"] for r in rows] == sorted(r["time"] for r in rows)
     assert alerts.window_studies(session, 10**9) is None
+
+
+def test_ct_dose_rules_and_repeat(session, world):
+    dev, kid = world
+    first = _study(session, dev, kid, "ct.1", NOW - dt.timedelta(days=200), modality="CT",
+                   total_dlp=2600.0, ctdivol_max=20.0, age_days=4000)
+    second = _study(session, dev, kid, "ct.2", NOW - dt.timedelta(hours=30), modality="CT",
+                    total_dlp=1500.0, ctdivol_max=62.0, age_days=4200)
+    third = _study(session, dev, kid, "ct.3", NOW, modality="CT", total_dlp=4100.0,
+                   ctdivol_max=30.0, age_days=4201)
+    alerts.evaluate(session, [first.id, second.id, third.id])
+    assert _alerts(session, first) == {}
+    assert set(_alerts(session, second)) == {"ct-ctdivol-paed-60"}  # Σ 4100 < 5000
+    got = _alerts(session, third)
+    assert set(got) == {"ct-dlp-4000", "ct-dlp-cumulative-paed-12m", "ct-repeat-48h"}
+    assert got["ct-dlp-cumulative-paed-12m"].value == pytest.approx(8200.0)
+    assert got["ct-repeat-48h"].value == 2
+    kinds = {x["rule"]: x["kind"] for x in alerts.listing(session)}
+    assert kinds["ct-dlp-4000"] == "DLP" and kinds["ct-repeat-48h"] == "REPEAT"
+
+
+def test_cumulative_peak_skin_dose(session, world):
+    dev, kid = world
+    a = _study(session, dev, kid, "ps.1", NOW - dt.timedelta(days=40), modality="XA",
+               psd_mgy=1800.0, age_days=5000)
+    b = _study(session, dev, kid, "ps.2", NOW, modality="XA", psd_mgy=1500.0, age_days=5040)
+    alerts.evaluate(session, [a.id, b.id])
+    assert "fluoro-psd-cumulative-90d" not in _alerts(session, a)
+    got = _alerts(session, b)["fluoro-psd-cumulative-90d"]
+    assert got.severity == "alert" and got.value == pytest.approx(3300.0)
+    assert got.message == "Σ 3.3e+03 mGy in 2 studies / 90 d ≥ 3e+03 mGy"
+
+
+def test_pregnant_patient(session, world):
+    dev, _kid = world
+    mother = Patient(pseudo_id="P-AL3", sex="F")
+    session.add(mother)
+    session.flush()
+    ct = _study(session, dev, mother, "pg.1", NOW, modality="CT", age_days=30 * 366,
+                pregnant=True, gestation_weeks=12)
+    rx = _study(session, dev, mother, "pg.2", NOW, modality="DX", age_days=30 * 366,
+                pregnant=True)
+    unknown = _study(session, dev, mother, "pg.3", NOW - dt.timedelta(days=9), modality="RF",
+                     age_days=30 * 366)
+    no = _study(session, dev, mother, "pg.4", NOW - dt.timedelta(days=5), modality="CT",
+                age_days=30 * 366, pregnant=False)
+    alerts.evaluate(session, [ct.id, rx.id, unknown.id, no.id])
+    got = _alerts(session, ct)["pregnant"]
+    assert got.severity == "alert" and got.message == "Pregnant patient, 12 weeks: CT"
+    for s in (rx, unknown, no):  # radiography is out of the default scope; NULL is not True
+        assert "pregnant" not in _alerts(session, s)
+    row = next(x for x in alerts.listing(session) if x["rule"] == "pregnant")
+    assert (row["kind"], row["value"]) == ("PREGNANT", "12 weeks")

@@ -121,6 +121,11 @@ class Evaluator:
                     ratio, v, ref, unit, code = r
                     hit = (v, ref * rule.threshold, unit,
                            f"{code}: {_fmt(v, unit)} = {ratio:.1f} × DRL {_fmt(ref, unit)}")
+            elif rule.kind == "pregnant":
+                if s.pregnant:
+                    weeks = f", {s.gestation_weeks} weeks" if s.gestation_weeks else ""
+                    hit = (float(s.gestation_weeks or 0), None, None,
+                           f"Pregnant patient{weeks}: {s.modality}")
             elif (rule.kind in ("cumulative", "count") and s.patient_id and s.study_datetime
                   and not self._raised_in_window(rule, s)):
                 total, n = self._window(rule, s)
@@ -257,6 +262,8 @@ def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
         return f"Σ {_fmt(v, a.unit)}", f"≥ {_fmt(r.threshold, a.unit)} / {r.window_days} d"
     if r.kind == "count":
         return f"{v:.0f} studies", f"≥ {r.threshold:.0f} / {r.window_days} d"
+    if r.kind == "pregnant":
+        return (f"{v:.0f} weeks" if v else "pregnant"), "—"
     return _fmt(v, a.unit), f"≥ {_fmt(a.limit_value or r.threshold, a.unit)}"
 
 
@@ -286,11 +293,13 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
     q = q.order_by(Alert.study_datetime.desc(), Alert.id.desc()).offset(offset).limit(limit)
     names = names or {d.id: d.display_name or f"Device {d.id}"
                       for d in session.scalars(select(Device))}
-    kinds = {"threshold": None, "drl_ratio": "> DRL", "cumulative": "CUMUL.", "count": "REPEAT"}
+    kinds = {"threshold": None, "drl_ratio": "> DRL", "cumulative": "CUMUL.", "count": "REPEAT",
+             "pregnant": "PREGNANT"}
     out = []
     for a, r, s in session.execute(q):
         kind = kinds.get(r.kind) or {"kar_total": "KA,R", "dap_total": "DAP",
-                                     "fluoro_time": "FLUORO", "ctdivol_max": "CTDI"}.get(
+                                     "fluoro_time": "FLUORO", "ctdivol_max": "CTDI",
+                                     "dlp_total": "DLP", "psd": "PSD"}.get(
             r.metric or "", "DOSE")
         acc = None if s.accession_is_hashed else s.accession
         value, limit = _value_limit(a, r)

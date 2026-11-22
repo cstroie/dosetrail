@@ -528,7 +528,8 @@ class AlertRule(TimestampMixin, Base):
     * ``cumulative``: the patient's sum of ``metric`` over ``window_days``, including this
       study, ``>= threshold``;
     * ``count``: the patient's number of studies (of ``modality``) over ``window_days``
-      ``>= threshold``.
+      ``>= threshold``;
+    * ``pregnant``: the study is marked as pregnant (``threshold`` unused).
     """
 
     __tablename__ = "alert_rule"
