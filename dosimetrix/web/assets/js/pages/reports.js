@@ -122,7 +122,7 @@ async function loadGrid() {
         h('td', { class: 'r' }, x.status ? h('span', { class: `tag ${tone[x.status]}`, title: x.ratio ? `median / EDRL = ${num(x.ratio, 2)}` : '' }, x.ratio && x.status !== 'insufficient' ? `${num(x.ratio, 2)}×` : label[x.status]) : ''));
     }));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, t('rep.none'))));
-    append(host, [h('h2', { class: 'section-title' }, title),
+    append(host, [h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-5)' } }, title),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
         h('thead', {}, h('tr', {}, t('rep.cols').split('|').map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
   }
@@ -175,7 +175,7 @@ async function load() {
       s.count_bands.map((b) => h('td', { class: 'r' }, `${x.counts[b.key].M || '·'} / ${x.counts[b.key].F || '·'}`)),
       qs.map((q) => s.mean_bands.map((b) => h('td', { class: 'r' }, x.means[q.key][b.key] == null ? '' : smart(x.means[q.key][b.key])))))));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 40, class: 'empty' }, t('rep.none'))));
-    append(host, [h('h2', { class: 'section-title' }, `${sheetTitle(s)} · ${qs.map((q) => `${qLabel(q)} (${q.unit})`).join(' · ')}`),
+    append(host, [h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-5)' } }, `${sheetTitle(s)} · ${qs.map((q) => `${qLabel(q)} (${q.unit})`).join(' · ')}`),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, head, body)))]);
   }
 }
