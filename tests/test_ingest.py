@@ -5,10 +5,10 @@ import hashlib
 import pytest
 from sqlalchemy import func, select
 
-from dosetrail.db.models import Device, Event, IngestedObject, Patient, Study
-from dosetrail.ingest.identity import device_key
-from dosetrail.ingest.parse import parse
-from dosetrail.ingest.store import Store
+from dosimetrix.db.models import Device, Event, IngestedObject, Patient, Study
+from dosimetrix.ingest.identity import device_key
+from dosimetrix.ingest.parse import parse
+from dosimetrix.ingest.store import Store
 from tests import dicom_factory as f
 
 SECRET = b"t" * 32
@@ -142,7 +142,7 @@ def test_ignored_objects_are_recorded_once(session):
 
 
 def test_glued_vendor_dose_units():
-    from dosetrail.dicom.units import convert, normalise_unit
+    from dosimetrix.dicom.units import convert, normalise_unit
 
     # Siemens Ysio writes the DAP unit as 'Gym2' (UCUM: Gy.m2)
     assert normalise_unit("Gym2") == "gy.m2" and normalise_unit("mGycm") == "mgy.cm"
@@ -153,7 +153,7 @@ def test_glued_vendor_dose_units():
 def test_measurement_without_a_number():
     from pydicom.dataset import Dataset
 
-    from dosetrail.dicom.sr import tree
+    from dosimetrix.dicom.sr import tree
 
     item = Dataset()
     item.ValueType, item.RelationshipType = "NUM", "CONTAINS"

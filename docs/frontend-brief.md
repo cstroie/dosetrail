@@ -1,4 +1,4 @@
-# DoseTrail — frontend design brief
+# Dosimetrix — frontend design brief
 
 *Paste everything below the line into Claude Design.*
 
@@ -6,13 +6,13 @@
 
 ## Your task
 
-Design the web user interface for **DoseTrail**, an open-source patient radiation-dose monitoring application used inside hospitals.
+Design the web user interface for **Dosimetrix**, an open-source patient radiation-dose monitoring application used inside hospitals.
 
 **Propose 3 distinctly different visual and interaction directions.** For each direction, deliver working static mockups of the 5 key screens listed below, using realistic sample data. We will pick one direction, possibly combining ideas from the others, and build it.
 
 ## Product context
 
-DoseTrail collects radiation-dose data from imaging equipment (CT scanners, digital radiography, fluoroscopy and angiography units, mammography). This data comes from DICOM dose reports and image headers. DoseTrail stores it, and lets staff do four things:
+Dosimetrix collects radiation-dose data from imaging equipment (CT scanners, digital radiography, fluoroscopy and angiography units, mammography). This data comes from DICOM dose reports and image headers. Dosimetrix stores it, and lets staff do four things:
 
 - check individual exams and their irradiation events;
 - compute dose statistics per protocol, procedure and device (median, boxplot, histogram, trends over time). These are used to set and audit **diagnostic reference levels (DRLs)** and to optimise protocols;

@@ -5,10 +5,10 @@ import io
 import pydicom
 import pytest
 
-from dosetrail.db.models import SizeSource, Study
-from dosetrail.export import rdsr
-from dosetrail.ingest.parse import parse
-from dosetrail.ingest.store import Store
+from dosimetrix.db.models import SizeSource, Study
+from dosimetrix.export import rdsr
+from dosimetrix.ingest.parse import parse
+from dosimetrix.ingest.store import Store
 from tests import dicom_factory as f
 
 SECRET = b"r" * 32

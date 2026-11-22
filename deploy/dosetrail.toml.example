@@ -1,10 +1,10 @@
-# /etc/dosetrail/dosetrail.toml  (mode 0640, owner root:dosetrail)
+# /etc/dosimetrix/dosimetrix.toml  (mode 0640, owner root:dosimetrix)
 
 [database]
-url = "mysql+pymysql://dosetrail:CHANGE-ME@localhost/dosetrail?charset=utf8mb4"
+url = "mysql+pymysql://dosimetrix:CHANGE-ME@localhost/dosimetrix?charset=utf8mb4"
 
 [security]
-secret_file = "/var/lib/dosetrail/secret"   # created on first start; back it up
+secret_file = "/var/lib/dosimetrix/secret"   # created on first start; back it up
 session_hours = 12
 secure_cookies = true                        # force Secure cookies (HTTPS-only logins);
                                              # without it they are Secure whenever the
@@ -16,11 +16,11 @@ port = 8104                                  # "80" for HTTP + "104" for DICOM
 trusted_proxies = ["127.0.0.1"]              # reverse proxies allowed to set X-Forwarded-*
 
 [dicom]
-aet = "DOSETRAIL"
+aet = "DOSIMETRIX"
 port = 11112                                 # the IANA-registered DICOM port
 bind = "0.0.0.0"
 allowed_aets = []                            # e.g. ["CT1", "PACS"]; empty = any caller
-spool_dir = "/var/lib/dosetrail/spool"
+spool_dir = "/var/lib/dosimetrix/spool"
 keep_received = false
 
 [pacs]
@@ -28,7 +28,7 @@ host = "pacs.example.org"
 port = 104
 aet = "PACS_AET"
 retrieve = "get"                             # get (C-GET, no PACS setup) | move (C-MOVE)
-# move_destination = "DOSETRAIL"             # C-MOVE target AE; the PACS must know it
+# move_destination = "DOSIMETRIX"             # C-MOVE target AE; the PACS must know it
 modalities = ["CT", "DX", "CR", "RF", "XA", "MG", "SR"]   # queried one at a time
 # max_results = 500                          # the PACS's C-FIND cap; days are split if hit
 
@@ -38,12 +38,12 @@ modalities = ["CT", "DX", "CR", "RF", "XA", "MG", "SR"]   # queried one at a tim
 base_url = "https://dose.example.org"
 # e-mail
 # email_to = ["physics@example.org"]
-# email_from = "dosetrail@example.org"
+# email_from = "dosimetrix@example.org"
 # smtp_host = "smtp.example.org"
 # smtp_port = 587
 # smtp_starttls = true
-# smtp_user = "dosetrail"
-# smtp_password_file = "/etc/dosetrail/smtp-password"   # mode 0600
+# smtp_user = "dosimetrix"
+# smtp_password_file = "/etc/dosimetrix/smtp-password"   # mode 0600
 # ntfy (https://ntfy.sh or a self-hosted server)
-# ntfy_url = "https://ntfy.example.org/dosetrail-alerts"
-# ntfy_token_file = "/etc/dosetrail/ntfy-token"         # optional, mode 0600
+# ntfy_url = "https://ntfy.example.org/dosimetrix-alerts"
+# ntfy_token_file = "/etc/dosimetrix/ntfy-token"         # optional, mode 0600

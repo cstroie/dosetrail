@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 
-from dosetrail.db.models import Code, CodeSystem, ReferenceSet, ReferenceValue
-from dosetrail.seeds.loader import load_all
+from dosimetrix.db.models import Code, CodeSystem, ReferenceSet, ReferenceValue
+from dosimetrix.seeds.loader import load_all
 
 
 def _counts(session):

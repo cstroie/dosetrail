@@ -1,4 +1,4 @@
-"""Generate the synthetic sample data used by the static UI (dosetrail/web/data/sample/).
+"""Generate the synthetic sample data used by the static UI (dosimetrix/web/data/sample/).
 
 Everything here is invented: device names are generic, patients and accession
 numbers are random. The output is deterministic (fixed seed), so re-running the
@@ -15,7 +15,7 @@ import random
 from datetime import datetime, timedelta
 from pathlib import Path
 
-OUT = Path(__file__).resolve().parent.parent / "dosetrail" / "web" / "data" / "sample"
+OUT = Path(__file__).resolve().parent.parent / "dosimetrix" / "web" / "data" / "sample"
 NOW = datetime(2026, 11, 21, 10, 42)
 rng = random.Random(20261121)
 

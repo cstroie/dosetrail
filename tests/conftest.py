@@ -1,4 +1,4 @@
-"""Fixtures: every DB test runs on SQLite and, when DOSETRAIL_TEST_DATABASE_URL points to
+"""Fixtures: every DB test runs on SQLite and, when DOSIMETRIX_TEST_DATABASE_URL points to
 a MariaDB test database, on MariaDB too (schema is dropped and recreated per session)."""
 
 from __future__ import annotations
@@ -8,12 +8,14 @@ import os
 import pytest
 from sqlalchemy import text
 
-from dosetrail.db.migrate import upgrade
-from dosetrail.db.models import Base
-from dosetrail.db.session import make_engine, make_sessionmaker
+from dosimetrix.db.migrate import upgrade
+from dosimetrix.db.models import Base
+from dosimetrix.db.session import make_engine, make_sessionmaker
 
 BACKENDS = ["sqlite"]
-if os.environ.get("DOSETRAIL_TEST_DATABASE_URL"):
+TEST_URL = (os.environ.get("DOSIMETRIX_TEST_DATABASE_URL")
+            or os.environ.get("DOSETRAIL_TEST_DATABASE_URL"))  # the former name
+if TEST_URL:
     BACKENDS.append("mariadb")
 
 
@@ -32,7 +34,7 @@ def engine(request, tmp_path_factory):
         url = f"sqlite:///{tmp_path_factory.mktemp('db') / 'test.sqlite3'}"
         eng = make_engine(url)
     else:
-        url = os.environ["DOSETRAIL_TEST_DATABASE_URL"]
+        url = TEST_URL
         eng = make_engine(url)
         _reset_mariadb(eng)
     upgrade(url)

@@ -5,7 +5,7 @@ import io
 
 import pytest
 
-from dosetrail import drl, localdrl
+from dosimetrix import drl, localdrl
 from tests.test_drl import data  # noqa: F401 – fixture: CT A (600, 1000), CT B (1300)
 
 
@@ -28,7 +28,7 @@ def test_propose_rooms(session, data):  # noqa: F811
     # radiography per study (the retake summed)
     assert _row(out["rows"], "RX-CAP-AP", "1-4y", "dap")["value"] == pytest.approx(0.15)
     assert ct["n_phantom32"] == 0
-    from dosetrail.db.models import Event
+    from dosimetrix.db.models import Event
 
     ev = session.query(Event).filter(Event.dlp == 1300.0).one()
     ev.ct_phantom_cm = 32

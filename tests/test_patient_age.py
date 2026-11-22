@@ -2,7 +2,7 @@ import datetime as dt
 
 import pytest
 
-from dosetrail.patient_age import (
+from dosimetrix.patient_age import (
     Band,
     band_for_age,
     band_for_weight,

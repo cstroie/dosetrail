@@ -1,0 +1,23 @@
+[Unit]
+Description=Dosimetrix HIS lookups (patient, weight, height, imaging request)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dosimetrix
+Group=dosimetrix
+WorkingDirectory=/opt/dosimetrix
+Environment=DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml
+EnvironmentFile=-/etc/dosimetrix/dosimetrix.env
+ExecStart=/opt/dosimetrix/.venv/bin/dosimetrix his run
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/dosimetrix
+
+[Install]
+WantedBy=multi-user.target

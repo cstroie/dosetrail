@@ -7,11 +7,11 @@ import zipfile
 
 import pytest
 
-from dosetrail import classify
-from dosetrail.db.models import Device, Event, Patient, Study
-from dosetrail.export import lists
-from dosetrail.export.xlsx import MAX_ROWS, XlsxWriter, col_name
-from dosetrail.seeds.loader import load_all
+from dosimetrix import classify
+from dosimetrix.db.models import Device, Event, Patient, Study
+from dosimetrix.export import lists
+from dosimetrix.export.xlsx import MAX_ROWS, XlsxWriter, col_name
+from dosimetrix.seeds.loader import load_all
 
 
 def _sheet_xml(data: bytes, n: int = 1) -> str:
@@ -44,7 +44,7 @@ def test_xlsx_cells_types_and_sheets():
 
 
 def test_xlsx_row_limit(monkeypatch):
-    import dosetrail.export.xlsx as x
+    import dosimetrix.export.xlsx as x
 
     monkeypatch.setattr(x, "MAX_ROWS", 3)
     with XlsxWriter(io.BytesIO()) as wb:
@@ -103,7 +103,7 @@ def test_event_rows_carry_projection_drl_codes(session, data):
 def test_drl_dataset_rows_and_formats(session, data):
     import json
 
-    from dosetrail.export import drl_dataset as ds
+    from dosimetrix.export import drl_dataset as ds
 
     rows = list(ds.dataset_rows(session, [], b"k" * 32))
     assert [(r["drl_exam_national"], r["projection"], r["dap"]) for r in rows] == [
@@ -120,7 +120,7 @@ def test_drl_dataset_rows_and_formats(session, data):
     buf = io.BytesIO()
     assert ds.write("json", buf, iter(rows), meta) == 2
     doc = json.loads(buf.getvalue())
-    assert doc["dataset"] == "dosetrail-drl" and doc["rows_total"] == 2
+    assert doc["dataset"] == "dosimetrix-drl" and doc["rows_total"] == 2
     assert {d["name"] for d in doc["dictionary"]} == set(ds.FIELDS)
     buf = io.BytesIO()
     ds.write("csv", buf, iter(rows), meta)
@@ -132,7 +132,7 @@ def test_drl_dataset_rows_and_formats(session, data):
 
 
 def test_icrp135_summary_rows(session, data):
-    from dosetrail.export import drl_dataset as ds
+    from dosimetrix.export import drl_dataset as ds
 
     rows = ds.summary_rows(session, [], "ro-ms838-2025", min_n=1)
     ap = [r for r in rows if r["exam"] == "RX-TORACE-PA-AP"]
@@ -143,7 +143,7 @@ def test_icrp135_summary_rows(session, data):
 
 
 def test_survey_rows_paediatric_series_and_checks(session):
-    from dosetrail.export import survey
+    from dosimetrix.export import survey
 
     load_all(session)
     kid = Patient(pseudo_id="P-K", sex="F")
@@ -190,7 +190,7 @@ def test_survey_rows_paediatric_series_and_checks(session):
 def test_ages_are_coarsened_and_codes_are_stable():
     from types import SimpleNamespace
 
-    from dosetrail.export import drl_dataset as ds
+    from dosimetrix.export import drl_dataset as ds
 
     assert ds.coarse_age(200) == {"age_days": 200, "age_months": 6, "age_years": 0}
     assert ds.coarse_age(500) == {"age_days": None, "age_months": 16, "age_years": 1}

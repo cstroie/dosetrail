@@ -1,14 +1,14 @@
-# Container configuration (mounted at /etc/dosetrail/dosetrail.toml). Copy and edit.
+# Container configuration (mounted at /etc/dosimetrix/dosimetrix.toml). Copy and edit.
 
 [database]
 # the "db" service of docker-compose.yml; use the same password as MARIADB_PASSWORD
-url = "mysql+pymysql://dosetrail:CHANGE-ME@db/dosetrail?charset=utf8mb4"
+url = "mysql+pymysql://dosimetrix:CHANGE-ME@db/dosimetrix?charset=utf8mb4"
 
 [paths]
-data_dir = "/var/lib/dosetrail"
+data_dir = "/var/lib/dosimetrix"
 
 [security]
-secret_file = "/var/lib/dosetrail/secret"   # created on first start; back up the volume
+secret_file = "/var/lib/dosimetrix/secret"   # created on first start; back up the volume
 secure_cookies = true                        # behind an HTTPS reverse proxy
 
 [web]
@@ -17,11 +17,11 @@ port = 8104
 trusted_proxies = ["127.0.0.1"]              # add your reverse proxy's address
 
 [dicom]
-aet = "DOSETRAIL"
+aet = "DOSIMETRIX"
 port = 11112
 bind = "0.0.0.0"
 allowed_aets = []
-spool_dir = "/var/lib/dosetrail/spool"
+spool_dir = "/var/lib/dosimetrix/spool"
 
 # [pacs]
 # host = "pacs.example.org"

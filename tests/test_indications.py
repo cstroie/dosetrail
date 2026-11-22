@@ -2,11 +2,11 @@
 
 import pytest
 
-from dosetrail import indications
-from dosetrail.db.models import Code, CodeSystem, Study, StudyIndication, StudyRequest
-from dosetrail.ingest.parse import parse
-from dosetrail.ingest.store import Store
-from dosetrail.seeds.loader import load_all
+from dosimetrix import indications
+from dosimetrix.db.models import Code, CodeSystem, Study, StudyIndication, StudyRequest
+from dosimetrix.ingest.parse import parse
+from dosimetrix.ingest.store import Store
+from dosimetrix.seeds.loader import load_all
 from tests import dicom_factory as f
 
 SECRET = b"i" * 32
@@ -91,9 +91,9 @@ def test_dicom_reason_is_read(session, m):
 def test_stats_dimension_and_query(session, m):
     import datetime as dt
 
-    from dosetrail import stats
-    from dosetrail.api.query import conditions, parse
-    from dosetrail.db.models import Event
+    from dosimetrix import stats
+    from dosimetrix.api.query import conditions, parse
+    from dosimetrix.db.models import Event
 
     for i, (t, dap) in enumerate([("pneumonie", 0.1), ("pneumonie", 0.3), ("apendicita", 0.5)]):
         st = _study(session, f"s.{i}", indication=t)

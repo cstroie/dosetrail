@@ -1,0 +1,18 @@
+[Unit]
+Description=Dosimetrix PACS query/retrieve (last two days)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=dosimetrix
+Group=dosimetrix
+WorkingDirectory=/opt/dosimetrix
+Environment=DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml
+EnvironmentFile=-/etc/dosimetrix/dosimetrix.env
+ExecStart=/opt/dosimetrix/.venv/bin/dosimetrix qr --days 2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/dosimetrix

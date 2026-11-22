@@ -4,7 +4,7 @@ from types import SimpleNamespace as E
 
 import pytest
 
-from dosetrail import skindose as sd
+from dosimetrix import skindose as sd
 
 ADULT = 40 * 366  # days
 

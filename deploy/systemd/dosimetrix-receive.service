@@ -1,0 +1,23 @@
+[Unit]
+Description=Dosimetrix DICOM receiver (C-STORE/C-ECHO SCP)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dosimetrix
+Group=dosimetrix
+WorkingDirectory=/opt/dosimetrix
+Environment=DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml
+EnvironmentFile=-/etc/dosimetrix/dosimetrix.env
+ExecStart=/opt/dosimetrix/.venv/bin/dosimetrix receive
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/dosimetrix
+
+[Install]
+WantedBy=multi-user.target

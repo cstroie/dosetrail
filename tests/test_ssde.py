@@ -2,8 +2,8 @@
 
 import pytest
 
-from dosetrail import ssde
-from dosetrail.db.models import Event
+from dosimetrix import ssde
+from dosimetrix.db.models import Event
 
 # AAPM 204 Table 1D (32 cm) and Table 2D (16 cm): effective diameter -> f
 TABLE_32 = {8: 2.76, 10: 2.57, 15: 2.14, 20: 1.78, 25: 1.48, 30: 1.23, 35: 1.02, 45: 0.71}

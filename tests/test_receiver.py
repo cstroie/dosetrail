@@ -9,11 +9,11 @@ from pynetdicom import AE
 from pynetdicom.sop_class import Verification
 from sqlalchemy import select
 
-from dosetrail.db.migrate import upgrade
-from dosetrail.db.models import Event, Study
-from dosetrail.db.session import make_engine, make_sessionmaker
-from dosetrail.net.scp import Receiver
-from dosetrail.net.spool import Spool, SpoolWorker
+from dosimetrix.db.migrate import upgrade
+from dosimetrix.db.models import Event, Study
+from dosimetrix.db.session import make_engine, make_sessionmaker
+from dosimetrix.net.scp import Receiver
+from dosimetrix.net.spool import Spool, SpoolWorker
 from tests import dicom_factory as f
 
 
@@ -30,7 +30,7 @@ def rx(tmp_path):
     maker = make_sessionmaker(make_engine(url))
     spool = Spool(tmp_path / "spool")
     port = _free_port()
-    receiver = Receiver(spool, "DOSETRAIL", port, "127.0.0.1", allowed_aets=["MODALITY"])
+    receiver = Receiver(spool, "DOSIMETRIX", port, "127.0.0.1", allowed_aets=["MODALITY"])
     receiver.start()
     worker = SpoolWorker(spool, maker, b"r" * 32)
     yield receiver, worker, spool, maker, port
@@ -42,7 +42,7 @@ def _send(port, datasets, calling="MODALITY"):
     for ds in datasets:
         ae.add_requested_context(ds.SOPClassUID, ExplicitVRLittleEndian)
     ae.add_requested_context(Verification)
-    assoc = ae.associate("127.0.0.1", port, ae_title="DOSETRAIL")
+    assoc = ae.associate("127.0.0.1", port, ae_title="DOSIMETRIX")
     if not assoc.is_established:
         return None
     statuses = [assoc.send_c_echo().Status]
@@ -115,7 +115,7 @@ def test_two_workers_share_a_spool(rx):
 def test_database_error_keeps_object_queued(rx, monkeypatch):
     from sqlalchemy.exc import OperationalError
 
-    from dosetrail.ingest import store as store_mod
+    from dosimetrix.ingest import store as store_mod
 
     _, worker, spool, _, port = rx
     _send(port, [f.dx_image(study_uid="1.2.7.1", sop_uid="1.2.7.1.1")])
@@ -137,9 +137,9 @@ def test_forget_studies_for_refetch(session):
 
     from sqlalchemy import func, select
 
-    from dosetrail.db.models import AppSetting, Event, IngestedObject, Study
-    from dosetrail.maintenance import forget_studies
-    from dosetrail.net.qr import DONE_KEY
+    from dosimetrix.db.models import AppSetting, Event, IngestedObject, Study
+    from dosimetrix.maintenance import forget_studies
+    from dosimetrix.net.qr import DONE_KEY
 
     s = Study(study_uid="f.1", modality="DX", source_kind="proj_rdsr",
               study_datetime=dt.datetime(2026, 9, 1, 10))
@@ -162,7 +162,7 @@ def test_forget_studies_for_refetch(session):
 def test_concurrent_duplicate_is_retried_not_failed(rx, monkeypatch):
     from sqlalchemy.exc import IntegrityError
 
-    from dosetrail.ingest import store as store_mod
+    from dosimetrix.ingest import store as store_mod
 
     _, worker, spool, _, port = rx
     _send(port, [f.dx_image(study_uid="1.2.8.1", sop_uid="1.2.8.1.1")])
@@ -181,11 +181,11 @@ def test_concurrent_duplicate_is_retried_not_failed(rx, monkeypatch):
 def test_study_created_by_another_session_is_reused(tmp_path):
     from sqlalchemy import select
 
-    from dosetrail.db.migrate import upgrade
-    from dosetrail.db.models import Study
-    from dosetrail.db.session import make_engine, make_sessionmaker
-    from dosetrail.ingest.parse import parse
-    from dosetrail.ingest.store import Store
+    from dosimetrix.db.migrate import upgrade
+    from dosimetrix.db.models import Study
+    from dosimetrix.db.session import make_engine, make_sessionmaker
+    from dosimetrix.ingest.parse import parse
+    from dosimetrix.ingest.store import Store
 
     url = f"sqlite:///{tmp_path / 'race.sqlite3'}"
     upgrade(url)

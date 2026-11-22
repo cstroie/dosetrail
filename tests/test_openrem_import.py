@@ -7,9 +7,9 @@ import hashlib
 import pytest
 from sqlalchemy import func, select
 
-from dosetrail.db.models import AuditLog, Device, Event, Patient, Study
-from dosetrail.legacy.openrem.importer import OpenREMImporter
-from dosetrail.legacy.openrem.reconcile import reconcile, reconcile_by_year
+from dosimetrix.db.models import AuditLog, Device, Event, Patient, Study
+from dosimetrix.legacy.openrem.importer import OpenREMImporter
+from dosimetrix.legacy.openrem.reconcile import reconcile, reconcile_by_year
 
 STUDY_COLS = [
     "orem_id", "study_instance_uid", "study_date", "study_time", "accession_number",
@@ -145,7 +145,7 @@ def test_import(session, tmp_path):
     c2 = session.scalar(select(Event).filter_by(event_uid="c2"))
     assert c2.ct_phantom_cm == 16
     # earlier imports left it empty: the dump backfill fills it, once
-    from dosetrail.legacy.openrem.fixes import backfill_ct_phantom
+    from dosimetrix.legacy.openrem.fixes import backfill_ct_phantom
 
     c2.ct_phantom_cm = None
     session.flush()
@@ -164,7 +164,7 @@ def test_import(session, tmp_path):
 
 
 def test_known_openrem_errors_are_corrected_once(session, tmp_path):
-    from dosetrail.legacy.openrem.fixes import apply_known_fixes, pending
+    from dosimetrix.legacy.openrem.fixes import apply_known_fixes, pending
 
     make_dump(tmp_path)
     _write(tmp_path / "studies.csv.gz", STUDY_COLS, [

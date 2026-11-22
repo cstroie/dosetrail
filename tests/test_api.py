@@ -6,14 +6,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from dosetrail import classify
-from dosetrail.api.app import create_app
-from dosetrail.config import Settings
-from dosetrail.db.migrate import upgrade
-from dosetrail.db.models import AuditLog, Device, Event, Patient, Study, User
-from dosetrail.db.session import make_engine, make_sessionmaker
-from dosetrail.security import hash_password
-from dosetrail.seeds.loader import load_all
+from dosimetrix import classify
+from dosimetrix.api.app import create_app
+from dosimetrix.config import Settings
+from dosimetrix.db.migrate import upgrade
+from dosimetrix.db.models import AuditLog, Device, Event, Patient, Study, User
+from dosimetrix.db.session import make_engine, make_sessionmaker
+from dosimetrix.security import hash_password
+from dosimetrix.seeds.loader import load_all
 
 SECRET = b"s" * 32
 NOW = dt.datetime(2026, 11, 21, 10, 0)
@@ -279,7 +279,7 @@ def test_drl_dataset_and_summary_downloads(client):
     assert client.get("/api/drl/dataset").status_code == 403
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/drl/dataset", params={"q": "", "format": "json"})
-    assert r.status_code == 200 and r.json()["dataset"] == "dosetrail-drl"
+    assert r.status_code == 200 and r.json()["dataset"] == "dosimetrix-drl"
     s = client.get("/api/drl/summary", params={"q": "", "format": "csv", "min_n": 1})
     assert s.status_code == 200 and s.content.decode("utf-8-sig").startswith("unit,device,")
     assert client.get("/api/drl/summary", params={"set": "x"}).status_code == 400
@@ -304,7 +304,7 @@ def test_insp1255_report_endpoint(client):
 def test_survey_export_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/survey/export", params={"month": "2026-11", "q": "", "format": "json"})
-    assert r.status_code == 200 and r.json()["dataset"] == "dosetrail-paediatric-survey"
+    assert r.status_code == 200 and r.json()["dataset"] == "dosimetrix-paediatric-survey"
     assert client.get("/api/survey/export", params={"month": "nov"}).status_code == 400
 
 
@@ -317,7 +317,7 @@ def test_quality_endpoint_and_study_findings(client):
 
 
 def test_alert_endpoints(client):
-    from dosetrail import alerts
+    from dosimetrix import alerts
 
     url = str(client.app.state.settings.database_url)
     with make_sessionmaker(make_engine(url))() as s:
@@ -425,7 +425,7 @@ def test_users_and_audit(client):
 
 
 def test_alerts_page_api(client):
-    from dosetrail import alerts
+    from dosimetrix import alerts
 
     url = str(client.app.state.settings.database_url)
     with make_sessionmaker(make_engine(url))() as s:

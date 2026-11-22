@@ -2,9 +2,9 @@
 
 import datetime as dt
 
-from dosetrail import classify, quality
-from dosetrail.db.models import Device, Event, Patient, SizeSource, Study
-from dosetrail.seeds.loader import load_all
+from dosimetrix import classify, quality
+from dosimetrix.db.models import Device, Event, Patient, SizeSource, Study
+from dosimetrix.seeds.loader import load_all
 
 T = dt.datetime(2026, 9, 1, 10)
 
@@ -65,8 +65,8 @@ def test_rules_on_studies(session):
 
 
 def test_zero_dap_is_missing(session):
-    from dosetrail import maintenance
-    from dosetrail.ingest.store import update_study_totals, zero_as_missing
+    from dosimetrix import maintenance
+    from dosimetrix.ingest.store import update_study_totals, zero_as_missing
 
     ev = zero_as_missing({"dap": 0.0, "rp_dose": 0.0, "sid_mm": 0.0, "kvp": 72.0,
                           "extra_json": {"source": "rdsr"}})

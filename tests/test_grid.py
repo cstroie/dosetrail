@@ -4,11 +4,11 @@ import datetime as dt
 
 import pytest
 
-from dosetrail import classify, stats
-from dosetrail.db.models import Device, Event, Patient, Study
-from dosetrail.grid import Grid
-from dosetrail.reports import grid as grid_report
-from dosetrail.seeds.loader import load_all
+from dosimetrix import classify, stats
+from dosimetrix.db.models import Device, Event, Patient, Study
+from dosimetrix.grid import Grid
+from dosimetrix.reports import grid as grid_report
+from dosimetrix.seeds.loader import load_all
 
 T = dt.datetime(2026, 5, 4, 9, 0)
 
@@ -96,8 +96,8 @@ def test_report(session, studies):
 
 def test_rp185_head_groups_stop_at_18(session):
     """RP 185 '≥6 y' is paediatric: adults are never compared with its head EDRLs."""
-    from dosetrail.reference import CTReference
-    from dosetrail.stats import BandLookup
+    from dosimetrix.reference import CTReference
+    from dosimetrix.stats import BandLookup
 
     load_all(session)
     head = BandLookup(session, "rp185-head-age", "age")
@@ -110,7 +110,7 @@ def test_rp185_head_groups_stop_at_18(session):
 
 
 def test_report_without_estimated_weights(session, studies):
-    from dosetrail.db.models import SizeSource
+    from dosimetrix.db.models import SizeSource
 
     est = session.query(Study).filter_by(study_uid="g.3").one()
     est.weight_kg, est.weight_source = 18.5, SizeSource.estimated_reference

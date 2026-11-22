@@ -5,9 +5,9 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from dosetrail import alerts, classify, notify
-from dosetrail.db.models import Alert, AlertRule, Device, Event, Patient, Study
-from dosetrail.seeds.loader import load_all
+from dosimetrix import alerts, classify, notify
+from dosimetrix.db.models import Alert, AlertRule, Device, Event, Patient, Study
+from dosimetrix.seeds.loader import load_all
 
 NOW = dt.datetime(2026, 11, 21, 12, 0)
 

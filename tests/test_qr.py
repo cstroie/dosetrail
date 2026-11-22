@@ -18,11 +18,11 @@ from pynetdicom.sop_class import (
 )
 from sqlalchemy import select
 
-from dosetrail.db.migrate import upgrade
-from dosetrail.db.models import Study
-from dosetrail.db.session import make_engine, make_sessionmaker
-from dosetrail.net import qr
-from dosetrail.net.spool import Spool, SpoolWorker
+from dosimetrix.db.migrate import upgrade
+from dosimetrix.db.models import Study
+from dosimetrix.db.session import make_engine, make_sessionmaker
+from dosimetrix.net import qr
+from dosimetrix.net.spool import Spool, SpoolWorker
 from tests import dicom_factory as f
 
 DAY = dt.date(2025, 11, 6)
@@ -153,7 +153,7 @@ def test_backfill_day(env):
     us.Modality = "US"
     pacs = FakePACS([ct_sr, dx, rf_sr, rf_img, us])
     try:
-        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSETRAIL", timeout=10)
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
         stats = qr.QRStats()
         qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None,
                    workers=3)
@@ -193,14 +193,14 @@ def test_dry_run_and_done_days(env):
 
 
 def test_partial_modality_run_does_not_finish_the_day(tmp_path, monkeypatch):
-    from dosetrail import cli
+    from dosimetrix import cli
 
     calls = []
     monkeypatch.setattr(qr, "run_day", lambda *a, **k: calls.append(a[6]))  # mods
     url = f"sqlite:///{tmp_path / 'p.sqlite3'}"
     upgrade(url)
-    monkeypatch.setenv("DOSETRAIL_SECRET_FILE", str(tmp_path / "secret"))
-    monkeypatch.setenv("DOSETRAIL_CONFIG", str(tmp_path / "none.toml"))
+    monkeypatch.setenv("DOSIMETRIX_SECRET_FILE", str(tmp_path / "secret"))
+    monkeypatch.setenv("DOSIMETRIX_CONFIG", str(tmp_path / "none.toml"))
     base = ["qr", "--url", url, "--host", "h", "--aec", "P", "--from", "2025-11-06",
             "--to", "2025-11-06"]
     assert cli.main(base + ["--modalities", "CT"]) == 0
@@ -233,16 +233,16 @@ def test_queries_one_modality_at_a_time_and_splits_capped_days(env):
 
 
 def test_retrieve_with_c_move(env):
-    from dosetrail.net.scp import Receiver
+    from dosimetrix.net.scp import Receiver
 
     maker, spool, worker, drain = env
     rx_port = _free_port()
-    receiver = Receiver(spool, "DOSETRAIL", rx_port, "127.0.0.1")
+    receiver = Receiver(spool, "DOSIMETRIX", rx_port, "127.0.0.1")
     receiver.start()
     pacs = FakePACS([_date(f.ct_rdsr(study_uid="8.1", sop_uid="8.1.1"))],
-                    move_to={"DOSETRAIL": ("127.0.0.1", rx_port)})
+                    move_to={"DOSIMETRIX": ("127.0.0.1", rx_port)})
     try:
-        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSETRAIL", timeout=10,
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10,
                        retrieve="move")
         stats = qr.QRStats()
         qr.run_day(node, DAY, spool, drain, maker, stats, {"SR"}, pause=0,

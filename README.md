@@ -1,8 +1,10 @@
-# DoseTrail
+# Dosimetrix
+
+*Formerly DoseTrail. Existing installs keep working: the former command, environment variables and config folder are still read.*
 
 **Open-source patient radiation exposure monitoring for medical imaging.**
 
-DoseTrail collects radiation dose data from imaging equipment. It covers CT, radiography (DX/CR), fluoroscopy (RF/XA) and mammography, with nuclear medicine planned. The data is normalised into one database, where you can do the following:
+Dosimetrix collects radiation dose data from imaging equipment. It covers CT, radiography (DX/CR), fluoroscopy (RF/XA) and mammography, with nuclear medicine planned. The data is normalised into one database, where you can do the following:
 
 - browse studies and individual irradiation events;
 - build dose statistics per protocol, procedure and device (median, boxplot, histogram, trends over time) to support **diagnostic reference levels** and optimisation;
@@ -10,7 +12,7 @@ DoseTrail collects radiation dose data from imaging equipment. It covers CT, rad
 - raise alerts on high and cumulative fluoroscopy doses;
 - ingest data automatically from modalities and PACS: DICOM store, query/retrieve, RDSR and image headers, with vendor-specific adapters.
 
-DoseTrail is a modern alternative to [OpenREM](https://openrem.org/) and can import an existing OpenREM database.
+Dosimetrix is a modern alternative to [OpenREM](https://openrem.org/) and can import an existing OpenREM database.
 
 > **Status:** early design phase. See [`docs/design.md`](docs/design.md) and [`docs/openrem-analysis.md`](docs/openrem-analysis.md).
 

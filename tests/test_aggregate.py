@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from dosetrail import aggregate
-from dosetrail.export.survey import FIELDS, SURVEY_VERSION
-from dosetrail.seeds.loader import load_all
+from dosimetrix import aggregate
+from dosimetrix.export.survey import FIELDS, SURVEY_VERSION
+from dosimetrix.seeds.loader import load_all
 
 
 def _csv(inst, period, rows):
@@ -75,7 +75,7 @@ def test_replacement_and_national(session, two):
 
 def test_json_upload(session):
     load_all(session)
-    doc = {"dataset": "dosetrail-paediatric-survey", "version": SURVEY_VERSION,
+    doc = {"dataset": "dosimetrix-paediatric-survey", "version": SURVEY_VERSION,
            "rows": [{"survey_version": SURVEY_VERSION, "institution": "I-J", "period": "2026-09",
                      "modality": "DX", "ndrl_exam": "RX-TORACE-PA-AP", "weight_group": "5-15kg",
                      "weight_source": "estimated_reference", "pka": 20.0}]}

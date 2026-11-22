@@ -1,19 +1,19 @@
-# Deploying DoseTrail (plain install)
+# Deploying Dosimetrix (plain install)
 
 A single machine runs everything: MariaDB, the web UI/API, the DICOM receiver and an hourly
 query/retrieve job. Docker images will follow; this guide uses systemd only.
 
 ## 1. System
 - Python ≥ 3.12 with the `sqlite3` module (only needed for tests), MariaDB ≥ 10.6.
-- A service account: `useradd --system --home /var/lib/dosetrail --shell /usr/sbin/nologin dosetrail`
-- Directories: `/opt/dosetrail` (code + virtualenv), `/etc/dosetrail` (config, 0750
-  root:dosetrail), `/var/lib/dosetrail` (secret, spool; 0700 dosetrail).
+- A service account: `useradd --system --home /var/lib/dosimetrix --shell /usr/sbin/nologin dosimetrix`
+- Directories: `/opt/dosimetrix` (code + virtualenv), `/etc/dosimetrix` (config, 0750
+  root:dosimetrix), `/var/lib/dosimetrix` (secret, spool; 0700 dosimetrix).
 
 ## 2. Database
 ```sql
-CREATE DATABASE dosetrail CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'dosetrail'@'localhost' IDENTIFIED BY '…';
-GRANT ALL ON dosetrail.* TO 'dosetrail'@'localhost';
+CREATE DATABASE dosimetrix CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'dosimetrix'@'localhost' IDENTIFIED BY '…';
+GRANT ALL ON dosimetrix.* TO 'dosimetrix'@'localhost';
 ```
 Give InnoDB enough memory to hold the working set — at least the size of the data
 (`innodb_buffer_pool_size`, e.g. 2G for about 600 000 studies). On spinning disks this
@@ -24,12 +24,12 @@ is the difference between 25 ms and 10 s per page of results.
 **First-run wizard.** On an empty database every page leads to `/setup`. The web service prints a one-time setup token to its log and writes it to `<data_dir>/setup-token` (0600); entering it proves access to the server. The wizard checks the installation, can create the schema and load the seed data, creates the first administrator (all roles, signed in at once), and then asks for the site name, a PACS node (with C-ECHO) and the growth tables. An admin can open `/setup` again later. The manual steps below do the same from the command line.
 
 ```sh
-python3.12 -m venv /opt/dosetrail/.venv
-/opt/dosetrail/.venv/bin/pip install dosetrail        # or: pip install -e <checkout>
-cp deploy/dosetrail.toml.example /etc/dosetrail/dosetrail.toml   # edit it
-sudo -u dosetrail DOSETRAIL_CONFIG=/etc/dosetrail/dosetrail.toml dosetrail migrate
-sudo -u dosetrail DOSETRAIL_CONFIG=/etc/dosetrail/dosetrail.toml dosetrail seed
-sudo -u dosetrail DOSETRAIL_CONFIG=/etc/dosetrail/dosetrail.toml dosetrail user set admin --roles viewer,exporter,pid,importer,admin
+python3.12 -m venv /opt/dosimetrix/.venv
+/opt/dosimetrix/.venv/bin/pip install dosimetrix        # or: pip install -e <checkout>
+cp deploy/dosimetrix.toml.example /etc/dosimetrix/dosimetrix.toml   # edit it
+sudo -u dosimetrix DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml dosimetrix migrate
+sudo -u dosimetrix DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml dosimetrix seed
+sudo -u dosimetrix DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml dosimetrix user set admin --roles viewer,exporter,pid,importer,admin
 ```
 The site secret (`secret_file`) is created on first use. Back it up: pseudonyms and
 sessions depend on it.
@@ -38,48 +38,48 @@ sessions depend on it.
 ```sh
 cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now dosetrail-web dosetrail-receive dosetrail-qr.timer
-systemctl enable --now dosetrail-his   # only with a HIS server (see below)
+systemctl enable --now dosimetrix-web dosimetrix-receive dosimetrix-qr.timer
+systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
 ```
-- `dosetrail-web` listens on `[web] host:port` (default 127.0.0.1:8104); publish it through an HTTPS reverse proxy
+- `dosimetrix-web` listens on `[web] host:port` (default 127.0.0.1:8104); publish it through an HTTPS reverse proxy
   (nginx, Apache) and set `secure_cookies = true`.
-- `dosetrail-receive` listens for DICOM on `[dicom] port` (11112). Register
-  `AE DOSETRAIL / host / 11112` on the modalities and the PACS that should send dose
+- `dosimetrix-receive` listens for DICOM on `[dicom] port` (11112). Register
+  `AE DOSIMETRIX / host / 11112` on the modalities and the PACS that should send dose
   objects; restrict callers with `allowed_aets`.
-- `dosetrail-qr.timer` queries the PACS every hour for the last two days, one day and one
+- `dosimetrix-qr.timer` queries the PACS every hour for the last two days, one day and one
   modality at a time (many PACS cap the number of studies a query returns; set
   `max_results` and capped days are split into time windows).
 - Three ways to get data in:
   - **C-GET** (`retrieve = "get"`, default) – nothing to configure on the PACS;
-  - **C-MOVE** (`retrieve = "move"`) – register `DOSETRAIL` (host, port 11112) on the PACS;
-    objects arrive at the receiver; `dosetrail qr` starts a temporary receiver if the
+  - **C-MOVE** (`retrieve = "move"`) – register `DOSIMETRIX` (host, port 11112) on the PACS;
+    objects arrive at the receiver; `dosimetrix qr` starts a temporary receiver if the
     service is not running;
   - **push** – configure modalities or the PACS to send dose objects to the receiver.
 
 ## 5. Importing history
-- OpenREM: `dosetrail openrem-dump --ssh root@openrem-host` then `dosetrail openrem-import`
+- OpenREM: `dosimetrix openrem-dump --ssh root@openrem-host` then `dosimetrix openrem-import`
   (see the reconciliation report it prints).
-- Back-fill from the PACS: `dosetrail qr --from 2026-08-01 --to 2026-11-21` (resumable;
+- Back-fill from the PACS: `dosimetrix qr --from 2026-08-01 --to 2026-11-21` (resumable;
   finished days are remembered).
 - New devices start as *external*; mark your own rooms local on Admin → Devices.
 
 ## Alerts and notifications
-- Default alert rules are seeded by `dosetrail seed`; edit them in the UI (Admin → Alert rules) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
-- New studies are evaluated as they are imported. To evaluate history, run `dosetrail alerts evaluate --since 2026-01-01`.
-- Notifications are sent by the receiver service when it is idle, at most every 30 s. They can also be sent with `dosetrail alerts notify`. Only alerts on studies from the last 48 h are sent.
-- Configure `[notify]` (see `dosetrail.toml.example`), then check it with `dosetrail alerts test-notify`.
+- Default alert rules are seeded by `dosimetrix seed`; edit them in the UI (Admin → Alert rules) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
+- New studies are evaluated as they are imported. To evaluate history, run `dosimetrix alerts evaluate --since 2026-01-01`.
+- Notifications are sent by the receiver service when it is idle, at most every 30 s. They can also be sent with `dosimetrix alerts notify`. Only alerts on studies from the last 48 h are sent.
+- Configure `[notify]` (see `dosimetrix.toml.example`), then check it with `dosimetrix alerts test-notify`.
 
 ## Growth tables (setup step)
-- Run `dosetrail growth install` once; it downloads the weight-for-age tables into `<data_dir>/growth`:
+- Run `dosimetrix growth install` once; it downloads the weight-for-age tables into `<data_dir>/growth`:
   - the WHO Child Growth Standards for 0–5 years;
   - the WHO 2007 Growth Reference for 5–10 years;
   - the CDC 2000 growth charts (2–20 years), used only beyond 10 years, where WHO has no weight-for-age reference. Rerun `install` on older setups to add it.
-- They are WHO and CDC data under their publishers' terms (see `SOURCE.txt` there), so they are not shipped with DoseTrail. `dosetrail growth status` shows whether they are installed.
-- With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Missing or implausible weights (outside P1–P99) are replaced by the median weight for age and sex (`weight_source = estimated_reference`; an implausible reported value is kept in `weight_reported_kg` and still reported by data quality). Estimates are marked on the study page, in exports and in the second-grid report; patients over 20 years, or without age or sex, keep no weight. Run `dosetrail growth check` after importing weights, e.g. from the RIS (a reported weight replaces an estimate); new studies are estimated and checked as they arrive.
+- They are WHO and CDC data under their publishers' terms (see `SOURCE.txt` there), so they are not shipped with Dosimetrix. `dosimetrix growth status` shows whether they are installed.
+- With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Missing or implausible weights (outside P1–P99) are replaced by the median weight for age and sex (`weight_source = estimated_reference`; an implausible reported value is kept in `weight_reported_kg` and still reported by data quality). Estimates are marked on the study page, in exports and in the second-grid report; patients over 20 years, or without age or sex, keep no weight. Run `dosimetrix growth check` after importing weights, e.g. from the RIS (a reported weight replaces an estimate); new studies are estimated and checked as they arrive.
 
 ## Weight / height from a CSV file
 
-`dosetrail sizes FILE.csv` reads weights and heights from any export (RIS, ward records, a spreadsheet) and prints what it would change; `--apply` writes them (audited), then recomputes estimates, DRL exclusions and alerts for the changed studies. Admins can do the same on Admin → Data quality ("Import weight / height").
+`dosimetrix sizes FILE.csv` reads weights and heights from any export (RIS, ward records, a spreadsheet) and prints what it would change; `--apply` writes them (audited), then recomputes estimates, DRL exclusions and alerts for the changed studies. Admins can do the same on Admin → Data quality ("Import weight / height").
 
 - Key per row: `study_uid`, or `accession` (also matches the hashed accessions of legacy imports), or `patient_id` + `date` (every study of the patient that day; add `modality` to narrow it).
 - Values: `weight_kg`, `height_m` or `height_cm`. `,` or `;` separated; decimal commas are accepted.
@@ -89,27 +89,27 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
 
 ## Dose SR export (IHE REM)
 
-`dosetrail rdsr --study ID --out DIR` (or `--query 'modality:CT date:30d'`) writes one X-Ray Radiation Dose SR per study: TID 10011 for CT, TID 10001 for radiography, fluoroscopy and mammography, built from the stored values. Files are pseudonymised unless `--identified`: pseudonymous patient ID; no name, birth date, accession or physicians; derived study, series, SOP and event UIDs. They still carry the exact study date and time, age, sex, the study description and the free-text protocol names and comments, so treat them as personal data (the survey export, which cuts dates to the month, is the anonymised product). Estimated weights are not written. Users with the exporter role can download a study's file from the study page ("Dose SR"; `GET /api/studies/{id}/rdsr`). DoseTrail only writes files: it does not send dose SRs to a PACS or registry.
+`dosimetrix rdsr --study ID --out DIR` (or `--query 'modality:CT date:30d'`) writes one X-Ray Radiation Dose SR per study: TID 10011 for CT, TID 10001 for radiography, fluoroscopy and mammography, built from the stored values. Files are pseudonymised unless `--identified`: pseudonymous patient ID; no name, birth date, accession or physicians; derived study, series, SOP and event UIDs. They still carry the exact study date and time, age, sex, the study description and the free-text protocol names and comments, so treat them as personal data (the survey export, which cuts dates to the month, is the anonymised product). Estimated weights are not written. Users with the exporter role can download a study's file from the study page ("Dose SR"; `GET /api/studies/{id}/rdsr`). Dosimetrix only writes files: it does not send dose SRs to a PACS or registry.
 
 ## DICOM nodes
 - Remote AEs are managed in Admin → Integration:
-  - **query/retrieve** nodes are the PACS that `dosetrail qr` pulls from;
+  - **query/retrieve** nodes are the PACS that `dosimetrix qr` pulls from;
   - **sends** nodes are modalities or PACS allowed to send to the receiver.
   The receiver re-reads the allowed list every minute. Changes are audit-logged, and each node has a C-ECHO test.
-- `[pacs]` in `dosetrail.toml` is imported once as a node named "PACS". After that, the database is used. `dosetrail qr --node NAME` picks a node. `--host/--aec` still overrides for one run.
+- `[pacs]` in `dosimetrix.toml` is imported once as a node named "PACS". After that, the database is used. `dosimetrix qr --node NAME` picks a node. `--host/--aec` still overrides for one run.
 - The receiver and `qr` write a heartbeat that the page shows (running/stopped, objects per sending AE, sync progress). It also shows a 120-day coverage strip of fully retrieved days.
 - Stop the receiver with SIGTERM (systemd does), not Ctrl-C.
 
 ## HIS / RIS (patient, weight, height, request, indication)
 - Add the server in Admin → Integration → HIS / RIS servers, then press **Test** (or run
-  `dosetrail his check`). Supported: a HippoBridge FHIR gateway. Use a HIS account with read
+  `dosimetrix his check`). Supported: a HippoBridge FHIR gateway. Use a HIS account with read
   access. The password is stored encrypted with a key derived from the site secret, and is
   never shown again; if the site secret changes, enter the password again.
 - With an enabled server, every new study whose exam is at most 7 days old is queued.
   Older exams arriving now (a PACS or legacy backfill) are history: they get the CNP
   (sex, birth date, exact age) and growth-chart weight estimates, not HIS lookups. Use
-  `dosetrail his backfill` for them, if ever. The `dosetrail-his` service
-  (`dosetrail his run`) works through the queue one study at a time, pausing between calls
+  `dosimetrix his backfill` for them, if ever. The `dosimetrix-his` service
+  (`dosimetrix his run`) works through the queue one study at a time, pausing between calls
   (`min_interval_s`):
   1. it finds the patient by the patient ID (a national ID such as the CNP, or a HIS code);
   2. sex and birth date follow CNP > HIS > DICOM, and the exact age is recomputed;
@@ -125,8 +125,8 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
 - A HIS record or national ID whose birth date is 12 or more years from a real header birth
   date is treated as another person's (for example, a baby registered under a parent's ID)
   and not used.
-- Try it without writing: `dosetrail his run --dry-run --limit 20`.
-- History: `dosetrail his backfill --since 2026-01-01 [--until …] [--device ID]` shows how
+- Try it without writing: `dosimetrix his run --dry-run --limit 20`.
+- History: `dosimetrix his backfill --since 2026-01-01 [--until …] [--device ID]` shows how
   many studies would be queued and roughly how long it takes; `--apply` queues them. The
   worker runs history only within the server's backfill hours (e.g. 22-06), children first,
   after the day's new studies.
@@ -135,9 +135,9 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
   Data quality flags HIS lookups that found no patient (`his_unmatched`) and disagreements
   between CNP, HIS and DICOM (`demographic_conflict`). The survey export carries the
   request's indication as free text (`indication_text`): review it before sending.
-- Use a HIS account of its own for DoseTrail, not one another service already uses (for
+- Use a HIS account of its own for Dosimetrix, not one another service already uses (for
   example the modality worklist's): the HIS may keep a single session per account.
-- National IDs alone (offline, no HIS): `dosetrail cnp backfill` shows what would change;
+- National IDs alone (offline, no HIS): `dosimetrix cnp backfill` shows what would change;
   add `--apply` to write it.
 
 ## Docker
@@ -145,7 +145,7 @@ systemctl enable --now dosetrail-his   # only with a HIS server (see below)
 An alternative to the plain install: one image for every role, plus MariaDB.
 
 ```sh
-cp deploy/docker/dosetrail.toml deploy/docker/dosetrail.local.toml   # edit: password, [pacs]
+cp deploy/docker/dosimetrix.toml deploy/docker/dosimetrix.local.toml   # edit: password, [pacs]
 printf 'MARIADB_PASSWORD=...\nMARIADB_ROOT_PASSWORD=...\n' > .env         # same password as the toml
 docker compose up -d db web receive
 docker compose logs web | grep 'setup token'   # then open /setup (first-run wizard)
@@ -153,7 +153,7 @@ docker compose --profile qr up -d qr     # query/retrieve every hour (needs [pac
 docker compose --profile his up -d his   # HIS worker (needs a HIS server)
 ```
 - `web` migrates and seeds on start, then serves on 127.0.0.1:8104 (put an HTTPS reverse proxy in front). `receive` listens on 11112.
-- The volume `dosetrail-data` holds the site secret, the spool and the growth tables (`docker compose run --rm web growth install`). Back it up together with `dosetrail-db`.
+- The volume `dosimetrix-data` holds the site secret, the spool and the growth tables (`docker compose run --rm web growth install`). Back it up together with `dosimetrix-db`.
 - The image build has not been tested here (no Docker on the development host); the same install steps were checked in a clean virtual environment.
 
 ## Local DRLs
@@ -164,13 +164,13 @@ Chosen values (editable) are adopted as a reference set `local-…`, which can b
 
 ## Clinical indications
 
-Each study gets a clinical indication code (`ro-nom-indications`) when its request text is known: from the HIS request (the referral-guideline item, else the free text), the DICOM "reason for the requested procedure" (also Reason for Study / Admitting Diagnoses), or a CSV import (`indication`, `indication_code` columns of `dosetrail sizes`). Clear matches are coded automatically, a child gets the paediatric variant of an item, and weak matches are only suggested. Admin → Indications lists the texts still to code, most frequent first; one decision codes every study with that text, now and later. Single studies can be changed on the study page.
+Each study gets a clinical indication code (`ro-nom-indications`) when its request text is known: from the HIS request (the referral-guideline item, else the free text), the DICOM "reason for the requested procedure" (also Reason for Study / Admitting Diagnoses), or a CSV import (`indication`, `indication_code` columns of `dosimetrix sizes`). Clear matches are coded automatically, a child gets the paediatric variant of an item, and weak matches are only suggested. Admin → Indications lists the texts still to code, most frequent first; one decision codes every study with that text, now and later. Single studies can be changed on the study page.
 
 Use the code anywhere a query is accepted: `ind:PED-TCE,TRM-TCE`, or `ind:TRM-*` for a chapter. For example, local DRLs for head trauma CT: Admin → Local DRLs with the selection `origin:local ind:PED-TCE,NEU-TCE,TRM-TCE`. Charts can group by "Clinical indication", and the survey export fills its `indication` column. Only automatic matches, mapped texts and codes set by hand count; unconfirmed suggestions do not.
 
 ## Central collection (national survey)
 
-The same installation can act as the survey's central platform. Each site exports one month from Reports → "Studiul național" (anonymised: pseudonymous institution, device and patient codes; month only) and sends the file. At the centre, Reports → "Central collection" (or `dosetrail survey-import FILE...`) loads the files (CSV or JSON). Each file is checked: one institution and one month, the survey columns, numbers and plausible ranges. Rows that fail are listed and left out. A new file for the same institution and month replaces the older one. The central team can name the institution codes; the names stay at the centre.
+The same installation can act as the survey's central platform. Each site exports one month from Reports → "Studiul național" (anonymised: pseudonymous institution, device and patient codes; month only) and sends the file. At the centre, Reports → "Central collection" (or `dosimetrix survey-import FILE...`) loads the files (CSV or JSON). Each file is checked: one institution and one month, the survey columns, numbers and plausible ranges. Rows that fail are listed and left out. A new file for the same institution and month replaces the older one. The central team can name the institution codes; the names stay at the centre.
 
 National statistics, per exam × group × quantity (RP 185 groups: head by age, body by weight; or the national age groups):
 - each institution's median, counted with at least 10 values (fluoroscopy 20);

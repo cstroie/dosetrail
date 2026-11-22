@@ -4,9 +4,9 @@ import datetime as dt
 
 import pytest
 
-from dosetrail import classify, drl
-from dosetrail.db.models import Device, Event, Study
-from dosetrail.seeds.loader import load_all
+from dosimetrix import classify, drl
+from dosimetrix.db.models import Device, Event, Study
+from dosimetrix.seeds.loader import load_all
 
 T = dt.datetime(2026, 6, 1, 9, 0)
 AGE_2Y = int(2 * 365.25) + 30
