@@ -12,6 +12,7 @@ from dosimetrix.ingest.store import Store
 from tests import dicom_factory as f
 
 SECRET = b"t" * 32
+MG_PRES = "1.2.840.10008.5.1.4.1.1.1.2"
 
 
 # ------------------------------------------------------------------------------ parsing
@@ -218,3 +219,12 @@ def test_nm_header_with_only_the_radionuclide():
     assert ev["comment"] == "^18^Fluorine" and ev["extra_json"]["activity_mbq"] is None
     del rp.RadionuclideCodeSequence
     assert parse(ds).kind == "ignored"
+
+
+def test_mammography_header_organ_dose_is_in_dgy():
+    ds = f.dx_image(study_uid="1.2.3.700", sop_uid="1.2.3.700.1", sop_class=MG_PRES)
+    ds.Modality = "MG"
+    ds.OrganDose = "0.0123"  # dGy
+    ds.BodyPartThickness = "52"
+    (ev,) = parse(ds).events
+    assert ev["agd"] == pytest.approx(1.23) and ev["compression_thickness_mm"] == 52

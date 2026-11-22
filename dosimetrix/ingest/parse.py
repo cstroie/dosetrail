@@ -86,6 +86,11 @@ def _f(v) -> float | None:
         return None
 
 
+def _dgy_to_mgy(v) -> float | None:
+    x = _f(v)
+    return x * 100 if x is not None else None
+
+
 def _date(v) -> dt.date | None:
     try:
         return dt.datetime.strptime(str(v)[:8], "%Y%m%d").date() if v else None
@@ -480,7 +485,8 @@ def parse_header(ds) -> ParsedObject:
         "ei_vendor_unit": ei_unit if ds.get("RelativeXRayExposure") is not None else None,
         "sid_mm": sid, "ssd_mm": _f(ds.get("DistanceSourceToPatient")),
         "filter_cu_mm": cu, "filter_al_mm": al, "grid": _s(ds.get("Grid"), 64),
-        "agd": _f(ds.get("OrganDose")) if study["modality"] == "MG" else None,
+        # Organ Dose (0040,0316) is in dGy: the mean glandular dose in mGy is 100 x it
+        "agd": _dgy_to_mgy(ds.get("OrganDose")) if study["modality"] == "MG" else None,
         "compression_thickness_mm": _f(ds.get("BodyPartThickness")),
         "compression_force_n": _f(ds.get("CompressionForce")),
         "target_material": _s(ds.get("AnodeTargetMaterial"), 32),
