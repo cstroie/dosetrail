@@ -684,3 +684,73 @@ class StudyRequest(TimestampMixin, Base):
     pregnant: Mapped[bool | None] = mapped_column(Boolean)
     weight_kg: Mapped[float | None] = mapped_column(Float)  # as written on the request
     height_m: Mapped[float | None] = mapped_column(Float)
+
+
+# ---------------------------------------------------------------- central survey (aggregator)
+
+
+class SurveyInstitution(Base):
+    """A contributing institution, by the pseudonymous code its exports carry; the central
+    team may give it a name (kept here only)."""
+
+    __tablename__ = "survey_institution"
+    code: Mapped[str] = mapped_column(AsciiId(32), primary_key=True)
+    name: Mapped[str | None] = mapped_column(Text(255))
+
+
+class SurveyUpload(Base):
+    """One uploaded survey export (one institution, one month). A newer upload for the same
+    institution and month replaces the older one (status 'replaced', rows removed)."""
+
+    __tablename__ = "survey_upload"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    institution: Mapped[str] = mapped_column(AsciiId(32), index=True)
+    period: Mapped[str] = mapped_column(AsciiId(7), index=True)  # YYYY-MM
+    survey_version: Mapped[str | None] = mapped_column(AsciiId(16))
+    filename: Mapped[str | None] = mapped_column(Text(255))
+    sha256: Mapped[str] = mapped_column(AsciiId(64))
+    uploaded_at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
+    uploaded_by: Mapped[str | None] = mapped_column(Text(64))
+    status: Mapped[str] = mapped_column(AsciiId(12))  # active / replaced
+    n_rows: Mapped[int] = mapped_column(Integer, default=0)
+    n_rejected: Mapped[int] = mapped_column(Integer, default=0)
+    report: Mapped[dict | None] = mapped_column(JSONType)
+
+
+class SurveyRow(Base):
+    """One row of an uploaded export: the analysis columns typed, the rest in ``extra``."""
+
+    __tablename__ = "survey_row"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    upload_id: Mapped[int] = mapped_column(ForeignKey("survey_upload.id", ondelete="CASCADE"),
+                                           index=True)
+    institution: Mapped[str] = mapped_column(AsciiId(32))
+    device: Mapped[str | None] = mapped_column(AsciiId(32))
+    manufacturer: Mapped[str | None] = mapped_column(Text(128))
+    model: Mapped[str | None] = mapped_column(Text(128))
+    modality: Mapped[str | None] = mapped_column(AsciiId(8))
+    period: Mapped[str] = mapped_column(AsciiId(7), index=True)
+    patient: Mapped[str | None] = mapped_column(AsciiId(32))
+    sex: Mapped[str | None] = mapped_column(AsciiId(1))
+    age_years: Mapped[float | None] = mapped_column(Float)
+    head_age_group: Mapped[str | None] = mapped_column(AsciiId(16))
+    weight_kg: Mapped[float | None] = mapped_column(Float)
+    weight_source: Mapped[str | None] = mapped_column(AsciiId(24))
+    weight_group: Mapped[str | None] = mapped_column(AsciiId(16))
+    drl_exclusion: Mapped[str | None] = mapped_column(Text(64))
+    indication: Mapped[str | None] = mapped_column(AsciiId(16))
+    exam_code: Mapped[str | None] = mapped_column(AsciiId(32))
+    edrl_exam: Mapped[str | None] = mapped_column(AsciiId(32))
+    ndrl_exam: Mapped[str | None] = mapped_column(AsciiId(32))
+    projection: Mapped[str | None] = mapped_column(AsciiId(16))
+    contrast: Mapped[str | None] = mapped_column(AsciiId(4))
+    ctdivol: Mapped[float | None] = mapped_column(Float)
+    phantom: Mapped[int | None] = mapped_column(SmallInteger)
+    dlp: Mapped[float | None] = mapped_column(Float)
+    pka: Mapped[float | None] = mapped_column(Float)  # mGy.cm2, as exported
+    fluoro_time: Mapped[float | None] = mapped_column(Float)
+    ssde: Mapped[float | None] = mapped_column(Float)
+    check_dlp: Mapped[str | None] = mapped_column(AsciiId(8))
+    check_phantom: Mapped[str | None] = mapped_column(AsciiId(8))
+    extra: Mapped[dict | None] = mapped_column(JSONType)
+

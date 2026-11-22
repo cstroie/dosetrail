@@ -222,6 +222,27 @@ export function indicationReview() {
   return isSample ? serverOnly('Indications') : remote('/api/indications/review');
 }
 
+/** Central survey collection (aggregate.py). */
+export async function uploadSurvey(file) {
+  const r = await fetch(new URL(`/api/survey/uploads?filename=${encodeURIComponent(file.name)}`, MODE).href, {
+    method: 'POST', headers: { 'Content-Type': 'text/csv', Accept: 'application/json' }, body: file,
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `${r.status} ${r.statusText}`);
+  cache.clear();
+  return data;
+}
+export function surveyUploads() { return isSample ? serverOnly('Central survey') : remote('/api/survey/uploads'); }
+export const deleteSurveyUpload = (id) => send('DELETE', `/api/survey/uploads/${id}`);
+export const nameInstitution = (code, name) => send('PUT', `/api/survey/institutions/${encodeURIComponent(code)}`, { name });
+export function surveyNational(params) { return isSample ? serverOnly('Central survey') : remote('/api/survey/national', params); }
+export function surveyNationalUrl(params) {
+  if (isSample) return null;
+  const u = new URL('/api/survey/national', MODE);
+  for (const [k, v] of Object.entries({ ...params, format: 'xlsx' })) u.searchParams.set(k, String(v));
+  return u.href;
+}
+
 /** Local DRLs (localdrl.py): proposal, adoption (admin), review (json / xlsx), deletion. */
 export function localDrlPropose(params) {
   return isSample ? serverOnly('Local DRLs') : remote('/api/drl/local/propose', params);

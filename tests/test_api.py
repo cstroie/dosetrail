@@ -510,3 +510,23 @@ def test_indication_endpoints(client):
     rev = client.get("/api/indications/review").json()
     assert rev["decisions"][0]["code"] == "PED-TUS"
     client.put("/api/indications/mappings", json={"text": "tuse seaca", "code": None})
+
+
+def test_survey_central_endpoints(client):
+    from tests.test_aggregate import _csv
+
+    login(client, "viewer", "viewer-pass-1")
+    body = _csv("I-API", "2026-10", [{"dlp": 400}] * 10)
+    assert client.post("/api/survey/uploads", content=body,
+                       headers={"content-type": "text/csv"}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    r = client.post("/api/survey/uploads?filename=a.csv", content=body,
+                    headers={"content-type": "text/csv"})
+    assert r.status_code == 200 and r.json()["rows"] == 10
+    assert client.post("/api/survey/uploads", content=body,
+                       headers={"content-type": "text/csv"}).status_code == 400  # same file
+    assert client.put("/api/survey/institutions/I-API", json={"name": "Site A"}).status_code == 200
+    rep = client.get("/api/survey/national", params={"start": "2026-01", "end": "2026-12"}).json()
+    assert rep["rows"][0]["institutions"][0]["name"] == "Site A"
+    up = client.get("/api/survey/uploads").json()[0]
+    assert client.delete(f"/api/survey/uploads/{up['id']}").json()["rows"] == 10

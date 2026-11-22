@@ -104,7 +104,8 @@ DICTIONARY: list[tuple[str, str, str]] = [
     ("pitch", "1", "Pitch factor"),
     ("tcm", "", "Tube current modulation"),
     ("reconstruction", "", "FBP / IR / DLIR (not collected yet)"),
-    ("ssde", "mGy", "Size-specific dose estimate, when the device reports it"),
+    ("ssde", "mGy", "Size-specific dose estimate: reported by the device, else calculated "
+     "from its water-equivalent diameter (AAPM 204 / 293)"),
     ("pka", "mGy.cm2", "Kerma-area product (DAP)"),
     ("fluoro_time", "s", "Fluoroscopy time"),
     ("kae", "mGy", "Entrance air kerma (not collected yet)"),
@@ -230,7 +231,8 @@ def _ct_row(base: dict, sc: dict, n: int, e: Event) -> dict:
               "phantom": e.ct_phantom_cm, "dlp": _r(e.dlp, 3),
               "scan_length": _r(e.scan_length_mm, 1), "kvp": e.kvp, "mas": _r(e.mas, 2),
               "effective_mas": _r(e.mas / e.pitch, 2) if e.mas and e.pitch else None,
-              "pitch": e.pitch, "tcm": e.tcm, "ssde": _r(e.ssde, 3), "exposures": 1,
+              "pitch": e.pitch, "tcm": e.tcm,
+              "ssde": _r(e.ssde if e.ssde is not None else e.ssde_calc, 3), "exposures": 1,
               "check_dlp": check, "check_phantom": phantom})
     return r
 

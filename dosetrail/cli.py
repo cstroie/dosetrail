@@ -622,6 +622,39 @@ def _cmd_rdsr(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_survey_import(args: argparse.Namespace) -> int:
+    """Central collection: load survey exports (CSV / JSON) from the sites."""
+    import getpass
+    from pathlib import Path
+
+    from . import aggregate
+    from .db.models import AuditLog
+    from .db.session import make_engine, make_sessionmaker
+
+    bad = 0
+    with make_sessionmaker(make_engine(args.url or load_settings().database_url))() as session:
+        for name in args.files:
+            p = Path(name)
+            try:
+                up = aggregate.upload(session, p.read_bytes(), filename=p.name,
+                                      user=f"cli:{getpass.getuser()}")
+            except aggregate.SurveyError as e:
+                session.rollback()
+                print(f"{p.name}: REJECTED – {e}")
+                bad += 1
+                continue
+            session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="survey.upload",
+                                 target=f"{up.institution}:{up.period}",
+                                 detail={"rows": up.n_rows, "rejected": up.n_rejected,
+                                         "file": p.name}))
+            session.commit()
+            print(f"{p.name}: {up.institution} {up.period}: {up.n_rows} rows, "
+                  f"{up.n_rejected} rejected"
+                  + (f", replaced upload {up.report['replaced']}" if up.report["replaced"]
+                     else ""))
+    return 1 if bad else 0
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -948,6 +981,12 @@ def build_parser() -> argparse.ArgumentParser:
                     help="keep patient ID, name, birth date, accession and UIDs")
     rd.add_argument("--url")
     rd.set_defaults(func=_cmd_rdsr)
+
+    si = sub.add_parser("survey-import", help="central collection: load survey exports "
+                                              "(CSV / JSON) sent by the sites")
+    si.add_argument("files", nargs="+")
+    si.add_argument("--url")
+    si.set_defaults(func=_cmd_survey_import)
 
     sz = sub.add_parser("sizes", help="import patient weight / height from a CSV file "
                                       "(study UID, accession, or patient ID + date)")

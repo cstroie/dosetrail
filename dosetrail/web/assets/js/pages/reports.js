@@ -51,6 +51,7 @@ function render() {
     h('div', { id: 'grid' }),
     h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Studiul național de dozimetrie pediatrică (plan draft)'),
     surveyBar(),
+    h('p', { class: 'muted small' }, 'Central collection (for the coordinating centre): ', h('a', { href: 'survey-central.html' }, 'upload the sites’ exports and compute the national statistics →')),
   );
   load();
 }

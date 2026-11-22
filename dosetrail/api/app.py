@@ -48,7 +48,7 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "rules.html": "rules.html", "dicom.html": "dicom.html",
          "users.html": "users.html", "audit.html": "audit.html",
          "alerts.html": "alerts.html", "local-drl.html": "local-drl.html",
-         "indications.html": "indications.html"}
+         "indications.html": "indications.html", "survey-central.html": "survey-central.html"}
 
 
 class LoginIn(BaseModel):
@@ -74,6 +74,10 @@ class IndicationIn(BaseModel):
 class IndicationMapIn(BaseModel):
     text: str
     code: str | None = None
+
+
+class InstitutionNameIn(BaseModel):
+    name: str | None = None
 
 
 class TokenIn(BaseModel):
@@ -1179,6 +1183,79 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 ds.write(format, fh, survey.rows(s, conds, secret), meta, survey.DICTIONARY)
 
         return _file(write, format, f"dosetrail-survey-{month}", now)
+
+    # ------------------------------------------------------------------ central survey
+
+    def _central(user: User) -> None:
+        if not user.role_set() & {"admin", "importer"}:
+            raise HTTPException(403, "the importer or admin role is required")
+
+    def _agg(fn):
+        from .. import aggregate
+
+        try:
+            return fn(aggregate)
+        except aggregate.SurveyError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/survey/uploads")
+    def survey_upload(request: Request, filename: str | None = None,
+                      body: bytes = Body(..., media_type="text/csv"),
+                      user: User = Depends(current_user), session: Session = Depends(db)):
+        """A site's survey export (CSV or JSON) into the central collection."""
+        _central(user)
+        try:
+            up = _agg(lambda a: a.upload(session, body, filename=filename, user=user.username))
+        except HTTPException:
+            session.rollback()
+            raise
+        _audit(session, request, user, "survey.upload", f"{up.institution}:{up.period}",
+               {"rows": up.n_rows, "rejected": up.n_rejected, "file": filename})
+        session.commit()
+        return {"id": up.id, "institution": up.institution, "period": up.period,
+                "rows": up.n_rows, "rejected": up.n_rejected, "report": up.report}
+
+    @app.get("/api/survey/uploads")
+    def survey_uploads(user: User = Depends(current_user), session: Session = Depends(db)):
+        return _agg(lambda a: a.uploads(session))
+
+    @app.delete("/api/survey/uploads/{upload_id}")
+    def survey_upload_delete(upload_id: int, request: Request,
+                             user: User = Depends(admin_user), session: Session = Depends(db)):
+        out = _agg(lambda a: a.remove(session, upload_id))
+        _audit(session, request, user, "survey.delete", f"upload:{upload_id}", out)
+        session.commit()
+        return out
+
+    @app.put("/api/survey/institutions/{code}")
+    def survey_institution(code: str, body: InstitutionNameIn, request: Request,
+                           user: User = Depends(admin_user), session: Session = Depends(db)):
+        _agg(lambda a: a.name_institution(session, code, body.name))
+        _audit(session, request, user, "survey.institution", code, {"name": body.name})
+        session.commit()
+        return {"code": code, "name": body.name}
+
+    @app.get("/api/survey/national")
+    def survey_national(request: Request, start: str, end: str, grid: str = "rp185",
+                        estimated: bool = False, format: str = "json",
+                        user: User = Depends(current_user), session: Session = Depends(db)):
+        """National statistics over the uploaded exports (P75 of institution medians)."""
+        if format not in ("json", "xlsx"):
+            raise HTTPException(400, "format is json|xlsx")
+        rep = _agg(lambda a: a.national(session, start, end, grid=grid,
+                                        estimated_weights=estimated))
+        if format == "json":
+            return rep
+        _exporter(user)
+        _audit(session, request, user, "report", f"survey.national:{start}..{end}",
+               {"grid": grid})
+        session.commit()
+        from .. import aggregate
+
+        info = {"Generat": clock().isoformat(sep=" ", timespec="seconds"),
+                "De": user.display_name or user.username}
+        return _file(lambda fh: aggregate.write_xlsx(rep, fh, info), "xlsx",
+                     f"studiu-national-{start}-{end}", clock())
 
     @app.get("/api/reports/drl-trend")
     def report_drl_trend(request: Request, year: int | None = None, quarter: int | None = None,

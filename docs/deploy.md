@@ -168,3 +168,15 @@ Each study gets a clinical indication code (`ro-nom-indications`) when its reque
 
 Use the code anywhere a query is accepted: `ind:PED-TCE,TRM-TCE`, or `ind:TRM-*` for a chapter. For example, local DRLs for head trauma CT: Admin → Local DRLs with the selection `origin:local ind:PED-TCE,NEU-TCE,TRM-TCE`. Charts can group by "Clinical indication", and the survey export fills its `indication` column. Only automatic matches, mapped texts and codes set by hand count; unconfirmed suggestions do not.
 
+## Central collection (national survey)
+
+The same installation can act as the survey's central platform. Each site exports one month from Reports → "Studiul național" (anonymised: pseudonymous institution, device and patient codes; month only) and sends the file. At the centre, Reports → "Central collection" (or `dosetrail survey-import FILE...`) loads the files (CSV or JSON). Each file is checked: one institution and one month, the survey columns, numbers and plausible ranges. Rows that fail are listed and left out. A new file for the same institution and month replaces the older one. The central team can name the institution codes; the names stay at the centre.
+
+National statistics, per exam × group × quantity (RP 185 groups: head by age, body by weight; or the national age groups):
+- each institution's median, counted with at least 10 values (fluoroscopy 20);
+- the proposed national DRL (the P75 of those medians, at least 2 institutions);
+- the national median and the Q3/Q1 spread (flags at 1.5, 2.5, 3);
+- the comparison with the RP 185 EDRL and the OMS 838/2025 DRL.
+
+DRL exclusions are left out, and estimated weights too unless asked for. Download as XLSX. Uploading needs the importer or admin role.
+
