@@ -69,7 +69,7 @@ kbd { font: var(--fs-xs) var(--font-mono); border: 1px solid var(--line-2); bord
 
 /* phone: rail becomes a bottom bar */
 @media (max-width: 640px) {
-  .rail { order: 2; flex: 1 1 100%; flex-direction: row; justify-content: space-around; position: sticky; bottom: 0; border-right: 0; border-top: 1px solid var(--line); padding: 4px 0; }
+  .rail { order: 2; flex: 1 1 100%; flex-direction: row; justify-content: space-around; position: sticky; bottom: 0; z-index: 30; background: var(--panel); border-right: 0; border-top: 1px solid var(--line); padding: 4px 0 calc(4px + env(safe-area-inset-bottom)); }
   .rail .logo { display: none; }
   .rail a[aria-current="page"]::before { display: none; }
   .content { order: 1; }
