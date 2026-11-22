@@ -6,8 +6,8 @@
     {"id": 3, "display_name": "Outside CT", "model": "Incisive CT", "station": "CT#", "modality": "CT", "origin": "external"}
   ],
   "studies": [
-    {"accession": "A001", "date": "2026-11-20T08:00", "device_id": 1, "description": "CT head without contrast", "protocol": "Head routine", "patient": {"age": 5, "sex": "M", "weight": 19, "pseudo_id": "P-AAAAA-00001"}, "events": {"spiral": 1, "axial": 0, "localizer": 1}, "ctdivol_max": 30.5, "dlp_total": 520, "flags": [], "test": false},
-    {"accession": "A002", "date": "2026-11-01T09:00", "device_id": 1, "description": "CT chest", "protocol": "Chest routine", "patient": {"age": 17, "sex": "F", "weight": 48, "pseudo_id": "P-AAAAA-00002"}, "events": {"spiral": 1, "axial": 0, "localizer": 2}, "ctdivol_max": 4.1, "dlp_total": 150, "flags": [], "test": false},
+    {"accession": "A001", "indication": "PED-TCE", "date": "2026-11-20T08:00", "device_id": 1, "description": "CT head without contrast", "protocol": "Head routine", "patient": {"age": 5, "sex": "M", "weight": 19, "pseudo_id": "P-AAAAA-00001"}, "events": {"spiral": 1, "axial": 0, "localizer": 1}, "ctdivol_max": 30.5, "dlp_total": 520, "flags": [], "test": false},
+    {"accession": "A002", "indication": "TRM-TCE", "date": "2026-11-01T09:00", "device_id": 1, "description": "CT chest", "protocol": "Chest routine", "patient": {"age": 17, "sex": "F", "weight": 48, "pseudo_id": "P-AAAAA-00002"}, "events": {"spiral": 1, "axial": 0, "localizer": 2}, "ctdivol_max": 4.1, "dlp_total": 150, "flags": [], "test": false},
     {"accession": "A003", "date": "2026-09-15T10:00", "device_id": 2, "description": "CT abdomen-pelvis with contrast", "protocol": "Abdomen-pelvis", "patient": {"age": 18, "sex": "M", "weight": null, "pseudo_id": "P-AAAAA-00003"}, "events": {"spiral": 2, "axial": 0, "localizer": 1}, "ctdivol_max": 12.0, "dlp_total": 710, "flags": [], "test": false},
     {"accession": "A004", "date": "2026-11-21T07:30", "device_id": 3, "description": "CT chest-abdomen-pelvis", "protocol": "Chest-abdomen-pelvis", "patient": {"age": 70, "sex": "F", "weight": 82, "pseudo_id": "P-AAAAA-00004"}, "events": {"spiral": 1, "axial": 0, "localizer": 1}, "ctdivol_max": 9.5, "dlp_total": 880, "flags": [], "test": false},
     {"accession": "QA01", "date": "2026-11-19T12:00", "device_id": 2, "description": "PHANTOM CT head QA", "protocol": "Head routine", "patient": {"age": null, "sex": "O", "weight": null, "pseudo_id": "P-AAAAA-00005"}, "events": {"spiral": 1, "axial": 0, "localizer": 0}, "ctdivol_max": 50.0, "dlp_total": 600, "flags": [], "test": true},
@@ -47,6 +47,10 @@
     {"q": "proto:abdomen"},
     {"q": "modality:CT"},
     {"q": "modality:DX"},
-    {"q": "bogus:1 head"}
+    {"q": "bogus:1 head"},
+    {"q": "ind:PED-TCE"},
+    {"q": "ind:TRM-*"},
+    {"q": "-ind:PED-TCE"},
+    {"q": "indicatie:ped-tce,TRM-TCE"}
   ]
 }

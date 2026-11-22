@@ -162,3 +162,9 @@ Admin → Local DRLs proposes local diagnostic reference levels from the hospita
 
 Chosen values (editable) are adopted as a reference set `local-…`, which the comparison page, reports and alerts can use like any other set. The yearly review compares an adopted set with a new period: the new value, the change, and the rooms whose median is above the local DRL (XLSX for the file). Adopting and deleting are audited; the bundled sets cannot be deleted.
 
+## Clinical indications
+
+Each study gets a clinical indication code (`ro-nom-indications`) when its request text is known: from the HIS request (the referral-guideline item, else the free text), the DICOM "reason for the requested procedure" (also Reason for Study / Admitting Diagnoses), or a CSV import (`indication`, `indication_code` columns of `dosetrail sizes`). Clear matches are coded automatically, a child gets the paediatric variant of an item, and weak matches are only suggested. Admin → Indications lists the texts still to code, most frequent first; one decision codes every study with that text, now and later. Single studies can be changed on the study page.
+
+Use the code anywhere a query is accepted: `ind:PED-TCE,TRM-TCE`, or `ind:TRM-*` for a chapter. For example, local DRLs for head trauma CT: Admin → Local DRLs with the selection `origin:local ind:PED-TCE,NEU-TCE,TRM-TCE`. Charts can group by "Clinical indication", and the survey export fills its `indication` column. Only automatic matches, mapped texts and codes set by hand count; unconfirmed suggestions do not.
+

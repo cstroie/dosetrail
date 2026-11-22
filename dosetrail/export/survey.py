@@ -14,9 +14,10 @@ MS-CNCAN-SDNP-2026-001, v1.0, March 2026). The layout is versioned so the plan c
   * ``check_dlp``: CTDIvol × scan length vs DLP within ±10 %;
   * ``check_phantom``: a head exam measured with the 32 cm phantom;
   * ``weight_missing``.
-* **Clinical indication:** the free text of the matched HIS request (``indication_text``);
-  free text can name people or places, so review it before sending. The coded
-  ``indication`` column stays empty until requests are coded.
+* **Clinical indication:** ``indication`` is the ro-nom-indications code (indications.py:
+  automatic matches, mapped texts and codes set by hand; suggestions are left out);
+  ``indication_text`` is the request's free text (HIS, DICOM or CSV), which can name
+  people or places, so review it before sending.
 * **Not collected yet:** reconstruction method and Ka,e. Their columns are present and
   empty, and the dictionary says so.
 """
@@ -38,8 +39,10 @@ from ..db.models import (
     Event,
     Patient,
     Study,
+    StudyIndication,
     StudyRequest,
 )
+from ..indications import USED
 from ..patient_age import band_for_age, band_for_weight
 from ..stats import load_bands
 from .drl_dataset import (
@@ -81,9 +84,9 @@ DICTIONARY: list[tuple[str, str, str]] = [
     ("weight_percentile", "%", "Weight-for-age percentile (WHO to 10 y, CDC 2000 to 20 y)"),
     ("drl_exclusion", "", "Reason to leave the study out of DRL statistics (e.g. weight < P5)"),
     ("height_m", "m", "Patient height"),
-    ("indication", "", "Clinical indication code (not coded yet)"),
+    ("indication", "", "Clinical indication code (ro-nom-indications)"),
     ("indication_text", "",
-     "Indication as written on the HIS request (free text: review before sending)"),
+     "Indication as written on the request (free text: review before sending)"),
     ("exam_code", "", "Local nomenclator code"),
     ("edrl_exam", "", "RP 185 exam code"),
     ("ndrl_exam", "", "National DRL exam code (OMS 838/2025)"),
@@ -153,6 +156,11 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
         indications = dict(session.execute(
             select(StudyRequest.study_id, StudyRequest.indication)
             .where(StudyRequest.study_id.in_(chunk))).all())
+        ind_codes = dict(session.execute(
+            select(StudyIndication.study_id, Code.code)
+            .join(Code, Code.id == StudyIndication.code_id)
+            .where(StudyIndication.study_id.in_(chunk), StudyIndication.status.in_(USED))
+        ).all())
         events: dict[int, list[Event]] = defaultdict(list)
         for e in session.scalars(select(Event).where(Event.study_id.in_(chunk),
                                                      Event.is_localizer.is_not(True))
@@ -177,7 +185,8 @@ def rows(session: Session, conds: list, secret: bytes, institution: str = "DEFAU
                 "weight_source": s.weight_source.value if s.weight_source else None,
         "weight_reported_kg": s.weight_reported_kg,
                 "weight_group": wb.key if wb else None, "height_m": s.height_m,
-                "indication": None, "indication_text": indications.get(s.id),
+                "indication": ind_codes.get(s.id),
+                "indication_text": indications.get(s.id) or s.indication_text,
                 "contrast": s.contrast_mode,
                 "reconstruction": None, "kae": None,
                 "weight_missing": not s.weight_kg,

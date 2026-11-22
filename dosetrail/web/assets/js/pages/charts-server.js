@@ -22,7 +22,7 @@ const METRICS = {
 };
 METRICS.CR = METRICS.DX;
 METRICS.XA = METRICS.RF;
-const DIMS = { exam: 'Exam', device: 'Device', age_band: 'Age group', weight_band: 'Weight group', ref_group: 'ICRP 135 group', view: 'Projection', protocol: 'Protocol (raw)', sex: 'Sex', year: 'Year' };
+const DIMS = { exam: 'Exam', device: 'Device', age_band: 'Age group', weight_band: 'Weight group', ref_group: 'ICRP 135 group', view: 'Projection', protocol: 'Protocol (raw)', sex: 'Sex', indication: 'Clinical indication', year: 'Year' };
 const PERIODS = { month: 'Month', quarter: 'Quarter', year: 'Year' };
 const SYSTEMS = { '': 'Local nomenclator', 'ro-drl-ms838-2025': 'National DRL exams', 'ec-rp185': 'RP 185 exams' };
 const AGE = { 'ro-drl-age': 'National 1–4/5–9/10–14/15+', 'rp185-head-age': 'RP 185 head', 'ext-head-age': 'RP 185 head + adults' };

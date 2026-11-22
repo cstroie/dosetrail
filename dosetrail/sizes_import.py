@@ -1,4 +1,5 @@
-"""Patient weight / height from a CSV file (RIS export, ward records, a spreadsheet).
+"""Patient weight / height and clinical indication from a CSV file (RIS export, ward
+records, a spreadsheet).
 
 Each row names one study, or a patient on a day, and gives a weight and/or a height:
 
@@ -7,6 +8,8 @@ Each row names one study, or a patient on a day, and gives a weight and/or a hei
   ``patient_id`` + ``date`` (every study of the patient that day, optionally only one
   ``modality``). Legacy patients whose ID was hashed match too.
 * values: ``weight_kg``; ``height_m`` or ``height_cm`` (a height above 3 is read as cm);
+  ``indication`` (the request's text: coded by indications.py, review on Admin →
+  Indications) and/or ``indication_code`` (a ro-nom-indications code, kept as set);
 * provenance, optional: ``source`` (``measured``, ``chart_same_day``, ``chart_72h``,
   ``imported``, ``his_chart_undated``, ``dicom_unknown``), or ``measured_at`` (date or
   date-time; same day as the exam → chart_same_day, within 72 h → chart_72h, else
@@ -33,7 +36,7 @@ from collections import Counter
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .db.models import Patient, SizeSource, Study
+from .db.models import Code, CodeSystem, Patient, SizeSource, Study, StudyIndication
 
 ALIASES = {
     "study_uid": ("study_uid", "studyinstanceuid", "study_instance_uid", "suid"),
@@ -46,6 +49,8 @@ ALIASES = {
     "height_cm": ("height_cm", "inaltime_cm", "cm"),
     "source": ("source", "weight_source", "sursa"),
     "measured_at": ("measured_at", "measured", "data_masurare"),
+    "indication": ("indication", "indicatie", "indicație", "reason", "diagnostic"),
+    "indication_code": ("indication_code", "cod_indicatie", "cod_indicație"),
 }
 SOURCES = {s.value: s for s in (SizeSource.measured, SizeSource.chart_same_day,
                                 SizeSource.chart_72h, SizeSource.imported,
@@ -105,8 +110,10 @@ def read(text: str) -> tuple[dict[str, int], list[list[str]]]:
     cols = _columns(rows[0])
     if not ({"study_uid", "accession", "patient_id"} & cols.keys()):
         raise RowError("no key column: study_uid, accession, or patient_id + date")
-    if not ({"weight_kg", "height_m", "height_cm"} & cols.keys()):
-        raise RowError("no value column: weight_kg, height_m or height_cm")
+    if not ({"weight_kg", "height_m", "height_cm", "indication", "indication_code"}
+            & cols.keys()):
+        raise RowError("no value column: weight_kg, height_m, height_cm, indication or "
+                       "indication_code")
     if "patient_id" in cols and "date" not in cols and not ({"study_uid", "accession"}
                                                             & cols.keys()):
         raise RowError("patient_id needs a date column")
@@ -164,6 +171,8 @@ def run(session: Session, text: str, *, apply: bool = False, max_issues: int = 2
     issues: list[dict] = []
     changed: set[int] = set()
     nested = session.begin_nested()  # a dry run rolls back to here
+    ind_codes = {c.code.upper(): c for c in session.scalars(
+        select(Code).join(CodeSystem).where(CodeSystem.key == "ro-nom-indications"))}
 
     def note(rowno, outcome, detail=""):
         counts[outcome] += 1
@@ -186,7 +195,13 @@ def run(session: Session, text: str, *, apply: bool = False, max_issues: int = 2
                 h = cm / 100
             if h is not None and h > 3:
                 h /= 100
-            if w is None and h is None:
+            ind_text, ind_code = get("indication"), get("indication_code")
+            code = None
+            if ind_code:
+                code = ind_codes.get(ind_code.upper())
+                if code is None:
+                    raise RowError(f"unknown indication code {ind_code!r}")
+            if w is None and h is None and not ind_text and code is None:
                 note(rowno, "no_value")
                 continue
             studies = _find(session, get)
@@ -198,6 +213,18 @@ def run(session: Session, text: str, *, apply: bool = False, max_issues: int = 2
             continue
         counts["studies_matched"] += len(studies)
         for st in studies:
+            if (ind_text and st.indication_source in (None, "dicom", "csv")
+                    and st.indication_text != ind_text[:1024]):
+                st.indication_text, st.indication_source = ind_text[:1024], "csv"
+                counts["indication_written"] += 1
+                changed.add(st.id)
+            if code is not None:
+                si = session.get(StudyIndication, st.id) or StudyIndication(study_id=st.id)
+                si.code_id, si.status, si.score, si.source = code.id, "manual", 1.0, "csv"
+                session.add(si)
+                counts["indication_code_written"] += 1
+            if w is None and h is None:
+                continue
             try:
                 src = _source(get, st)
             except RowError as e:

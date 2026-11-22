@@ -142,5 +142,21 @@
  "modality:DX": [],
  "bogus:1 head": [
   "A001"
+ ],
+ "ind:PED-TCE": [
+  "A001"
+ ],
+ "ind:TRM-*": [
+  "A002"
+ ],
+ "-ind:PED-TCE": [
+  "A002",
+  "A003",
+  "A004",
+  "A006"
+ ],
+ "indicatie:ped-tce,TRM-TCE": [
+  "A001",
+  "A002"
  ]
 }

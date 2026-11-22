@@ -65,3 +65,22 @@ def test_hashed_accession_and_errors(session):
     assert st.weight_kg == 20 and res["counts"]["error"] == 1
     with pytest.raises(sizes_import.RowError):
         sizes_import.run(session, "name,weight\nx,1\n")
+
+
+def test_indication_columns(session):
+    from dosetrail.db.models import StudyIndication
+    from dosetrail.seeds.loader import load_all
+
+    load_all(session)
+    a = _ingest(session, "1.8.20")
+    b = _ingest(session, "1.8.21")
+    text = ("study_uid;indicatie;cod_indicatie\n"
+            "1.8.20;Pneumonie;\n"
+            "1.8.21;tuse;PED-TUS\n"
+            "1.8.20;;NOPE\n")
+    res = sizes_import.run(session, text, apply=True)
+    assert res["counts"]["indication_written"] == 2 and res["counts"]["error"] == 1
+    assert a.indication_text == "Pneumonie" and a.indication_source == "csv"
+    assert session.get(StudyIndication, a.id).status == "auto"  # matched after the import
+    si = session.get(StudyIndication, b.id)
+    assert si.status == "manual" and si.source == "csv"

@@ -34,6 +34,7 @@ from .db.models import (
     Patient,
     SizeSource,
     Study,
+    StudyIndication,
 )
 from .patient_age import Band, band_for_age, band_for_weight
 
@@ -70,7 +71,7 @@ METRICS: dict[str, Metric] = {
     "sid": Metric("event", Event.sid_mm, "mm", "Source–image distance"),
 }
 DIMENSIONS = ("exam", "device", "age_band", "weight_band", "ref_group", "month", "quarter",
-              "year", "modality", "sex", "protocol", "view")
+              "year", "modality", "sex", "protocol", "view", "indication")
 EXPOSURE_EXAM = ("DX", "CR", "MG", "PX")  # modalities classified per exposure
 
 
@@ -196,6 +197,13 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
         q = q.add_columns(Event.protocol, Event.view)
     if "sex" in group_by:
         q = q.outerjoin(Patient, Patient.id == Study.patient_id).add_columns(Patient.sex)
+    if "indication" in group_by:
+        from .indications import USED
+
+        si, ic = aliased(StudyIndication), aliased(Code)
+        q = (q.outerjoin(si, and_(si.study_id == Study.id, si.status.in_(USED)))
+             .outerjoin(ic, ic.id == si.code_id)
+             .add_columns(ic.code.label("ind_code"), ic.meaning.label("ind_meaning")))
     if need_exam:
         system = system or "ro-nom-rx"
         codes = select(Code.id).join(CodeSystem).where(CodeSystem.key == system)
@@ -312,6 +320,10 @@ def _dim(g, r, age, weight, physical, names, labels):
         return r.modality
     if g == "sex":
         return r.sex
+    if g == "indication":
+        if r.ind_code is not None:
+            labels["indication"][r.ind_code] = r.ind_meaning
+        return r.ind_code
     if g == "protocol":
         return r.protocol
     if g == "view":

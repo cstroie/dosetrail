@@ -86,3 +86,22 @@ def test_dicom_reason_is_read(session, m):
     assert session.get(StudyIndication, st.id).status == "auto"
     assert session.scalar(CodeSystem.__table__.select().where(
         CodeSystem.key == "ro-nom-indications")) is not None
+
+
+def test_stats_dimension_and_query(session, m):
+    import datetime as dt
+
+    from dosetrail import stats
+    from dosetrail.api.query import conditions, parse
+    from dosetrail.db.models import Event
+
+    for i, (t, dap) in enumerate([("pneumonie", 0.1), ("pneumonie", 0.3), ("apendicita", 0.5)]):
+        st = _study(session, f"s.{i}", indication=t)
+        st.events = [Event(dap=dap)]
+    session.flush()
+    indications.update(session)
+    out = stats.compute(session, [Study.modality == "DX"], "dap", ["indication"])
+    got = {g["key"]["indication"]: g["n"] for g in out["groups"]}
+    assert got == {"RSP-PNM": 2, "PED-APD": 1}
+    sel = conditions(parse("ind:RSP-*"), dt.datetime(2026, 1, 1))
+    assert len(session.scalars(Study.__table__.select().where(*sel)).all()) == 2

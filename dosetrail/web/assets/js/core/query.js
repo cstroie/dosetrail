@@ -25,10 +25,11 @@ export const KEYS = {
   origin: { label: 'origin', kind: 'enum', values: ['local', 'external', 'any'], hint: 'local, external, any' },
   phantom: { label: 'phantom', kind: 'flag', hint: 'test / phantom studies; use -phantom to exclude' },
   flag: { label: 'flag', kind: 'enum', values: ['drl', 'alert', 'any'], hint: 'studies above DRL or with an alert' },
+  ind: { label: 'indication', kind: 'text', hint: 'clinical indication codes, e.g. PED-TCE,TRM-TCE or TRM-* (a chapter)' },
 };
 
 // Romanian aliases are accepted on input and normalised to the English key.
-const ALIASES = { aparat: 'device', 'vârstă': 'age', varsta: 'age', greutate: 'weight', data: 'date', descriere: 'desc', protocol: 'proto', fantoma: 'phantom', 'fantomă': 'phantom', modalitate: 'modality', origine: 'origin' };
+const ALIASES = { aparat: 'device', 'vârstă': 'age', varsta: 'age', greutate: 'weight', data: 'date', descriere: 'desc', protocol: 'proto', fantoma: 'phantom', 'fantomă': 'phantom', modalitate: 'modality', origine: 'origin', indicatie: 'ind', 'indicație': 'ind' };
 
 /** Split respecting double quotes. */
 function lex(text) {
@@ -171,6 +172,7 @@ export function matchStudy(s, tokens, ctx) {
       case 'loc': ok = parseNumberCond(v)(s.events.localizer); break;
       case 'origin': ok = v === 'any' || (dev?.origin || 'local') === v; break;
       case 'phantom': if (!t.neg) phantomAllowed = true; ok = t.neg ? !s.test : s.test; break;
+      case 'ind': ok = splitList(v).some((x) => { const c = (s.indication || '').toUpperCase(); const w = x.toUpperCase(); return w.endsWith('*') ? c.startsWith(w.slice(0, -1)) && !!c : c === w; }); break;
       case 'flag': ok = v === 'any' ? s.flags.length > 0 : s.flags.some((f) => (v === 'alert' ? f.level === 'alert' : f.kind === 'drl')); break;
       default: ok = true;
     }

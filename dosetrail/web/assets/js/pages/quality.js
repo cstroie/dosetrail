@@ -74,9 +74,9 @@ function sizesPanel() {
         h('tbody', {}, r.issues.map((i) => h('tr', {}, h('td', {}, String(i.row)), h('td', {}, i.outcome.replaceAll('_', ' ')), h('td', {}, i.detail)))))) : '');
   };
   return h('div', {},
-    h('h2', { class: 'section-title' }, 'Import weight / height (CSV)'),
+    h('h2', { class: 'section-title' }, 'Import weight, height, indication (CSV)'),
     h('div', { class: 'panel' },
-      h('p', { class: 'muted small' }, 'Columns: a key (study_uid, accession, or patient_id + date [+ modality]), weight_kg and/or height_m / height_cm, optionally source (measured, chart_same_day, chart_72h, imported) or measured_at. A value replaces only a lower-ranked source, and only when plausible for age and sex.'),
+      h('p', { class: 'muted small' }, 'Columns: a key (study_uid, accession, or patient_id + date [+ modality]), then weight_kg and/or height_m / height_cm (optionally source: measured, chart_same_day, chart_72h, imported, or measured_at), and/or indication (the request text) / indication_code. A weight or height replaces only a lower-ranked source, and only when plausible for age and sex.'),
       h('div', { class: 'row' }, file,
         h('button', { class: 'btn', onclick: () => run(false) }, 'Check'),
         h('button', { class: 'btn primary', onclick: () => { if (confirm('Write these weights / heights?')) run(true); } }, 'Apply')),

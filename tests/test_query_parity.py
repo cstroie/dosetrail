@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from dosetrail.api.query import conditions, parse
-from dosetrail.db.models import Device, Event, Patient, Study
+from dosetrail.db.models import Device, Event, Patient, Study, StudyIndication
 
 HERE = Path(__file__).parent
 CORPUS = json.loads((HERE / "query_corpus.json").read_text())
@@ -43,8 +43,30 @@ def corpus_db(session):
             n_localizer=s["events"]["localizer"], source_kind="test")
         st.events.append(Event(protocol=s["protocol"], event_uid=f"e{i}"))
         session.add(st)
+        if s.get("indication"):
+            session.flush()
+            session.add(StudyIndication(study_id=st.id, code_id=_code(session, s["indication"]),
+                                        status="auto"))
     session.flush()
     return session
+
+
+def _code(session, code: str) -> int:
+    from sqlalchemy import select
+
+    from dosetrail.db.models import Code, CodeSystem
+
+    system = session.scalar(select(CodeSystem).filter_by(key="ro-nom-indications"))
+    if system is None:
+        system = CodeSystem(key="ro-nom-indications", name="indications")
+        session.add(system)
+        session.flush()
+    c = session.scalar(select(Code).filter_by(system_id=system.id, code=code))
+    if c is None:
+        c = Code(system_id=system.id, code=code, meaning=code)
+        session.add(c)
+        session.flush()
+    return c.id
 
 
 @pytest.mark.parametrize("case", [c["q"] for c in CORPUS["cases"]])

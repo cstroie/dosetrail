@@ -22,12 +22,12 @@ KEYS = {
     "modality": "enum", "date": "date", "device": "text", "desc": "text", "proto": "text",
     "age": "number", "weight": "number", "acc": "text", "pid": "text", "dlp": "number",
     "ctdi": "number", "spiral": "number", "axial": "number", "loc": "number",
-    "origin": "enum", "phantom": "flag", "flag": "enum",
+    "origin": "enum", "phantom": "flag", "flag": "enum", "ind": "text",
 }
 ALIASES = {
     "aparat": "device", "vârstă": "age", "varsta": "age", "greutate": "weight", "data": "date",
     "descriere": "desc", "protocol": "proto", "fantoma": "phantom", "fantomă": "phantom",
-    "modalitate": "modality", "origine": "origin",
+    "modalitate": "modality", "origine": "origin", "indicatie": "ind", "indicație": "ind",
 }
 YEAR_DAYS = 365.25
 
@@ -171,6 +171,20 @@ def _test_patients():
     return select(Patient.id).where(Patient.is_test.is_(True))
 
 
+def _indication(v: str) -> ColumnElement:
+    """Studies coded with one of the indication codes (``TRM-*``: a whole chapter);
+    suggestions that nobody confirmed don't count."""
+    from ..db.models import Code, StudyIndication
+    from ..indications import USED
+
+    want = [x.upper() for x in split_list(v)]
+    match = or_(*[Code.code.startswith(x[:-1], autoescape=True) if x.endswith("*")
+                  else Code.code == x for x in want]) if want else false()
+    return Study.id.in_(select(StudyIndication.study_id)
+                        .join(Code, Code.id == StudyIndication.code_id)
+                        .where(StudyIndication.status.in_(USED), match))
+
+
 def conditions(tokens: list[Token], now: dt.datetime,
                overrides: dict[int, str] | None = None) -> list[ColumnElement]:
     """SQL conditions on Study only (device/patient criteria become IN-subqueries), so counts
@@ -235,6 +249,8 @@ def conditions(tokens: list[Token], now: dt.datetime,
             is_test = and_(Study.patient_id.is_not(None), Study.patient_id.in_(_test_patients()))
             conds.append(not_(is_test) if t.neg else is_test)
             continue
+        elif k == "ind":
+            c = _indication(v)
         elif k == "flag":
             c = false()  # no DRL mapping / alert engine yet: nothing is flagged
         else:
