@@ -6,7 +6,9 @@ import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
 import { overview, lookup, studyHref, ackAlert, isSample } from '../core/api.js';
 
-const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', XA: '--m-rf', MG: '--m-mg' };
+// the API's groups are CT, DX, RF, MG (the sample data says XA); anything else takes the accent
+const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', CR: '--m-dx', RF: '--m-rf', XA: '--m-rf', MG: '--m-mg', NM: '--m-nm' };
+const modColor = (code) => MOD_COLOR[code] || '--accent';
 const page = document.getElementById('page');
 
 function sparkline(values, colorVar) {
@@ -24,11 +26,11 @@ function sparkline(values, colorVar) {
 function kpis(mods) {
   return h('section', { class: 'kpis', 'aria-label': 'Studies per modality' },
     mods.map((m) => h('a', { class: 'kpi', href: m.code === 'CT' ? 'studies.html' : '#', title: `${m.label}: ${m.weekly.join(', ')}` },
-      h('span', { class: 'code', style: { color: `var(${MOD_COLOR[m.code]})` } }, m.label),
+      h('span', { class: 'code', style: { color: `var(${modColor(m.code)})` } }, m.label),
       h('span', { class: 'v' }, num(m.week)),
       h('span', { class: 'm' }, `${t('overview.thisweek')} · ${m.delta_pct > 0 ? '+' : ''}${m.delta_pct}%`),
       h('span', { class: 'm mono' }, `${num(m.month)} ${t('overview.thismonth')}`),
-      sparkline(m.weekly, MOD_COLOR[m.code]))));
+      sparkline(m.weekly, modColor(m.code)))));
 }
 
 /** Alerts from the API carry study_id (their own id is the alert's); sample alerts do not. */
