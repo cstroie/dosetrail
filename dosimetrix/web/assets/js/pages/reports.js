@@ -6,6 +6,7 @@ import '../components/dt-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { t } from '../core/i18n.js';
+import { prefs } from '../core/prefs.js';
 import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
@@ -18,48 +19,59 @@ const sheetTitle = (s) => t(`rep.sheet.${s.key}`) === `rep.sheet.${s.key}` ? s.t
 const Q_KEYS = { 'DAP mediu': 'dap', 'DLP mediu': 'dlp', 'Doza medie în punctul de referință': 'kar', 'ESAK sau MGD': 'esak', 'Kerma în aer': 'kerma', DAP: 'dapd' };
 const qLabel = (q) => (Q_KEYS[q.label] ? t(`rep.q.${Q_KEYS[q.label]}`) : q.label);
 
+// One report at a time, chosen by whom it goes to (the choice is kept between visits).
+const TARGETS = ['insp', 'trend', 'grid', 'survey'];
+const fromUrl = new URLSearchParams(location.search).get('r');
+state.target = TARGETS.includes(fromUrl) ? fromUrl : (TARGETS.includes(prefs.get('reports.target')) ? prefs.get('reports.target') : 'insp');
+
 function render() {
   const years = [];
   for (let y = today.getFullYear(); y >= today.getFullYear() - 8; y -= 1) years.push(y);
-  const yearSel = h('select', { class: 'input', 'aria-label': 'Year', onchange: (e) => { state.year = Number(e.target.value); } },
+  const reload = () => ({ insp: load, trend: loadTrend, grid: loadGrid })[state.target]?.();
+  const targetSel = h('select', { class: 'input', 'aria-label': t('rep.target'), onchange: (e) => {
+    state.target = e.target.value;
+    prefs.set('reports.target', state.target);
+    render();
+  } }, TARGETS.map((k) => h('option', { value: k, selected: k === state.target }, t(`rep.to.${k}`))));
+  const yearSel = h('select', { class: 'input', 'aria-label': 'Year', onchange: (e) => { state.year = Number(e.target.value); reload(); } },
     years.map((y) => h('option', { value: y, selected: y === state.year }, String(y))));
-  const qSel = h('select', { class: 'input', 'aria-label': 'Quarter', onchange: (e) => { state.quarter = Number(e.target.value); } },
+  const qSel = h('select', { class: 'input', 'aria-label': 'Quarter', onchange: (e) => { state.quarter = Number(e.target.value); reload(); } },
     [1, 2, 3, 4].map((q) => h('option', { value: q, selected: q === state.quarter }, `T${q}`)));
-  clear(page).append(
-    h('h1', { class: 'section-title' }, t('rep.insp')),
-    h('div', { class: 'toolbar' }, yearSel, qSel,
-      h('button', { class: 'btn primary', type: 'button', onclick: load }, t('rep.preview')),
-      h('button', { class: 'btn', type: 'button', onclick: download }, t('rep.xlsx')),
-      h('span', { class: 'muted small' }, t('rep.insp.hint'))),
-    h('div', { id: 'rep' }),
-    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, t('rep.trend')),
-    h('div', { class: 'toolbar' },
-      h('button', { class: 'btn primary', type: 'button', onclick: loadTrend }, t('rep.trend.btn')),
-      h('button', { class: 'btn', type: 'button', onclick: () => {
-        const href = drlTrendUrl({ year: state.year, quarter: state.quarter });
-        if (!href) { toast(t('rep.needserver')); return; }
-        h('a', { href, download: '' }).click();
-      } }, t('rep.xlsx')),
-      h('span', { class: 'muted small' }, t('rep.trend.hint'))),
-    h('div', { id: 'trend' }),
-    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, t('rep.grid')),
-    h('div', { class: 'toolbar' },
-      h('button', { class: 'btn primary', type: 'button', onclick: loadGrid }, t('rep.grid.btn')),
-      h('button', { class: 'btn', type: 'button', onclick: () => {
-        const href = gridReportUrl({ year: state.year, quarter: state.quarter, estimated: state.estimated });
-        if (!href) { toast(t('rep.needserver')); return; }
-        h('a', { href, download: '' }).click();
-      } }, t('rep.xlsx')),
-      h('label', { class: 'row', title: 'Missing or implausible weights replaced by the median weight for age and sex (WHO to 10 y, CDC 2000 to 20 y). Off: those body exams count as "Weight unknown".' },
-        h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; loadGrid(); } }),
-        t('rep.grid.est')),
-      h('span', { class: 'muted small' }, t('rep.grid.hint'))),
-    h('div', { id: 'grid' }),
-    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, t('rep.survey')),
-    surveyBar(),
-    h('p', { class: 'muted small' }, t('rep.central'), h('a', { href: 'survey-central.html' }, t('rep.central.link'))),
-  );
-  load();
+  const xlsx = (url) => h('button', { class: 'btn', type: 'button', onclick: () => {
+    const href = url();
+    if (!href) { toast(t('rep.needserver')); return; }
+    h('a', { href, download: '' }).click();
+    toast(t('rep.started'));
+  } }, t('rep.xlsx'));
+  const sections = {
+    insp: () => [
+      h('div', { class: 'toolbar' }, yearSel, qSel,
+        h('button', { class: 'btn primary', type: 'button', onclick: load }, t('rep.preview')),
+        xlsx(() => inspReportUrl({ year: state.year, quarter: state.quarter })),
+        h('span', { class: 'muted small' }, t('rep.insp.hint'))),
+      h('div', { id: 'rep' })],
+    trend: () => [
+      h('div', { class: 'toolbar' }, yearSel, qSel,
+        h('button', { class: 'btn primary', type: 'button', onclick: loadTrend }, t('rep.trend.btn')),
+        xlsx(() => drlTrendUrl({ year: state.year, quarter: state.quarter })),
+        h('span', { class: 'muted small' }, t('rep.trend.hint'))),
+      h('div', { id: 'trend' })],
+    grid: () => [
+      h('div', { class: 'toolbar' }, yearSel, qSel,
+        h('button', { class: 'btn primary', type: 'button', onclick: loadGrid }, t('rep.grid.btn')),
+        xlsx(() => gridReportUrl({ year: state.year, quarter: state.quarter, estimated: state.estimated })),
+        h('label', { class: 'row', title: 'Missing or implausible weights replaced by the median weight for age and sex (WHO to 10 y, CDC 2000 to 20 y). Off: those body exams count as "Weight unknown".' },
+          h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; loadGrid(); } }),
+          t('rep.grid.est')),
+        h('span', { class: 'muted small' }, t('rep.grid.hint'))),
+      h('div', { id: 'grid' })],
+    survey: () => [
+      surveyBar(),
+      h('p', { class: 'muted small' }, t('rep.central'), h('a', { href: 'survey-central.html' }, t('rep.central.link')))],
+  };
+  clear(page).append(h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, t('rep.target')), targetSel),
+    h('h1', { class: 'section-title' }, t(`rep.${state.target}`)), ...sections[state.target]());
+  reload();
 }
 
 async function loadTrend() {
@@ -129,13 +141,6 @@ function surveyBar() {
       toast('Survey export started');
     } }, t('rep.survey.dl')),
     h('span', { class: 'muted small' }, t('rep.survey.hint')));
-}
-
-function download() {
-  const href = inspReportUrl({ year: state.year, quarter: state.quarter });
-  if (!href) { toast(t('rep.needserver')); return; }
-  h('a', { href, download: '' }).click();
-  toast(t('rep.started'));
 }
 
 async function load() {
