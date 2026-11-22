@@ -9,6 +9,7 @@ from sqlalchemy import and_, asc, desc, func, select
 from sqlalchemy.orm import Session
 
 from ..db.models import Device, Event, Patient, Study
+from ..patient_age import format_age
 from .query import conditions, parse
 
 YEAR_DAYS = 365.25
@@ -281,6 +282,7 @@ def study(session: Session, study_id: int) -> dict | None:
     return {
         "id": s.id, "accession": accession_display(s), "accession_hashed": s.accession_is_hashed,
         "modality": s.modality, "description": s.study_description or "",
+        "contrast": s.contrast_mode,
         "start": iso_min(min(times) if times else s.study_datetime),
         "end": iso_min(max(times) if times else s.study_datetime),
         "device": {"id": (d.merged_into_id or d.id) if d else None,
@@ -290,6 +292,7 @@ def study(session: Session, study_id: int) -> dict | None:
         "physician": s.performing_physician, "operator": s.operator_name,
         "requested_procedure": s.requested_procedure, "procedure": s.procedure_name,
         "patient": {**_patient_summary(s, p),
+                    "age_display": format_age(s.age_days) if s.age_days is not None else None,
                     "height_cm": round(s.height_m * 100) if s.height_m else None,
                     "weight_kg": s.weight_kg},
         "totals": {
@@ -300,10 +303,78 @@ def study(session: Session, study_id: int) -> dict | None:
             "n_events": s.n_events,
         },
         "thresholds": XA_THRESHOLDS if s.modality in ("RF", "XA") else None,
-        "alerts": [],
+        "alerts": _alerts(session, s.id),
+        "exams": _exams(session, s.id),
         "previous": _previous(session, s) if p else [],
-        "events": [_event(i + 1, e) for i, e in enumerate(events)],
+        "events": _with_references(session, s, events,
+                                   [_event(i + 1, e) for i, e in enumerate(events)]),
     }
+
+
+def _alerts(session: Session, study_id: int) -> list[dict]:
+    from ..db.models import Alert, AlertRule
+
+    rows = session.execute(select(Alert, AlertRule).join(AlertRule, AlertRule.id == Alert.rule_id)
+                           .where(Alert.study_id == study_id).order_by(Alert.id))
+    return [{"id": a.id, "level": a.severity, "kind": r.kind, "rule": r.key, "name": r.name,
+             "text": a.message, "status": a.status, "ack_by": a.ack_by}
+            for a, r in rows]
+
+
+def _exams(session: Session, study_id: int) -> list[dict]:
+    from ..db.models import Classification, Code, CodeSystem
+
+    rows = session.execute(
+        select(CodeSystem.key, CodeSystem.name, Code.code, Code.meaning)
+        .join(Code, Code.system_id == CodeSystem.id)
+        .join(Classification, Classification.code_id == Code.id)
+        .where(Classification.study_id == study_id, Classification.event_id.is_(None))
+        .order_by(CodeSystem.key, Code.code)).all()
+    return [{"system": k, "system_name": n, "code": c, "meaning": m} for k, n, c, m in rows]
+
+
+def _with_references(session: Session, s: Study, events: list, rows: list[dict]) -> list[dict]:
+    """Per event: its exam code and the DRL that applies to it (CT series: DLP and CTDIvol;
+    radiography exposure: the projection's DAP level, which the projection sums up to)."""
+    from ..db.models import Classification, Code, CodeSystem
+    from ..reference import CTReference
+    from ..stats import BandLookup
+
+    ids = [e.id for e in events]
+    own: dict[int, dict[str, str]] = {}
+    for eid, system, code in session.execute(
+            select(Classification.event_id, CodeSystem.key, Code.code)
+            .join(Code, Code.id == Classification.code_id).join(CodeSystem)
+            .where(Classification.event_id.in_(ids or [-1]))):
+        own.setdefault(eid, {})[system] = code
+    if s.modality == "CT":
+        ref = CTReference(session)
+        study_codes = ref.study_codes([s.id]).get(s.id, {})
+        for e, r in zip(events, rows, strict=True):
+            if e.is_localizer:
+                continue
+            codes = own.get(e.id) or study_codes
+            d = ref.for_series(codes, s.age_days, s.weight_kg)
+            r["exam"] = codes.get("ro-drl-ms838-2025") or codes.get("ec-rp185")
+            r["drl"] = {"dlp": d["dlp"], "ctdivol": d["ctdivol"], "source": d["source"]}
+        return rows
+    if s.modality in ("DX", "CR", "MG"):
+        from ..quality import Checker
+
+        drl = Checker(session).drl
+        band = BandLookup(session, "ro-drl-age", "age")(s.age_days)
+        from ..classify import FRONTAL_BY_DEFAULT, view_code
+
+        for e, r in zip(events, rows, strict=True):
+            codes = own.get(e.id, {})
+            r["exam"] = codes.get("ro-nom-rx")
+            r["projection"] = view_code(e.view, e.protocol) or (
+                "AP" if r["exam"] in FRONTAL_BY_DEFAULT else None)
+            nat = codes.get("ro-drl-ms838-2025")
+            value = drl.get((nat, band, "dap")) if nat else None
+            r["drl"] = {"dap": value, "source": {"dap": f"OMS 838/2025 {nat}"} if value else {},
+                        "code": nat}
+    return rows
 
 
 def _event(no: int, e: Event) -> dict:

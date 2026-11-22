@@ -306,3 +306,8 @@ export const createNode = (node) => send('POST', '/api/dicom/nodes', node);
 export const updateNode = (id, patch) => send('PATCH', `/api/dicom/nodes/${id}`, patch);
 export const deleteNode = (id) => send('DELETE', `/api/dicom/nodes/${id}`);
 export const echoNode = (id) => send('POST', `/api/dicom/nodes/${id}/echo`);
+
+/** POST /api/studies/{id}/identify → { name, id, birth_date } (pid role; audit-logged) */
+export function identifyStudy(id) {
+  return isSample ? Promise.reject(new Error('sample mode')) : send('POST', `/api/studies/${id}/identify`);
+}

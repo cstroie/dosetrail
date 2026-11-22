@@ -9,7 +9,8 @@ import { baseOption } from '../components/dt-chart.js';
 import { h, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mmss, clock, DAP_UNITS } from '../core/format.js';
-import { study, isSample } from '../core/api.js';
+import { study, isSample, identifyStudy, ackAlert } from '../core/api.js';
+import { renderStudy } from './study-generic.js';
 import { prefs } from '../core/prefs.js';
 
 const page = document.getElementById('page');
@@ -136,16 +137,30 @@ const EVENT_COLUMNS = [
   { key: 'duration_s', label: 'Dur.', unit: 's', align: 'right', render: (e) => num(e.duration_s, 1) },
 ];
 
+/** "Reveal…": the audited identify call (pid role); sample data carries the identity. */
+export function revealButton(s, identity) {
+  const btn = h('button', { class: 'btn xs no-print', type: 'button' }, t('study.reveal'));
+  btn.addEventListener('click', async () => {
+    if (!confirm('Show the patient name and ID? This is recorded in the audit log.')) return;
+    try {
+      const who = isSample ? s.patient.identified : await identifyStudy(s.id);
+      identity.textContent = `${who.name || '—'} · ${who.id || '—'}${who.birth_date ? ` · ${who.birth_date}` : ''}`;
+      btn.remove();
+    } catch (err) { toast(err.message.includes('pid') ? 'Your account does not have the identified-data (pid) role.' : err.message); }
+  });
+  return btn;
+}
+
 async function render() {
   const s = await study(ref);
+  if (!s.thresholds) {  // CT, radiography, mammography: the generic view
+    renderStudy(page, s, { revealButton, ackAlert });
+    return;
+  }
   let selected = 0;
   const p = s.patient;
   const identity = h('span', { class: 'mono' }, p.pseudo_id);
-  const revealBtn = h('button', { class: 'btn xs no-print', type: 'button', onclick: () => {
-    if (!confirm('Show the patient name and ID? This is recorded in the audit log.')) return;
-    identity.textContent = `${p.identified.name} · ${p.identified.id}`;
-    revealBtn.remove();
-  } }, t('study.reveal'));
+  const revealBtn = revealButton(s, identity);
 
   const unitSeg = h('span', { class: 'seg no-print', role: 'group', 'aria-label': 'DAP unit' },
     Object.keys(DAP_UNITS).map((u) => h('button', { type: 'button', 'aria-pressed': String(u === dapUnit()), onclick: () => {
