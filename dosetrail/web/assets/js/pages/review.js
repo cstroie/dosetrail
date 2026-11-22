@@ -3,6 +3,7 @@
 // every study with that text is reclassified at once. Saving needs the admin role.
 
 import '../components/dt-shell.js';
+import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { classificationSummary, unclassified, mappings, codes, decideMapping } from '../core/api.js';
@@ -38,12 +39,7 @@ function codeSelect(list) {
 
 async function render() {
   clear(page);
-  page.append(h('nav', { class: 'tabs', 'aria-label': 'Administration', style: { 'margin-bottom': 'var(--sp-3)' } },
-    h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'dicom.html' }, 'DICOM nodes'),
-    h('a', { href: 'review.html', 'aria-current': 'page' }, 'Protocol mappings'),
-    h('a', { href: 'drl.html' }, 'DRLs'),
-    h('a', { href: 'quality.html' }, 'Data quality'),
-    h('a', { href: 'rules.html' }, 'Alert rules')));
+  page.append(adminTabs('review.html'));
   let summary;
   try {
     summary = await classificationSummary();

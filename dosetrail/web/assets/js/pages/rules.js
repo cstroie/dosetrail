@@ -2,6 +2,7 @@
 // change is audit-logged). Seeding never overwrites a rule edited here.
 
 import '../components/dt-shell.js';
+import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { alertRules, updateAlertRule } from '../core/api.js';
 
@@ -9,10 +10,7 @@ const page = document.getElementById('page');
 const KIND = { threshold: 'Threshold', drl_ratio: '× national DRL', cumulative: 'Cumulative / patient', count: 'Studies / patient' };
 
 async function render() {
-  clear(page).append(h('nav', { class: 'tabs', 'aria-label': 'Administration', style: { 'margin-bottom': 'var(--sp-3)' } },
-    h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'dicom.html' }, 'DICOM nodes'), h('a', { href: 'review.html' }, 'Protocol mappings'),
-    h('a', { href: 'drl.html' }, 'DRLs'), h('a', { href: 'quality.html' }, 'Data quality'),
-    h('a', { href: 'rules.html', 'aria-current': 'page' }, 'Alert rules')));
+  clear(page).append(adminTabs('rules.html'));
   let rules;
   try { rules = await alertRules(); } catch (e) { page.append(h('p', { class: 'error' }, e.message)); return; }
   const body = h('tbody');

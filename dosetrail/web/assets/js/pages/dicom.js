@@ -3,6 +3,7 @@
 // and are audit-logged; the receiver picks up node changes within a minute.
 
 import '../components/dt-shell.js';
+import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { dicomStatus, createNode, updateNode, deleteNode, echoNode } from '../core/api.js';
@@ -12,10 +13,7 @@ const EMPTY = { name: '', aet: '', host: '', port: 104, enabled: true, query_ret
   retrieve: 'get', move_destination: '', modalities: '', max_results: null, timeout: 60, sync_days: null, notes: '' };
 
 function tabs() {
-  return h('nav', { class: 'tabs', 'aria-label': 'Administration', style: { 'margin-bottom': 'var(--sp-3)' } },
-    h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'dicom.html', 'aria-current': 'page' }, 'DICOM nodes'),
-    h('a', { href: 'review.html' }, 'Protocol mappings'), h('a', { href: 'drl.html' }, 'DRLs'),
-    h('a', { href: 'quality.html' }, 'Data quality'), h('a', { href: 'rules.html' }, 'Alert rules'));
+  return adminTabs('dicom.html');
 }
 
 function ago(s) {

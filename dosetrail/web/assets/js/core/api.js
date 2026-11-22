@@ -311,3 +311,10 @@ export const echoNode = (id) => send('POST', `/api/dicom/nodes/${id}/echo`);
 export function identifyStudy(id) {
   return isSample ? Promise.reject(new Error('sample mode')) : send('POST', `/api/studies/${id}/identify`);
 }
+
+/* ---------------- users and audit (admin) ---------------- */
+export function users() { return isSample ? serverOnly('Users') : remote('/api/users'); }
+export const createUser = (u) => send('POST', '/api/users', u);
+export const updateUser = (username, patch) => send('PATCH', `/api/users/${encodeURIComponent(username)}`, patch);
+/** GET /api/audit?limit=&action=&user_name=&text=&since=&before_id= → { rows, actions, more } */
+export function auditLog(params = {}) { return isSample ? serverOnly('Audit log') : remote('/api/audit', params); }

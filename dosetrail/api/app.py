@@ -43,7 +43,8 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "study.html": "study.html", "charts.html": "charts.html",
          "devices.html": "devices.html", "drl.html": "drl.html", "review.html": "review.html",
          "reports.html": "reports.html", "quality.html": "quality.html",
-         "rules.html": "rules.html", "dicom.html": "dicom.html"}
+         "rules.html": "rules.html", "dicom.html": "dicom.html",
+         "users.html": "users.html", "audit.html": "audit.html"}
 
 
 class LoginIn(BaseModel):
@@ -65,6 +66,14 @@ class MergeIn(BaseModel):
 
 class DismissIn(BaseModel):
     record_ids: list[int]
+
+
+class UserIn(BaseModel):
+    username: str | None = None
+    name: str | None = None
+    roles: list[str] | None = None
+    active: bool | None = None
+    password: str | None = None
 
 
 class NodeIn(BaseModel):
@@ -333,6 +342,60 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def code_list(system: str, user: User = Depends(current_user),
                   session: Session = Depends(db)):
         return _review(lambda: review.codes(session, system))
+
+    # ------------------------------------------------------------------ users, audit
+
+    def _users(fn):
+        from . import users
+
+        try:
+            return fn(users)
+        except users.UserError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/users")
+    def user_list(user: User = Depends(admin_user), session: Session = Depends(db)):
+        from . import users
+
+        return {"users": users.listing(session), "roles": users.ROLE_HELP}
+
+    @app.post("/api/users")
+    def user_create(body: UserIn, request: Request, user: User = Depends(admin_user),
+                    session: Session = Depends(db)):
+        from . import users
+
+        u = _users(lambda m: m.create(session, body.model_dump(exclude_unset=True)))
+        _audit(session, request, user, "user.create", f"user:{u.username}",
+               {"roles": u.roles, "name": u.display_name})
+        session.commit()
+        return users.as_dict(u)
+
+    @app.patch("/api/users/{username}")
+    def user_update(username: str, body: UserIn, request: Request,
+                    user: User = Depends(admin_user), session: Session = Depends(db)):
+        from . import users
+
+        u, changes = _users(lambda m: m.update(session, user, username,
+                                               body.model_dump(exclude_unset=True)))
+        _audit(session, request, user, "user.update", f"user:{u.username}", changes)
+        session.commit()
+        return {**users.as_dict(u), "changes": changes}
+
+    @app.get("/api/audit")
+    def audit_log(limit: int = 200, action: str | None = None, user_name: str | None = None,
+                  text: str | None = None, since: str | None = None,
+                  before_id: int | None = None, user: User = Depends(admin_user),
+                  session: Session = Depends(db)):
+        import datetime as _dt
+
+        from . import users
+
+        try:
+            day = _dt.date.fromisoformat(since) if since else None
+        except ValueError as e:
+            raise HTTPException(400, "since is YYYY-MM-DD") from e
+        return users.audit(session, min(max(limit, 1), 1000), action, user_name, text, day,
+                           before_id)
 
     # ------------------------------------------------------------------ DICOM nodes
 

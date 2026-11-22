@@ -2,6 +2,7 @@
 // most recent studies with findings. Rules are explained in dosetrail/quality.py.
 
 import '../components/dt-shell.js';
+import { adminTabs } from '../components/admin-tabs.js';
 import '../components/dt-query-bar.js';
 import { h, clear, append } from '../core/dom.js';
 import { num } from '../core/format.js';
@@ -21,10 +22,7 @@ function render() {
   const qb = h('dt-query-bar', { value: q });
   qb.addEventListener('query-change', (e) => { q = e.detail; prefs.set('quality.q', q); load(); });
   clear(page).append(
-    h('nav', { class: 'tabs', 'aria-label': 'Administration', style: { 'margin-bottom': 'var(--sp-3)' } },
-      h('a', { href: 'devices.html' }, 'Devices'), h('a', { href: 'dicom.html' }, 'DICOM nodes'), h('a', { href: 'review.html' }, 'Protocol mappings'),
-      h('a', { href: 'drl.html' }, 'DRLs'), h('a', { href: 'quality.html', 'aria-current': 'page' }, 'Data quality'),
-      h('a', { href: 'rules.html' }, 'Alert rules')),
+    adminTabs('quality.html'),
     qb, h('div', { id: 'qa' }));
   load();
 }

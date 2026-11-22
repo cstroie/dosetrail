@@ -352,3 +352,32 @@ def test_dicom_node_endpoints(client):
     assert "CT1" in client.get("/api/dicom/status").json()["local"]["allowed"]
     assert client.post(f"/api/dicom/nodes/{nid}/echo").status_code == 400  # no host
     assert client.delete(f"/api/dicom/nodes/{nid}").json() == {"deleted": "CT 1"}
+
+
+def test_users_and_audit(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/users").status_code == 403
+    assert client.get("/api/audit").status_code == 403
+    login(client, "boss", "boss-pass-123")
+    body = client.get("/api/users").json()
+    assert "pid" in body["roles"] and any(u["username"] == "boss" for u in body["users"])
+    bad = client.post("/api/users", json={"username": "nurse", "password": "short",
+                                         "roles": ["viewer"]})
+    assert bad.status_code == 400 and "10 characters" in bad.json()["error"]
+    assert client.post("/api/users", json={"username": "nurse", "password": "long-enough-1",
+                                           "roles": ["root"]}).status_code == 400
+    r = client.post("/api/users", json={"username": "nurse", "name": "Nurse",
+                                        "password": "long-enough-1", "roles": ["viewer"]})
+    assert r.json()["roles"] == ["viewer"]
+    r = client.patch("/api/users/nurse", json={"roles": ["viewer", "exporter"],
+                                               "password": "another-pass-2"}).json()
+    assert r["changes"]["password"] == "changed" and r["roles"] == ["exporter", "viewer"]
+    assert client.patch("/api/users/boss", json={"active": False}).status_code == 400
+    assert client.patch("/api/users/boss", json={"roles": ["viewer"]}).status_code == 400
+    log = client.get("/api/audit", params={"action": "user."}).json()
+    acts = [x["action"] for x in log["rows"]]
+    assert acts[:2] == ["user.update", "user.create"]
+    assert "another-pass" not in str(log) and "long-enough" not in str(log)
+    client.cookies.clear()
+    assert client.post("/api/login", json={"username": "nurse",
+                                           "password": "another-pass-2"}).status_code == 200
