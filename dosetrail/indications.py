@@ -176,9 +176,14 @@ def _texts(req: StudyRequest | None, study: Study) -> list[tuple[str, str]]:
 
 def update(session: Session, study_ids: Iterable[int] | None = None,
            matcher: Matcher | None = None, batch: int = 2000) -> Counter:
-    """(Re)code the given studies, or every study with an indication text."""
-    m = matcher or Matcher(session)
+    """(Re)code the given studies, or every study with an indication text. Without the
+    vocabulary (not seeded yet) nothing happens: imports must not fail on it."""
     stats: Counter = Counter()
+    try:
+        m = matcher or Matcher(session)
+    except ValueError:
+        stats["no_vocabulary"] += 1
+        return stats
     if study_ids is None:
         ids = sorted(set(session.scalars(select(StudyRequest.study_id))) | set(session.scalars(
             select(Study.id).where(Study.indication_text.is_not(None)))))
