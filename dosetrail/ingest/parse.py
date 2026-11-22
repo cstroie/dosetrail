@@ -90,6 +90,20 @@ def _datetime(d, t) -> dt.datetime | None:
     return parse_dt(f"{str(d)[:8]}{(str(t) if t else '').replace(':', '')}")
 
 
+def _indication(ds) -> str | None:
+    """The request's reason, where the RIS / modality wrote one: Reason for the Requested
+    Procedure (0040,1002), Reason for Study (0032,1030), Admitting Diagnoses (0008,1080),
+    also inside the Request Attributes Sequence."""
+    seqs = [ds, *(ds.get("RequestAttributesSequence") or [])]
+    for item in seqs:
+        for kw in ("ReasonForTheRequestedProcedure", "ReasonForStudy",
+                   "AdmittingDiagnosesDescription"):
+            v = _s(item.get(kw), 1024)
+            if v:
+                return v
+    return None
+
+
 def _header(ds) -> tuple[dict, dict, dict]:
     study_dt = _datetime(ds.get("StudyDate"), ds.get("StudyTime"))
     study = {
@@ -106,7 +120,9 @@ def _header(ds) -> tuple[dict, dict, dict]:
         "weight_kg": _f(ds.get("PatientWeight")) or None,
         "height_m": _f(ds.get("PatientSize")) or None,
         "dicom_age": _s(ds.get("PatientAge"), 8),
+        "indication_text": _indication(ds),
     }
+    study["indication_source"] = "dicom" if study["indication_text"] else None
     patient = {
         "patient_id": _s(ds.get("PatientID"), 64),
         "issuer": _s(ds.get("IssuerOfPatientID"), 64),

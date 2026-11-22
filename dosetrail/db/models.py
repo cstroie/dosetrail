@@ -180,6 +180,10 @@ class Study(TimestampMixin, Base):
     gestation_weeks: Mapped[int | None] = mapped_column(SmallInteger)
     contrast_mode: Mapped[str | None] = mapped_column(AsciiId(4))  # N / C / NC / MF
     drl_exclusion: Mapped[str | None] = mapped_column(Text(64))  # reason, NULL = eligible
+    # clinical indication as text, when it comes from the DICOM header or a CSV file (the
+    # HIS request's text is in study_request); coded in study_indication (indications.py)
+    indication_text: Mapped[str | None] = mapped_column(Text(1024))
+    indication_source: Mapped[str | None] = mapped_column(AsciiId(8))  # dicom / csv
 
     # precomputed totals (storage units) – maintained by ingest and `dosetrail recompute`
     n_events: Mapped[int] = mapped_column(Integer, default=0)
@@ -644,6 +648,19 @@ class HisLookup(TimestampMixin, Base):
     detail: Mapped[dict | None] = mapped_column(JSONType)
 
     __table_args__ = (Index("ix_his_lookup_due", "status", "next_try_at"),)
+
+
+class StudyIndication(Base):
+    """The study's clinical indication code (ro-nom-indications), see indications.py."""
+
+    __tablename__ = "study_indication"
+    study_id: Mapped[int] = mapped_column(ForeignKey("study.id", ondelete="CASCADE"),
+                                          primary_key=True)
+    code_id: Mapped[int] = mapped_column(ForeignKey("code.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(AsciiId(12))  # auto / suggested / confirmed / manual
+    score: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str | None] = mapped_column(AsciiId(12))  # his_guide / his_text / dicom / csv
+    matched_text: Mapped[str | None] = mapped_column(Text(255))  # normalised text matched
 
 
 class StudyRequest(TimestampMixin, Base):

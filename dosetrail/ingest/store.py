@@ -40,7 +40,7 @@ from .parse import ParsedObject, age_from
 
 STUDY_FIELDS = ("accession", "study_datetime", "study_description", "requested_procedure",
                 "procedure_name", "performing_physician", "operator_name",
-                "referring_physician")
+                "referring_physician", "indication_text", "indication_source")
 
 
 @dataclass
@@ -275,10 +275,11 @@ def _recent(when: dt.datetime | None) -> bool:
 def derive(session: Session, study_ids: list[int]) -> None:
     """Values derived from weight, age and doses: weight estimates, DRL exclusions, skin
     dose, alerts. Run after anything changes them (ingest, HIS enrichment)."""
-    from .. import alerts, growth, skindose, ssde
+    from .. import alerts, growth, indications, skindose, ssde
 
     growth.estimate_weights(session, study_ids)
     ssde.update(session, study_ids)
+    indications.update(session, study_ids)
     growth.apply_exclusions(session, study_ids)
     skindose.update_psd(session, study_ids)
     alerts.evaluate(session, study_ids)
