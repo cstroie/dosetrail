@@ -410,6 +410,34 @@ def test_plan_of_measures_crud_and_deadline_marking(client):
     assert client.post("/api/deadlines/insp:2026Q3/done").status_code == 403
 
 
+def test_exports_list_run_and_audit_through_one_pair_of_routes(client):
+    login(client, "viewer", "viewer-pass-1")
+    ls = client.get("/api/exports").json()
+    cohort = next(x for x in ls["specs"] if x["id"] == "dosimetrix-cohort")
+    assert cohort["allowed"] is False and ls["problems"] == [] and ls["plugins"] == []
+    assert client.get("/api/exports/dosimetrix-cohort",
+                      params={"from": "2026-01-01", "to": "2026-12-31"}).status_code == 403
+    login(client, "regist", "regist-pass-12")
+    assert next(x for x in client.get("/api/exports").json()["specs"]
+                if x["id"] == "dosimetrix-cohort")["allowed"] is True
+    r = client.get("/api/exports/dosimetrix-cohort",
+                   params={"from": "2026-01-01", "to": "2026-12-31", "q": "modality:XA"})
+    assert r.status_code == 200, r.text
+    sheet = r.json()["books"][0]["sheets"][0]
+    assert sheet["columns"][0] == "Study" and len(sheet["rows"]) == 1  # the one XA study
+    x = client.get("/api/exports/dosimetrix-cohort", params={
+        "from": "2026-01-01", "to": "2026-12-31", "q": "", "format": "xlsx"})
+    assert x.status_code == 200 and x.content[:2] == b"PK"
+    assert client.get("/api/exports/dosimetrix-cohort", params={"from": "x"}).status_code == 400
+    assert client.get("/api/exports/dosimetrix-cohort", params={
+        "from": "2026-01-01", "to": "2026-12-31", "format": "zip"}).status_code == 400
+    assert client.get("/api/exports/nope").status_code == 404
+    login(client, "boss", "boss-pass-123")
+    log = client.get("/api/audit", params={"action": "report"}).json()["rows"]
+    assert any(x["target"] == "spec:dosimetrix-cohort@1:json" and x["user"] == "regist"
+               for x in log)
+
+
 def test_survey_export_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/survey/export", params={"month": "2026-11", "q": "", "format": "json"})

@@ -170,6 +170,68 @@ def _cmd_survey_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_export(args: argparse.Namespace) -> int:
+    """List the report specs, their fields, or run one (any spec dropped in the specs folder)."""
+    import datetime as dt
+    import getpass
+
+    from .db.models import AuditLog
+    from .db.session import make_engine, make_sessionmaker
+    from .specs import loader, plugins, registry, run, writers
+
+    settings = load_settings()
+    plugins.load(settings.plugins_dir)
+    cat = loader.discover(settings.specs_dir)
+    if args.action == "list":
+        for s in cat.specs.values():
+            tag = "bundled" if s.bundled else "site"
+            print(f"{s.id:34} {s.kind:8} v{s.version:10} {s.country or '-':3} {tag:8} {s.label()}")
+        for p in cat.problems:
+            print(f"PROBLEM {p['file']}: {p['error']}", file=sys.stderr)
+        return 0
+    if args.action == "fields":
+        from .specs import fields  # noqa: F401
+
+        for f in sorted(registry.FIELDS.values(), key=lambda f: f.name):
+            print(f"{f.name:28} {'PID ' if f.identifying else '    '}{f.unit:8} "
+                  f"{' '.join(f.doc.split())}")
+        print("\ntransforms: " + ", ".join(sorted(registry.TRANSFORMS)))
+        return 0
+    spec = cat.specs.get(args.spec)
+    if spec is None:
+        print(f"no spec {args.spec!r}; `dosimetrix specs list`", file=sys.stderr)
+        return 2
+    raw = dict(p.split("=", 1) for p in args.param or [] if "=" in p)
+    fmt = args.format or (args.output.rsplit(".", 1)[-1] if args.output and "." in args.output
+                          else spec.formats[0])
+    engine = make_engine(args.url or settings.database_url)
+    now = dt.datetime.now()
+    try:
+        with make_sessionmaker(engine)() as session:
+            ctx = run.build(session, spec, raw, secret=_secret(), now=now,
+                            username=f"cli:{getpass.getuser()}")
+            result = run.run(ctx)
+            session.add(AuditLog(username=ctx.username, action="report",
+                                 target=f"spec:{spec.id}@{spec.version}:{fmt}",
+                                 detail={"params": raw, "pid": run.needs_pid(spec),
+                                         "file": args.output}))
+            session.commit()
+            if not args.output:
+                import json
+
+                print(json.dumps(writers.as_json(result, ctx), ensure_ascii=False, default=str,
+                                 indent=1))
+                return 0
+            with open(args.output, "wb") as fh:
+                run.write(result, fmt, fh, ctx)
+    except loader.SpecError as e:
+        print(f"{spec.id}: {e}", file=sys.stderr)
+        return 2
+    n = sum(len(s.rows) for b in result.books for s in b.sheets)
+    print(f"{spec.id}: {len(result.books)} workbook(s), {n} rows -> {args.output}")
+    return 0
+
+
 def _cmd_esak_curve(args: argparse.Namespace) -> int:
     """The tube output curve of a device (Order 1255/2016 annex 2): set / show / clear."""
     import csv
@@ -1139,6 +1201,16 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("-o", "--output", required=True)
     rp.add_argument("--url")
     rp.set_defaults(func=_cmd_report_1255)
+
+    ex = sub.add_parser("specs", help="report specs: list them, show their fields, run one "
+                                      "(a spec file dropped in the specs folder appears here)")
+    ex.add_argument("action", choices=["list", "fields", "run"])
+    ex.add_argument("spec", nargs="?", help="spec id (for run)")
+    ex.add_argument("-p", "--param", action="append", help="key=value, e.g. year=2026 (repeat)")
+    ex.add_argument("-o", "--output", help="file; the extension picks the format (no file: JSON)")
+    ex.add_argument("--format", choices=["xlsx", "csv", "json", "zip"])
+    ex.add_argument("--url")
+    ex.set_defaults(func=_cmd_export)
 
     ec = sub.add_parser("esak-curve", help="X-ray tube output curve of a device (annex 2 of "
                                            "Order 1255/2016), for ESAK without a DAP meter")

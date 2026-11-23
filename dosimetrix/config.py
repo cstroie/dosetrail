@@ -45,6 +45,10 @@ class Settings:
     pacs_modalities: list[str] = field(
         default_factory=lambda: ["CT", "DX", "CR", "RF", "XA", "MG", "NM", "PT", "SR"])
     pacs_max_results: int | None = None  # the PACS C-FIND cap, if any
+    # report specs (dosimetrix/specs): the folder a dropped spec file is picked up from, and the
+    # folder of trusted Python plugins that register fields / transforms / kinds
+    specs_dir: Path = field(default_factory=lambda: _config_dir() / "specs")
+    plugins_dir: Path = field(default_factory=lambda: _config_dir() / "plugins")
     source: Path | None = None
     notify: dict = field(default_factory=dict)  # [notify] table, see dosimetrix/notify.py
 
@@ -108,6 +112,11 @@ def load_settings() -> Settings:
                 s.secret_file = Path(sec["secret_file"]).expanduser()
             s.session_hours = float(sec.get("session_hours", s.session_hours))
             s.secure_cookies = bool(sec.get("secure_cookies", s.secure_cookies))
+            sp = raw.get("specs", {})
+            if "dir" in sp:
+                s.specs_dir = Path(sp["dir"]).expanduser()
+            if "plugins_dir" in sp:
+                s.plugins_dir = Path(sp["plugins_dir"]).expanduser()
             s.notify = dict(raw.get("notify", {}))
             s.source = path
             break

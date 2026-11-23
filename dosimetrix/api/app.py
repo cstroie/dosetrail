@@ -209,6 +209,15 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     app.state.secret = secret
     app.state.settings = settings
     app.state.fixed_now = now  # tests only
+    from ..specs import plugins as _plugins
+
+    app.state.plugins = _plugins.load(settings.plugins_dir)  # trusted code, see specs/plugins.py
+    if app.state.plugins:
+        with maker() as s0:
+            for pl in app.state.plugins:
+                s0.add(AuditLog(username="system", action="plugin", target=pl["file"],
+                                detail={"sha256": pl["sha256"], "error": pl["error"]}))
+            s0.commit()
 
     def db() -> Iterator[Session]:
         with maker() as session:
@@ -1523,6 +1532,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 "De": user.display_name or user.username, "Selecție": q or "(toate)"}
         return _file(lambda fh: insp1255.write_xlsx(report, fh, info), "xlsx",
                      f"insp-1255-{year}-T{quarter}", now)
+
+    from . import exports as _exports
+
+    _exports.register(app, db=db, current_user=current_user, clock=clock, file_response=_file,
+                      audit=_audit, settings=settings, secret=secret)
 
     @app.get("/api/reports/art12")
     def report_art12(request: Request, year: int, q: str = "origin:local", format: str = "json",

@@ -8,7 +8,7 @@ import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
-import { actionList, addAction, editAction, deleteAction, art12Report, art12Url, inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
+import { exportList, exportRun, exportUrl, actionList, addAction, editAction, deleteAction, art12Report, art12Url, inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
@@ -21,14 +21,14 @@ const Q_KEYS = { 'DAP mediu': 'dap', 'DLP mediu': 'dlp', 'Doza medie în punctul
 const qLabel = (q) => (Q_KEYS[q.label] ? t(`rep.q.${Q_KEYS[q.label]}`) : q.label);
 
 // One report at a time, chosen by whom it goes to (the choice is kept between visits).
-const TARGETS = ['insp', 'art12', 'trend', 'operators', 'grid', 'survey'];
+const TARGETS = ['insp', 'art12', 'trend', 'operators', 'grid', 'survey', 'specs'];
 const fromUrl = new URLSearchParams(location.search).get('r');
 state.target = TARGETS.includes(fromUrl) ? fromUrl : (TARGETS.includes(prefs.get('reports.target')) ? prefs.get('reports.target') : 'insp');
 
 function render() {
   const years = [];
   for (let y = today.getFullYear(); y >= today.getFullYear() - 8; y -= 1) years.push(y);
-  const reload = () => ({ insp: load, art12: loadArt12, trend: loadTrend, grid: loadGrid, operators: loadOperators })[state.target]?.();
+  const reload = () => ({ specs: loadSpecs, insp: load, art12: loadArt12, trend: loadTrend, grid: loadGrid, operators: loadOperators })[state.target]?.();
   const targetSel = h('select', { class: 'input', 'aria-label': t('rep.target'), onchange: (e) => {
     state.target = e.target.value;
     prefs.set('reports.target', state.target);
@@ -83,6 +83,7 @@ function render() {
           t('rep.grid.est')),
         h('span', { class: 'muted small' }, t('rep.grid.hint'))),
       h('div', { id: 'grid' })],
+    specs: () => [h('div', { id: 'specs' })],
     survey: () => [
       surveyBar(),
       h('p', { class: 'muted small' }, t('rep.central'), h('a', { href: 'survey-central.html' }, t('rep.central.link')))],
@@ -90,6 +91,92 @@ function render() {
   clear(page).append(h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, t('rep.target')), targetSel),
     h('h1', { class: 'section-title' }, t(`rep.${state.target}`)), ...sections[state.target]());
   reload();
+}
+
+// Drop-in report specs (docs/specs.md): the list, the parameters and the preview all come from
+// the spec files, so a new file on the server adds an export here with no code.
+const specState = { id: null, params: {} };
+
+async function loadSpecs() {
+  const host = document.getElementById('specs');
+  clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
+  let list;
+  try { list = await exportList(); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
+  const lang = document.documentElement.lang === 'ro' ? 'ro' : 'en';
+  const specs = list.specs.filter((s) => s.allowed);
+  if (!specs.length) { clear(host).append(h('p', { class: 'empty' }, t('rep.none')), ...problemsNote(list)); return; }
+  const spec = specs.find((s) => s.id === specState.id) || specs[0];
+  specState.id = spec.id;
+  const pick = h('select', { class: 'input', 'aria-label': t('rep.target'), onchange: (e) => { specState.id = e.target.value; specState.params = {}; loadSpecs(); } },
+    specs.map((s) => h('option', { value: s.id, selected: s.id === spec.id }, `${s.title[lang] || s.title.en || s.id}${s.country ? ` · ${s.country}` : ''}`)));
+  const p = specState.params;
+  const input = (name, type, extra = {}) => {
+    const el = h('input', { class: 'input', type, 'aria-label': name, value: p[name] ?? extra.value ?? '', ...extra.attrs,
+      onchange: (e) => { p[name] = e.target.value; } });
+    if (p[name] === undefined && extra.value !== undefined) p[name] = extra.value;
+    return el;
+  };
+  const controls = [];
+  const period = (spec.params.period || {}).type || 'none';
+  const yr = today.getFullYear();
+  const years = Array.from({ length: 9 }, (_, i) => yr - i);
+  const sel = (name, options, value) => {
+    if (p[name] === undefined) p[name] = String(value);
+    return h('select', { class: 'input', 'aria-label': name, onchange: (e) => { p[name] = e.target.value; } },
+      options.map(([v, l]) => h('option', { value: v, selected: String(p[name]) === String(v) }, l)));
+  };
+  if (['year', 'quarter'].includes(period)) controls.push(sel('year', years.map((y) => [y, String(y)]), yr));
+  if (period === 'quarter') controls.push(sel('quarter', [1, 2, 3, 4].map((q) => [q, `T${q}`]), Math.ceil((today.getMonth() + 1) / 3)));
+  if (period === 'month') controls.push(input('month', 'month', { value: `${yr}-${String(today.getMonth() + 1).padStart(2, '0')}` }));
+  if (period === 'range') {
+    const first = new Date(yr, today.getMonth() - 1, 1);
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    controls.push(input('from', 'date', { value: iso(first) }), input('to', 'date', { value: iso(new Date(yr, today.getMonth(), 0)) }));
+  }
+  for (const [name, def] of Object.entries(spec.params)) {
+    if (name === 'period') continue;
+    controls.push(input(name, def.type === 'int' || def.type === 'float' ? 'number' : 'text', { value: def.default, attrs: { placeholder: name, class: name === 'q' ? 'input w-260' : 'input' } }));
+  }
+  const run = (format) => () => {
+    if (format === 'json') { preview(); return; }
+    const href = exportUrl(spec.id, p, format);
+    if (!href) { toast(t('rep.needserver')); return; }
+    h('a', { href, download: '' }).click();
+    toast(t('rep.started'));
+  };
+  const out = h('div', { id: 'spec-out' });
+  async function preview() {
+    clear(out).append(h('p', { class: 'muted' }, t('rep.loading')));
+    try { drawSpec(out, await exportRun(spec.id, p), lang); } catch (e) { clear(out).append(h('p', { class: 'error' }, e.message)); }
+  }
+  clear(host).append(
+    h('div', { class: 'toolbar' }, pick, ...controls, h('button', { class: 'btn primary', type: 'button', onclick: run('json') }, t('rep.preview')),
+      spec.formats.filter((f) => f !== 'json').map((f) => h('button', { class: 'btn', type: 'button', onclick: run(f) }, f.toUpperCase()))),
+    h('p', { class: 'muted small' }, [spec.authority, spec.legal, `v${spec.version}`].filter(Boolean).join(' · '),
+      spec.needs_pid ? h('span', { class: 'tag warn ml-1', title: t('rep.spec.pid') }, 'pid') : null),
+    out, ...problemsNote(list));
+}
+
+function problemsNote(list) {
+  return (list.problems || []).length ? [h('details', { class: 'mt-4' }, h('summary', { class: 'muted small' }, t('rep.spec.problems').replace('{n}', list.problems.length)),
+    list.problems.map((x) => h('p', { class: 'error small mono' }, `${x.file}: ${x.error}`)))] : [];
+}
+
+function drawSpec(host, r, lang) {
+  clear(host);
+  const MAX = 200;
+  for (const b of r.books) {
+    for (const s of b.sheets) {
+      const rows = s.rows.slice(0, MAX);
+      append(host, [h('h2', { class: 'section-title mt-4' }, r.books.length > 1 ? `${b.title || b.filename} · ${s.name}` : s.name,
+        h('span', { class: 'muted small ml-1' }, `${num(s.rows.length)} ${t('rep.spec.rows')}`)),
+      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll panel-scroll' }, h('table', { class: 'grid' },
+        h('thead', {}, h('tr', {}, s.columns.map((c) => h('th', {}, c)))),
+        h('tbody', {}, rows.length ? rows.map((row) => h('tr', {}, row.map((v) => h('td', { class: typeof v === 'number' ? 'r mono' : '' }, v == null ? '' : typeof v === 'number' ? smart(v) : String(v)))))
+          : h('tr', {}, h('td', { colspan: s.columns.length, class: 'empty' }, t('rep.none')))))),
+      s.rows.length > MAX ? h('p', { class: 'muted small' }, t('rep.spec.cut').replace('{n}', MAX)) : null)]);
+    }
+  }
 }
 
 // Art. 12: 20 patients per examination and device, February and March, due 15 April.

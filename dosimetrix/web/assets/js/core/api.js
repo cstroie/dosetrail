@@ -215,6 +215,17 @@ export function drlSets() {
 
 /** GET /api/drl/sets/{key} → { key, name, source, notes, values: [{ exam, exam_meaning, modality,
  *  scheme, band, band_label, quantity, value, unit, applies_to }] } */
+/** Report specs (docs/specs.md): GET /api/exports → { specs, problems, plugins };
+ *  GET /api/exports/{id}?format=&<params> runs one (json for the preview, or a file). */
+export const exportList = () => (isSample ? serverOnly('Reports') : remote('/api/exports'));
+export const exportRun = (id, params) => (isSample ? serverOnly('Reports') : remote(`/api/exports/${encodeURIComponent(id)}`, params));
+export function exportUrl(id, params, format) {
+  if (isSample) return null;
+  const u = new URL(`/api/exports/${encodeURIComponent(id)}`, MODE);
+  for (const [k, v] of Object.entries({ ...params, format })) if (v !== '' && v != null) u.searchParams.set(k, String(v));
+  return u.href;
+}
+
 /** Plan of optimisation measures (art. 7(2)): GET /api/actions?year=&quarter=; writes need exporter. */
 export const actionList = (year, quarter) => (isSample ? serverOnly('Reports') : remote('/api/actions', { year, quarter }));
 export const addAction = (a) => send('POST', '/api/actions', a);
