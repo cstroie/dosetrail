@@ -42,7 +42,7 @@ async function toggleStudies(tr, a) {
   const sub = h('tr', { class: 'exposures' }, cell);
   tr.after(sub);
   try {
-    const list = await alertStudies(a.id);
+    const list = (await alertStudies(a.id)).sort((x, y) => (x.time < y.time) - (x.time > y.time));  // most recent first
     const dose = (x) => [x.dlp != null ? `DLP ${num(x.dlp, 0)} mGy·cm` : null, x.ctdivol_max != null ? `CTDIvol ${num(x.ctdivol_max, 1)} mGy` : null,
       x.dap != null ? `DAP ${smart(x.dap)} Gy·cm²` : null, x.kar != null ? `Ka,r ${num(x.kar, 2)} Gy` : null].filter(Boolean).join(' · ');
     cell.replaceChildren(h('table', { class: 'grid' }, h('tbody', {}, list.map((x) => h('tr', { class: x.current ? 'hot' : '' },
