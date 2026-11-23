@@ -253,3 +253,38 @@ def test_retrieve_with_c_move(env):
     finally:
         pacs.stop()
         receiver.stop()
+
+
+def test_pet_ct_whose_images_came_first_gets_its_ct_dose_report(env):
+    maker, spool, worker, drain = env
+    pet = _date(f.pet_image(study_uid="5.9", sop_uid="5.9.1"))
+    ct_sr = _date(f.ct_rdsr(study_uid="5.9", sop_uid="5.9.2"))
+    from dosimetrix.ingest.parse import parse
+    from dosimetrix.ingest.store import Store
+
+    with maker() as s:  # the PET images were imported before the CT dose report existed
+        Store(s, b"q" * 32).store(parse(pet))
+        s.commit()
+    with maker() as s:
+        st = s.scalar(select(Study).filter_by(study_uid="5.9"))
+        assert st.modality == "PT" and st.total_dlp is None
+        assert qr.needs_ct_dose(s, "5.9")
+    pacs = FakePACS([pet, ct_sr])
+    try:
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        stats = qr.QRStats()
+        qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None)
+        assert stats.counts["ct_dose_studies"] == 1 and stats.counts["sr_objects"] == 1
+        with maker() as s:
+            st = s.scalar(select(Study).filter_by(study_uid="5.9"))
+            assert st.modality == "PT" and st.total_dlp == pytest.approx(822.5)
+            assert not qr.needs_ct_dose(s, "5.9")
+        stats2 = qr.QRStats()
+        qr.run_day(node, DAY, spool, drain, maker, stats2, pause=0, progress=lambda _m: None)
+        assert stats2.counts["skipped_known"] == 1
+        stats3 = qr.QRStats()  # the backfill finds nothing left to do
+        qr.ct_dose_backfill(node, DAY, spool, drain, maker, stats3, pause=0,
+                            progress=lambda _m: None)
+        assert not stats3.counts
+    finally:
+        pacs.stop()

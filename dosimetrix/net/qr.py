@@ -5,7 +5,9 @@ Selection per study (OpenREM's proven order, adapted):
 2. retrieve the SR series first and import them;
 3. for projection radiography (DX/CR/MG/RF/XA) retrieve the image series only if no dose
    report covered the study – their headers carry the dose;
-4. NM / PET: one image per series (its header holds the administered activity);
+4. NM / PET: one image per series (its header holds the administered activity). A PET/CT
+   or SPECT/CT whose images came first is revisited for its CT dose report (SR series
+   only) until an SR of it has been seen;
 5. CT: one image of the smallest series, only for its header – the operator and the
    performing physician, which most CT dose reports leave out. Other CT images never.
 
@@ -54,7 +56,7 @@ from pynetdicom.sop_class import (
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db.models import AppSetting, Event, Study
+from ..db.models import AppSetting, Event, IngestedObject, Study
 from .spool import Spool
 
 log = logging.getLogger("dosimetrix.qr")
@@ -390,6 +392,33 @@ def needs_activity(session: Session, study_uid: str) -> bool:
         Event.study_id == sid, Event.event_type == "radiopharmaceutical").limit(1)) is None
 
 
+SR_CLASS = "1.2.840.10008.5.1.4.1.1.88."
+
+
+def needs_ct_dose(session: Session, study_uid: str) -> bool:
+    """A known NM / PET study without a CT dose, none of whose SR objects we have seen:
+    the CT dose report of a PET/CT whose images came first."""
+    sid = session.scalar(select(Study.id).where(
+        Study.study_uid == study_uid, Study.modality.in_(NM_IMAGES), Study.total_dlp.is_(None)))
+    return sid is not None and session.scalar(select(IngestedObject.id).where(
+        IngestedObject.study_id == sid,
+        IngestedObject.sop_class_uid.startswith(SR_CLASS)).limit(1)) is None
+
+
+def fetch_sr(node: Node, study_uid: str, spool: Spool, drain: Callable[[], int],
+             stats: QRStats) -> int:
+    """Only the study's SR series (the dose report)."""
+    sr = [s["uid"] for s in find_series(node, study_uid) if s["modality"] == "SR"]
+    if not sr:
+        stats.add("no_sr_series")
+        return 0
+    r = retrieve(node, study_uid, sr, spool)
+    stats.add("sr_objects", r["delivered"])
+    if r["delivered"]:
+        drain()
+    return r["delivered"]
+
+
 def needs_staff(session: Session, study_uid: str) -> bool:
     """A CT study we have whose operator and performing physician are both unknown."""
     return session.scalar(select(Study.id).where(
@@ -470,7 +499,7 @@ def run_day(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
             else:
                 by_uid[h.uid] = h
     hits = list(by_uid.values())
-    todo = []
+    todo, ct_dose = [], []
     with session_factory() as session:
         for h in hits:
             mods = h.modalities - {"SR", "PR", "KO", "OT", "DOC"}
@@ -478,15 +507,28 @@ def run_day(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
             if not (mods & (wanted - {"SR"})) and not (sr_only and "SR" in wanted):
                 stats.add("skipped_not_xray")
                 continue
-            if in_database(session, h.uid) and not (h.modalities & NM_IMAGES
-                                                     and needs_activity(session, h.uid)):
-                stats.add("skipped_known")
+            if in_database(session, h.uid):
+                if h.modalities & NM_IMAGES and needs_activity(session, h.uid):
+                    todo.append(h)
+                elif h.modalities & {"SR", "CT"} and needs_ct_dose(session, h.uid):
+                    ct_dose.append(h)
+                else:
+                    stats.add("skipped_known")
                 continue
             todo.append(h)
-    progress(f"{day}: {len(hits)} studies, {len(todo)} to retrieve")
+    progress(f"{day}: {len(hits)} studies, {len(todo)} to retrieve"
+             + (f", {len(ct_dose)} PET/CT for the CT dose report" if ct_dose else ""))
     if dry_run:
-        stats.add("would_retrieve", len(todo))
+        stats.add("would_retrieve", len(todo) + len(ct_dose))
         return
+    for h in ct_dose:
+        try:
+            fetch_sr(node, h.uid, spool, drain, stats)
+            stats.add("ct_dose_studies")
+        except Exception as e:  # keep going
+            stats.add("study_errors")
+            log.warning("CT dose report of %s failed: %s", h.uid, e)
+        time.sleep(pause)
     lock = threading.Lock()
 
     def locked_drain() -> int:  # imports are serialised; retrievals run in parallel
@@ -531,6 +573,31 @@ def staff_backfill(node: Node, day: dt.date, spool: Spool, drain: Callable[[], i
         except Exception as e:  # keep going
             stats.add("study_errors")
             log.warning("staff for %s failed: %s", uid, e)
+        time.sleep(pause)
+
+
+def ct_dose_backfill(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
+                     session_factory, stats: QRStats, pause: float = 0.2,
+                     progress: Callable[[str], None] = print) -> None:
+    """NM / PET studies of the day already in the database without a CT dose and without
+    any SR seen: fetch their SR series (the CT dose report of a PET/CT)."""
+    lo = dt.datetime.combine(day, dt.time())
+    with session_factory() as session:
+        uids = [u for u in session.scalars(
+            select(Study.study_uid).where(Study.modality.in_(NM_IMAGES),
+                                          Study.total_dlp.is_(None),
+                                          Study.study_datetime >= lo,
+                                          Study.study_datetime < lo + dt.timedelta(days=1)))
+                if needs_ct_dose(session, u)]
+    if uids:
+        progress(f"{day}: {len(uids)} NM / PET studies without a CT dose")
+    for uid in uids:
+        try:
+            fetch_sr(node, uid, spool, drain, stats)
+            stats.add("ct_dose_studies")
+        except Exception as e:  # keep going
+            stats.add("study_errors")
+            log.warning("CT dose report of %s failed: %s", uid, e)
         time.sleep(pause)
 
 

@@ -891,8 +891,15 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     day = end
     while day >= start:  # newest first
         if (day.isoformat() in done and day < today - dt.timedelta(days=1)
-                and not args.staff):
+                and not (args.staff or args.ct_dose)):
             report(f"{day}: already done")
+        elif args.ct_dose:  # known NM / PET studies: their CT dose report (SR series only)
+            stats = qr.QRStats()
+            if not args.dry_run:
+                qr.ct_dose_backfill(node, day, worker.spool, drain, maker, stats, args.pause,
+                                    progress=report)
+            if stats.counts:
+                report(f"{day}: {dict(stats.counts)}; imported {worker.stats}", force=True)
         elif args.staff:  # known CT studies: one image header each for the staff names
             stats = qr.QRStats()
             if not args.dry_run:
@@ -1148,6 +1155,9 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--staff", action="store_true",
                    help="only CT studies already imported without operator / physician: "
                         "fetch one image header each")
+    q.add_argument("--ct-dose", action="store_true",
+                   help="only NM / PET studies already imported without a CT dose: fetch "
+                        "their SR series (PET/CT whose images came first)")
     q.add_argument("--pause", type=float, default=0.2, help="seconds between studies")
     q.add_argument("--workers", type=int, default=1,
                    help="studies retrieved in parallel (mind the PACS load)")
