@@ -136,7 +136,7 @@ def test_overview_and_pages(client):
     login(client, "viewer", "viewer-pass-1")
     ov = client.get("/api/overview").json()
     # tiles follow the modalities the local devices produce: the fixture has no CT, so no CT tile
-    assert [m["code"] for m in ov["modalities"]] == ["DX", "RF", "MG"]
+    assert [m["code"] for m in ov["modalities"]] == ["DX", "XA", "MG"]
     assert ov["feeds"][0]["status"] == "stale"  # last study 5 days ago
     page = client.get("/studies.html")
     assert page.status_code == 200 and 'data-api="http://testserver"' in page.text

@@ -35,7 +35,7 @@
   --ref: #FF6B5E;   /* reference lines (DRL, thresholds) */
 
   /* modalities */
-  --m-ct: #3987e5; --m-dx: #199e70; --m-rf: #d95926; --m-mg: #d55181; --m-nm: #c98500; --m-pt: #7c5cd6;
+  --m-ct: #3987e5; --m-dx: #199e70; --m-rf: #d95926; --m-xa: #1f9fb5; --m-mg: #d55181; --m-nm: #c98500; --m-pt: #7c5cd6;
 
   /* categorical series for devices, fixed order; validated on the dark panel */
   --d1: #3987e5; --d2: #d95926; --d3: #199e70; --d4: #c98500;
@@ -64,7 +64,7 @@
   --warn: #8A5300;  --warn-soft: #FCEFD6;
   --alert: #B3261E; --alert-soft: #FBE6E4;
   --ref: #B3261E;
-  --m-ct: #2a78d6; --m-dx: #1baf7a; --m-rf: #eb6834; --m-mg: #e87ba4; --m-nm: #a87200; --m-pt: #9a80e8;
+  --m-ct: #2a78d6; --m-dx: #1baf7a; --m-rf: #eb6834; --m-xa: #3fbcd2; --m-mg: #e87ba4; --m-nm: #a87200; --m-pt: #9a80e8;
   --d1: #2a78d6; --d2: #eb6834; --d3: #1baf7a; --d4: #eda100;
   --d5: #e87ba4; --d6: #008300; --d7: #6250d6; --d8: #e34948;
   --seq: #674994;

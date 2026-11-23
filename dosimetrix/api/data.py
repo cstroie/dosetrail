@@ -15,7 +15,7 @@ from .query import conditions, parse
 
 YEAR_DAYS = 365.25
 STALE_DAYS = 2
-GROUPS = [("CT", "CT", ["CT"]), ("DX", "DX/CR", ["DX", "CR"]), ("RF", "RF/XA", ["RF", "XA"]),
+GROUPS = [("CT", "CT", ["CT"]), ("DX", "DX/CR", ["DX", "CR"]), ("RF", "RF", ["RF"]), ("XA", "XA", ["XA"]),
           ("MG", "MG", ["MG"]), ("NM", "NM", ["NM"]), ("PT", "PT", ["PT"])]
 # Fluoroscopy alert thresholds: configuration defaults until the alert engine exists (M5)
 XA_THRESHOLDS = {"dap_gycm2": 250, "kar_gy": 3.0, "kar_notify_gy": 1.0, "cum_kar_gy": 5.0,
