@@ -57,8 +57,8 @@ def render(ds) -> bytes | None:
             log.warning("dose pages are not read (%s): pip install 'dosimetrix[ocr]'", e)
             _warned = True
         return None
-    if a.ndim == 3:
-        a = a.max(axis=2)
+    if a.ndim == 3:  # luminance, not the brightest channel: the blue grid lines must stay dark
+        a = a[..., :3] @ np.array([0.299, 0.587, 0.114])
     page = Image.fromarray(np.where(a > THRESHOLD, 0, 255).astype("uint8"))
     page = page.resize((page.width * 2, page.height * 2), Image.LANCZOS)
     out = io.BytesIO()
@@ -131,7 +131,7 @@ def parse_text(text: str) -> dict | None:
 
 def event_type(protocol: str) -> str:
     p = protocol.lower()
-    if re.search(r"scano|scout|surview|topo|locali", p):
+    if re.search(r"dual\s*s|scano|scout|surview|topo|locali", p):
         return "localizer"
     if "helic" in p or "spiral" in p:
         return "spiral"

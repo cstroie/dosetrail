@@ -14,7 +14,7 @@ PAGE2 = """Patient ID : 1234567890123 Study Date :2021/04/14
 1.Cardiac CTA/CFA
 #of CTDIvol DLP
 No. Protocol scan(s) kVp (mGy) (mGy.cm)
-1 DualScano 1 120
+1 DualSecano 1 120
 2 DualScano 1 120
 2.90 0.60
 3 S&V 1 100 (Body) (Body)

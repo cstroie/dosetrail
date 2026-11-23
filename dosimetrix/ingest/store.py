@@ -173,7 +173,10 @@ class Store:
     def store(self, obj: ParsedObject) -> Result:
         seen = self.session.scalar(select(IngestedObject)
                                    .filter_by(sop_instance_uid=obj.sop_instance_uid[:64]))
-        if seen is not None and seen.status in ("imported", "superseded", "ignored"):
+        # an object ignored before may be usable now (a parser learnt it, e.g. the OCR of a
+        # dose page): only a second "ignored" verdict is a duplicate
+        if seen is not None and (seen.status in ("imported", "superseded")
+                                 or (seen.status == "ignored" and obj.kind == "ignored")):
             return self._count(Result("duplicate", seen.study_id, message="already processed"))
         if obj.kind == "ignored":
             self._record(obj, None, "ignored", obj.reason, seen)
