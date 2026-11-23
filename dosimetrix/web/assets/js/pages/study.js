@@ -172,7 +172,7 @@ async function render() {
   const unitSeg = h('span', { class: 'seg no-print', role: 'group', 'aria-label': 'DAP unit' },
     Object.keys(DAP_UNITS).map((u) => h('button', { type: 'button', 'aria-pressed': String(u === dapUnit()), onclick: () => {
       prefs.set('dapUnit', u);
-      document.dispatchEvent(new CustomEvent('dt-unit-change', { detail: u }));
+      document.dispatchEvent(new CustomEvent('dx-unit-change', { detail: u }));
     } }, u)));
 
   const readoutBox = h('div');
@@ -248,7 +248,7 @@ async function render() {
     grid.focusById(selected + 1);
     chart.draw(curveOption(s, selected));
   });
-  document.addEventListener('dt-unit-change', refresh);
+  document.addEventListener('dx-unit-change', refresh);
 }
 
 /** Skin dose map (model estimate): the body surface unfolded around the body axis. */

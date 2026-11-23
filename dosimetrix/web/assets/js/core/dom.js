@@ -71,9 +71,9 @@ export function icon(name, size = 18, strokeWidth = 1.8) {
 
 /** Small transient status message (role=status, announced by screen readers). */
 export function toast(message) {
-  let host = document.getElementById('dt-toast');
+  let host = document.getElementById('dx-toast');
   if (!host) {
-    host = h('div', { id: 'dt-toast', class: 'toast', role: 'status', 'aria-live': 'polite' });
+    host = h('div', { id: 'dx-toast', class: 'toast', role: 'status', 'aria-live': 'polite' });
     document.body.append(host);
   }
   host.textContent = message;

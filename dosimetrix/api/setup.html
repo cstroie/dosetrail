@@ -47,7 +47,7 @@ const STEPS = [['checks', 'Checks'], ['admin', 'Administrator'], ['site', 'Site'
 const view = document.getElementById('view');
 let st = null;
 let step = 'checks';
-let token = sessionStorage.getItem('dt-setup-token') || new URLSearchParams(location.search).get('token') || '';
+let token = sessionStorage.getItem('dx-setup-token') || new URLSearchParams(location.search).get('token') || '';
 
 function el(tag, attrs = {}, ...kids) {
   const e = document.createElement(tag);
@@ -112,7 +112,7 @@ function checksView() {
     const tok = el('input', { name: 'token', value: token, autocomplete: 'off', required: true, class: 'mono' });
     if (st.schema === false) {
       parts.push(form([el('label', {}, 'Setup token', tok)], 'Create the database', async (d, err) => {
-        token = d.token.trim(); sessionStorage.setItem('dt-setup-token', token);
+        token = d.token.trim(); sessionStorage.setItem('dx-setup-token', token);
         const r = await api('POST', '/api/setup/database', { token });
         err.textContent = '';
         await refresh(); render();
@@ -120,7 +120,7 @@ function checksView() {
       }));
     } else {
       parts.push(form([el('label', {}, 'Setup token', tok)], 'Continue', async (d) => {
-        token = d.token.trim(); sessionStorage.setItem('dt-setup-token', token); go('admin');
+        token = d.token.trim(); sessionStorage.setItem('dx-setup-token', token); go('admin');
       }));
     }
   } else {
@@ -143,7 +143,7 @@ function adminView() {
     ], 'Create and sign in', async (d) => {
       if (d.password !== d.password2) throw new Error('The passwords differ.');
       await api('POST', '/api/setup/admin', { token, username: d.username, name: d.name, password: d.password });
-      sessionStorage.removeItem('dt-setup-token');
+      sessionStorage.removeItem('dx-setup-token');
       await refresh(); go('site');
     }, [el('button', { class: 'btn', type: 'button', onclick: () => go('checks') }, 'Back')]));
 }

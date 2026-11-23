@@ -124,7 +124,7 @@ export const PALETTES = [
 ];
 
 function appearanceChanged() {
-  document.dispatchEvent(new CustomEvent('dt-theme-change', { detail: prefs.get('theme') }));
+  document.dispatchEvent(new CustomEvent('dx-theme-change', { detail: prefs.get('theme') }));
 }
 
 export function setTheme(mode) {
@@ -193,7 +193,7 @@ function drawAppearance(menu, back) {
 // Appearance (as in Reporion): dark / light, then the palettes with a swatch; a choice
 // applies at once and the menu stays open, so another can be tried.
 function appearanceMenu() {
-  const btn = h('button', { id: 'dt-theme-btn', class: 'icon-btn', type: 'button', 'aria-label': t('shell.appearance'),
+  const btn = h('button', { id: 'dx-theme-btn', class: 'icon-btn', type: 'button', 'aria-label': t('shell.appearance'),
     title: t('shell.appearance'), 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, icon('palette', 16, 1.8));
   const menu = h('div', { class: 'menu appearance', role: 'menu', hidden: true });
   const wrap = h('span', { class: 'menu-wrap ctx-wide' }, btn, menu);

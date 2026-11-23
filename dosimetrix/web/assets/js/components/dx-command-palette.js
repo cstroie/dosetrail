@@ -21,7 +21,7 @@ const COMMANDS = [
 
 function setUnit(u) {
   prefs.set('dapUnit', u);
-  document.dispatchEvent(new CustomEvent('dt-unit-change', { detail: u }));
+  document.dispatchEvent(new CustomEvent('dx-unit-change', { detail: u }));
 }
 
 class DtCommandPalette extends HTMLElement {

@@ -55,7 +55,7 @@ class DtChart extends HTMLElement {
       style: { height: `${this.getAttribute('height') || 260}px` } });
     this.append(this.box);
     this._onTheme = () => this.redraw();
-    document.addEventListener('dt-theme-change', this._onTheme);
+    document.addEventListener('dx-theme-change', this._onTheme);
     // print uses the light tokens from base.css: redraw before and after printing
     this._onPrint = () => { this.redraw(); this.instance?.resize(); };
     window.addEventListener('beforeprint', this._onPrint);
@@ -65,7 +65,7 @@ class DtChart extends HTMLElement {
   }
 
   disconnectedCallback() {
-    document.removeEventListener('dt-theme-change', this._onTheme);
+    document.removeEventListener('dx-theme-change', this._onTheme);
     window.removeEventListener('beforeprint', this._onPrint);
     window.removeEventListener('afterprint', this._onPrint);
     this._ro?.disconnect();
