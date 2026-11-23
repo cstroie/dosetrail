@@ -3,7 +3,7 @@
 import '../components/dx-shell.js';
 import { h, append, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
-import { num, ago, dateTime, shortDateTime } from '../core/format.js';
+import { num, ago, dateTime } from '../core/format.js';
 import { overview, lookup, studyHref, ackAlert, deadlineDone, isSample } from '../core/api.js';
 
 // the API's groups are CT, DX, RF, XA, MG, NM, PT; anything else takes the accent
@@ -95,7 +95,7 @@ function feedHealth(feeds, now) {
       f.days.map((d) => h('i', { class: `c ${d.n ? '' : 'zero'}`, role: 'cell', title: `${d.date}: ${d.n} studies${d.date === today ? ' so far today' : ''}`,
         style: { opacity: d.n ? (0.45 + (d.n / max) * 0.55).toFixed(2) : '1' } })),
       h('span', { class: 'last', role: 'cell', style: { color: f.status === 'ok' ? 'var(--text)' : 'var(--muted)' }, title: f.status === 'ok' ? undefined : t('overview.stale') },
-        !f.last_study ? '—' : f.status === 'ok' ? dateTime(f.last_study).slice(11) : shortDateTime(f.last_study))]);
+        !f.last_study ? '—' : f.status === 'ok' ? dateTime(f.last_study).slice(11) : ago(f.last_study, now))]);
   }
   return h('section', { class: 'panel', 'aria-labelledby': 'h-f' },
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-f' }, t('overview.feeds')), stale ? h('span', { class: 'tag warn' }, `${stale} ${t('overview.stale')}`) : null),
