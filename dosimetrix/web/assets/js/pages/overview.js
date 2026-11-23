@@ -84,7 +84,7 @@ function feedHealth(feeds, now) {
   const grid = h('div', { class: 'feed', role: 'table', 'aria-label': 'Studies received per device, last 7 days' },
     h('span', { class: 'hd', role: 'columnheader', style: { 'text-align': 'left' } }, t('overview.device')),
     days.map((d) => h('span', { class: 'hd', role: 'columnheader' }, d)),
-    h('span', { class: 'hd', role: 'columnheader', style: { 'text-align': 'right' } }, t('overview.last')));
+    h('span', { class: 'hd r', role: 'columnheader' }, t('overview.last')));
   for (const f of feeds) {
     const max = Math.max(1, ...f.days.map((d) => d.n));
     append(grid, [h('span', { role: 'rowheader' }, f.name),
@@ -116,8 +116,8 @@ function lookupPanel() {
     } });
   return h('section', { class: 'panel lookup-panel', 'aria-labelledby': 'h-l' },
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-l' }, t('overview.lookup'))),
-    h('div', { class: 'lookup' }, h('label', { class: 'muted', for: 'lk', style: { 'font-size': '11px' } }, t('overview.lookup.label')), input, results,
-      h('span', { class: 'muted', style: { 'font-size': '11px' } }, t('overview.lookup.hint'))));
+    h('div', { class: 'lookup' }, h('label', { class: 'muted small', for: 'lk' }, t('overview.lookup.label')), input, results,
+      h('span', { class: 'muted small' }, t('overview.lookup.hint'))));
 }
 
 async function render() {
@@ -128,7 +128,7 @@ async function render() {
       h('div', { class: 'row', style: { 'align-items': 'baseline', gap: '12px' } }, h('h1', {}, t('overview.title')),
         h('span', { class: 'muted mono' }, dateTime(data.generated))),
       kpis(data.modalities),
-      h('div', { class: 'cols', style: { 'margin-top': '12px' } }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), lookupPanel()));
+      h('div', { class: 'cols mt-3' }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), lookupPanel()));
   } catch (err) {
     page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'),
       h('span', { class: 'muted mono' }, err.message), h('button', { class: 'btn', type: 'button', onclick: render }, t('state.retry'))));

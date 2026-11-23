@@ -45,7 +45,7 @@ function draw(actions) {
     h('div', { class: 'toolbar' }, action, user, text, since, h('span', { class: 'muted small' }, `${rows.length} entries shown`)),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, ['When', 'User', 'Action', 'Target', 'Detail', 'From'].map((c) => h('th', {}, c)))), body))),
-    more ? h('button', { class: 'btn', type: 'button', style: { 'margin-top': 'var(--sp-2)' }, onclick: () => load(true) }, 'Older…') : null]);
+    more ? h('button', { class: 'btn mt-2', type: 'button', onclick: () => load(true) }, 'Older…') : null]);
 }
 
 load();

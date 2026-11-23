@@ -35,7 +35,7 @@ class DtQueryBar extends HTMLElement {
       const val = def?.kind === 'flag' ? '' : tok.value;
       this.chips.append(h('span', { class: `qb-tok ${tok.neg ? 'neg' : ''} ${tok.error ? 'bad' : ''}`, title: tok.error || def?.hint || '' },
         h('b', {}, key), val ? h('span', {}, val.replace(/"/g, '')) : null,
-        h('button', { type: 'button', 'aria-label': `Remove ${tokenToString(tok)}`, onclick: () => this.remove(i) }, '×')));
+        h('button', { type: 'button', 'aria-label': `Remove ${tokenToString(tok)}`, title: `Remove ${tokenToString(tok)}`, onclick: () => this.remove(i) }, '×')));
     });
     const bad = this.tokens.find((x) => x.error);
     this.error.textContent = bad ? `${tokenToString(bad)}: ${bad.error}` : '';

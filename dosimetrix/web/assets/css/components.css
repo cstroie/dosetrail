@@ -177,9 +177,9 @@ dt-chart { display: block; min-width: 0; }
 .stats .l { text-align: left; font-family: var(--font-sans); }
 .stats .over { color: var(--alert); font-weight: 700; }
 .panel-scroll { max-height: 320px; overflow: auto; }  /* a long summary table scrolls inside its panel */
-.panel-scroll .stats th { position: sticky; top: 0; background: var(--panel); }
+.panel-scroll .stats th, .panel-scroll .grid th { position: sticky; top: 0; background: var(--panel); }
 @media print { .panel-scroll { max-height: none; overflow: visible; } }
-@media (max-width: 900px) { .ws-panel { grid-column: span 12; } }
+@media (max-width: 1023.98px) { .ws-panel { grid-column: span 12; } }
 
 /* ---------- admin: devices ---------- */
 .tree td { vertical-align: middle; }
@@ -201,7 +201,7 @@ dt-chart { display: block; min-width: 0; }
 .tree tr.child td:first-child { padding-left: 24px; font-family: var(--font-mono); }
 
 /* ---------- phone: overview leads with lookup and alerts ---------- */
-@media (max-width: 640px) {
+@media (max-width: 575.98px) {
   .feed { grid-template-columns: minmax(90px, 1fr) repeat(7, 18px) 76px; gap: 3px; padding: 10px 8px; }
   .queue li { grid-template-columns: 1fr auto; }
   .queue li > .tag { grid-column: 1 / -1; }
@@ -238,3 +238,18 @@ dt-chart { display: block; min-width: 0; }
 .drl-ratio-mark { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--text); }
 .drl-ratio-num { position: absolute; right: -44px; top: -1px; font-family: var(--font-mono); font-size: var(--fs-xs); width: 40px; }
 .map-row select { max-width: 320px; }
+
+/* ---------- utilities (docs/design-rules.md: no inline style for a fixed value) ---------- */
+.r { text-align: right; }
+.sans { font-family: var(--font-sans); }
+.m0 { margin: 0; }
+.mt-1 { margin-top: var(--sp-1); } .mt-2 { margin-top: var(--sp-2); } .mt-3 { margin-top: var(--sp-3); }
+.mt-4 { margin-top: var(--sp-4); } .mt-5 { margin-top: var(--sp-5); }
+.jc-end { justify-content: flex-end; }
+.w-70 { width: 70px; } .w-90 { width: 90px; } .w-120 { width: 120px; } .w-140 { width: 140px; }
+.w-160 { width: 160px; } .w-180 { width: 180px; } .w-260 { width: 260px; } .w-320 { width: 320px; }
+
+/* ---------- confirm dialog (core/confirm.js) ---------- */
+.confirm-dialog { width: min(420px, 90vw); }
+.confirm-dialog h2 { margin: 0 0 var(--sp-2); }
+.confirm-dialog p { margin: 0 0 var(--sp-4); white-space: pre-line; }

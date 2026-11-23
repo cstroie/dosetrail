@@ -3,6 +3,7 @@
 // Each panel has a summary table (n, median, P75, IQR, P75/DRL). The workspace layout is saved
 // per browser for now; the server will store workspaces per user, with read-only sharing.
 
+import { confirmDialog } from '../core/confirm.js';
 import '../components/dt-shell.js';
 import '../components/dt-query-bar.js';
 import '../components/dt-chart.js';
@@ -382,11 +383,11 @@ function renderPanel(cfg, index) {
       ondragstart: (e) => { e.dataTransfer.setData('text/plain', String(index)); panel.classList.add('dragging'); },
       ondragend: () => panel.classList.remove('dragging') }, '⋮⋮'),
     h('h3', {}, built?.title || TYPES[cfg.type]), h('span', { class: 'spacer' }),
-    h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Move panel earlier', disabled: index === 0, onclick: () => move(index, index - 1) }, '←'),
-    h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Move panel later', disabled: index === ws.panels.length - 1, onclick: () => move(index, index + 1) }, '→'),
+    h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Move panel earlier', title: 'Move earlier', disabled: index === 0, onclick: () => move(index, index - 1) }, '←'),
+    h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Move panel later', title: 'Move later', disabled: index === ws.panels.length - 1, onclick: () => move(index, index + 1) }, '→'),
     h('button', { class: 'btn xs', type: 'button', onclick: () => chart.downloadPNG(slug(built?.title)) }, 'PNG'),
     h('button', { class: 'btn xs', type: 'button', onclick: () => chart.downloadCSV(slug(built?.title)) }, 'CSV'),
-    h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Remove panel', onclick: () => { ws.panels.splice(index, 1); saveWs(); renderAll(); } }, '×')),
+    h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Remove panel', title: 'Remove panel', onclick: () => { ws.panels.splice(index, 1); saveWs(); renderAll(); } }, '×')),
   h('div', { class: 'ws-opts' }, opts),
   server ? h('div', { class: 'ws-body' }, chart, h('div', { class: 'srv-summary' }))
     : h('div', { class: 'ws-body' }, built ? chart : h('p', { class: 'muted' }, t('state.empty')), built ? summaryTable(built.summary) : null));
@@ -465,15 +466,15 @@ async function init() {
   page.replaceChildren(
     h('div', { class: 'row' },
       h('span', { class: 'pill' }, `${t('charts.workspace')}:`, wsSelect),
-      h('span', { class: 'muted', style: { 'font-size': '11px' } }, isSample ? 'saved in this browser' : 'auto-saved'),
+      h('span', { class: 'muted small' }, isSample ? 'saved in this browser' : 'auto-saved'),
       h('span', { class: 'spacer' }),
       h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied. Sharing whole workspaces needs the server.'); } }, 'Share'),
-      h('button', { class: 'btn', type: 'button', onclick: () => { if (confirm('Reset this workspace to the default panels?')) { ws.panels = structuredClone(DEFAULT_PANELS); ws.q = DEFAULT_Q; saveWs(); location.reload(); } } }, t('charts.reset'))),
+      h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog('Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { ws.panels = structuredClone(DEFAULT_PANELS); ws.q = DEFAULT_Q; saveWs(); location.reload(); } } }, t('charts.reset'))),
     h('div', { class: 'row', style: { 'align-items': 'flex-start' } },
       h('div', { style: { flex: '1 1 600px' } }, qb),
       h('a', { class: 'btn', href: '#', style: { 'margin-top': '7px' }, onclick: (e) => { e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:CT ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
-      h('span', { style: { 'margin-top': '12px' } }, countEl)),
-    h('p', { class: 'muted', style: { 'font-size': '11px' } }, `${t('charts.query')}: every panel uses it. Keys here: date, device, proto, weight, origin. Protocol names are standardised and case-merged on the server.`),
+      h('span', { class: 'mt-3' }, countEl)),
+    h('p', { class: 'muted small' }, `${t('charts.query')}: every panel uses it. Keys here: date, device, proto, weight, origin. Protocol names are standardised and case-merged on the server.`),
     gridHost);
   await loadRows();
 }

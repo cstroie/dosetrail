@@ -2,6 +2,7 @@
 // are audit-logged (never the password). You cannot disable yourself or drop your own admin
 // role; only users without the admin role can be removed.
 
+import { confirmDialog } from '../core/confirm.js';
 import '../components/dt-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, toast } from '../core/dom.js';
@@ -22,8 +23,8 @@ async function render() {
   const body = h('tbody');
   for (const u of data.users) {
     const roles = rolePicker(data.roles, u.roles);
-    const uname = h('input', { class: 'input mono', value: u.username, 'aria-label': 'Username', style: { width: '140px' } });
-    const name = h('input', { class: 'input', value: u.name || '', style: { width: '160px' } });
+    const uname = h('input', { class: 'input mono w-140', value: u.username, 'aria-label': 'Username' });
+    const name = h('input', { class: 'input w-160', value: u.name || '' });
     const active = h('input', { type: 'checkbox', checked: u.active, 'aria-label': 'Active' });
     const save = h('button', { class: 'btn xs', type: 'button' }, 'Save');
     save.addEventListener('click', async () => {
@@ -39,10 +40,10 @@ async function render() {
       if (!pw) return;
       try { await updateUser(u.username, { password: pw }); toast(`Password of ${u.username} changed`); } catch (err) { toast(err.message); }
     });
-    const remove = h('button', { class: 'btn xs ghost', type: 'button', disabled: u.roles.includes('admin'),
+    const remove = h('button', { class: 'btn xs ghost danger', type: 'button', disabled: u.roles.includes('admin'),
       title: u.roles.includes('admin') ? 'Take away the admin role first' : 'Remove this account' }, 'Remove…');
     remove.addEventListener('click', async () => {
-      if (!window.confirm(`Remove ${u.username}? Their audit history stays. Disabling keeps the account instead.`)) return;
+      if (!(await confirmDialog(`Remove ${u.username}? Their audit history stays. Disabling keeps the account instead.`, { title: 'Remove account', label: 'Remove', danger: true }))) return;
       try { await deleteUser(u.username); toast(`Removed ${u.username}`); render(); } catch (err) { toast(err.message); }
     });
     body.append(h('tr', { class: u.active ? '' : 'muted' },
@@ -50,9 +51,9 @@ async function render() {
       h('td', { class: 'mono small' }, u.last_login ? u.last_login.replace('T', ' ') : 'never'),
       h('td', {}, save, ' ', reset, ' ', remove)));
   }
-  const nu = { username: h('input', { class: 'input mono', placeholder: 'username', style: { width: '140px' } }),
-    name: h('input', { class: 'input', placeholder: 'full name', style: { width: '160px' } }),
-    password: h('input', { class: 'input', type: 'password', placeholder: 'password (≥ 10)', autocomplete: 'new-password', style: { width: '160px' } }),
+  const nu = { username: h('input', { class: 'input mono w-140', placeholder: 'username' }),
+    name: h('input', { class: 'input w-160', placeholder: 'full name' }),
+    password: h('input', { class: 'input w-160', type: 'password', placeholder: 'password (≥ 10)', autocomplete: 'new-password' }),
     roles: rolePicker(data.roles, ['viewer']) };
   const add = h('button', { class: 'btn primary', type: 'button' }, 'Add user');
   add.addEventListener('click', async () => {

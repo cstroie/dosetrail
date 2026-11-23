@@ -3,6 +3,7 @@
 // institution medians, national median, Q3/Q1) against the RP 185 EDRLs and national DRLs.
 // Server: dosimetrix/aggregate.py.
 
+import { confirmDialog } from '../core/confirm.js';
 import '../components/dt-shell.js';
 import { h, clear, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
@@ -34,7 +35,7 @@ function render() {
     } }, 'Upload')),
     out,
     h('h2', { class: 'section-title' }, 'Uploads'), h('div', { id: 'uploads' }),
-    h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'National statistics'),
+    h('h2', { class: 'section-title mt-4' }, 'National statistics'),
     statsBar(), h('div', { id: 'national' }));
   loadUploads();
 }
@@ -54,8 +55,8 @@ async function loadUploads() {
         h('td', { class: 'mono' }, u.period), h('td', { class: 'mono' }, u.institution), h('td', {}, name),
         h('td', { class: 'r' }, num(u.rows)), h('td', { class: 'r', title: issues }, u.rejected ? h('span', { class: 'tag warn' }, num(u.rejected)) : '0'),
         h('td', {}, u.status), h('td', { class: 'small' }, `${(u.uploaded_at || '').replace('T', ' ')} ${u.uploaded_by || ''}`),
-        h('td', {}, h('button', { class: 'btn xs ghost', type: 'button', onclick: async () => {
-          if (!confirm(`Delete the upload ${u.institution} ${u.period}?`)) return;
+        h('td', {}, h('button', { class: 'btn xs ghost danger', type: 'button', onclick: async () => {
+          if (!(await confirmDialog(`Delete the upload ${u.institution} ${u.period}?`, { title: 'Delete upload', label: 'Delete', danger: true }))) return;
           try { await deleteSurveyUpload(u.id); loadUploads(); } catch (e) { toast(e.message); }
         } }, 'Delete')));
     }))))));

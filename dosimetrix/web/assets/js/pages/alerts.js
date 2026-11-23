@@ -45,11 +45,11 @@ async function toggleStudies(tr, a) {
     const list = (await alertStudies(a.id)).sort((x, y) => (x.time < y.time) - (x.time > y.time));  // most recent first
     const dose = (x) => [x.dlp != null ? `DLP ${num(x.dlp, 0)} mGy·cm` : null, x.ctdivol_max != null ? `CTDIvol ${num(x.ctdivol_max, 1)} mGy` : null,
       x.dap != null ? `DAP ${smart(x.dap)} Gy·cm²` : null, x.kar != null ? `Ka,r ${num(x.kar, 2)} Gy` : null].filter(Boolean).join(' · ');
-    cell.replaceChildren(h('table', { class: 'grid' }, h('tbody', {}, list.map((x) => h('tr', { class: x.current ? 'hot' : '' },
+    cell.replaceChildren(h('div', { class: 'panel-scroll' }, h('table', { class: 'grid' }, h('tbody', {}, list.map((x) => h('tr', { class: x.current ? 'hot' : '' },
       h('td', { class: 'mono small' }, x.time.replace('T', ' ')), h('td', { class: 'mono' }, x.modality || ''),
       h('td', {}, h('a', { href: studyHref({ id: x.id }) }, x.description || x.modality), h('span', { class: 'muted small' }, x.device ? ` · ${x.device}` : '')),
       h('td', { class: 'r mono small' }, dose(x)), h('td', {}, x.current ? h('span', { class: 'tag warn' }, 'this alert') : '')))),
-    ), h('div', { class: 'muted small' }, `${list.length} studies in the window, the one that raised the alert included.`));
+    )), h('div', { class: 'muted small' }, `${list.length} studies in the window, the one that raised the alert included.`));
   } catch (e) { cell.replaceChildren(h('span', { class: 'error' }, e.message)); }
 }
 
@@ -84,7 +84,7 @@ function draw(sum, rows) {
     h('td', { class: 'mono small' }, (a.time || '').replace('T', ' ')),
     h('td', {}, h('span', { class: `tag ${a.level}` }, a.kind)),
     h('td', {}, h('a', { href: studyHref({ id: a.study_id }) }, a.title), h('div', { class: 'muted small' }, a.rule_name),
-      a.kind === 'REPEAT' || a.kind === 'CUMUL.' ? h('button', { class: 'btn ghost small', type: 'button', onclick: (e) => toggleStudies(e.target.closest('tr'), a) }, 'All exposures ▾') : null),
+      a.kind === 'REPEAT' || a.kind === 'CUMUL.' ? h('button', { class: 'btn ghost xs', type: 'button', onclick: (e) => toggleStudies(e.target.closest('tr'), a) }, 'All exposures ▾') : null),
     h('td', { class: 'mono' }, a.modality || ''),
     h('td', { class: 'r' }, h('span', { class: 'mono' }, a.value), h('div', { class: 'muted small' }, a.limit)),
     h('td', {}, a.status === 'open' ? h('span', { class: 'tag warn' }, 'open')
@@ -96,7 +96,7 @@ function draw(sum, rows) {
   if (f.rule && !sum.by_rule.some((r) => r.rule === f.rule)) rules.push([f.rule, f.rule]);
   const dates = ['since', 'until'].map((k) => h('label', { class: 'chk' }, k, ' ', h('input', { class: 'input', type: 'date', value: f[k],
     onchange: (e) => { f[k] = e.target.value; offset = 0; load(); } })));
-  const pager = h('div', { class: 'toolbar', style: { 'margin-top': 'var(--sp-2)' } },
+  const pager = h('div', { class: 'toolbar mt-2' },
     h('button', { class: 'btn', type: 'button', disabled: offset === 0, onclick: () => { offset = Math.max(0, offset - PAGE); load(); } }, '‹ Newer'),
     h('span', { class: 'muted small' }, `${num(offset + 1)}–${num(offset + rows.length)} of ${num(sum.total)}`),
     h('button', { class: 'btn', type: 'button', disabled: offset + rows.length >= sum.total, onclick: () => { offset += PAGE; load(); } }, 'Older ›'));

@@ -2,6 +2,7 @@
 // 12-week cumulative dose, running Ka,r curve with events, event table, skin-dose placeholder.
 // Clicking an event bar selects the row in the table, and selecting a row highlights the bar.
 
+import { confirmDialog } from '../core/confirm.js';
 import '../components/dt-shell.js';
 import { indicationRow } from '../components/indication.js';
 import '../components/dt-data-grid.js';
@@ -63,14 +64,14 @@ function cumulative(s) {
       over ? h('span', { class: 'tag alert' }, `Σ Ka,r ${num(sumKar, 2)} Gy`) : null),
     h('div', { class: 'cum', role: 'table', 'aria-label': 'Studies in the last 12 weeks' },
       h('span', { class: 'h', role: 'columnheader' }, 'Date'), h('span', { class: 'h', role: 'columnheader' }, 'DAP'),
-      h('span', { class: 'h', role: 'columnheader', style: { 'text-align': 'right' } }, dapUnit()), h('span', { class: 'h', role: 'columnheader', style: { 'text-align': 'right' } }, 'Ka,r Gy'),
+      h('span', { class: 'h r', role: 'columnheader' }, dapUnit()), h('span', { class: 'h r', role: 'columnheader' }, 'Ka,r Gy'),
       items.map((x) => [
         h('span', { class: 'mono', title: x.description }, x.date.slice(5)),
         h('i', { class: 'bar', style: { width: `${(x.dap_gycm2 / max) * 100}%` }, 'aria-hidden': 'true' }),
-        h('span', { class: 'mono', style: { 'text-align': 'right' } }, dap(x.dap_gycm2)),
-        h('span', { class: 'mono', style: { 'text-align': 'right' } }, num(x.kar_gy, 2))]),
+        h('span', { class: 'mono r' }, dap(x.dap_gycm2)),
+        h('span', { class: 'mono r' }, num(x.kar_gy, 2))]),
       h('span', { class: 'tot' }, `Σ ${items.length}`), h('span', { class: 'tot' }),
-      h('span', { class: 'mono tot', style: { 'text-align': 'right' } }, dap(sumDap)),
+      h('span', { class: 'mono tot r' }, dap(sumDap)),
       h('span', { class: 'mono tot', style: { 'text-align': 'right', color: over ? 'var(--alert)' : 'inherit' } }, num(sumKar, 2))),
     h('p', { class: 'muted', style: { 'font-size': '11px', padding: '0 12px 10px' } },
       `Alert levels over ${s.thresholds.cum_weeks} weeks: Σ Ka,r ${num(s.thresholds.cum_kar_gy, 2)} Gy, Σ DAP ${dap(s.thresholds.cum_dap_gycm2)} ${dapUnit()}.`));
@@ -127,7 +128,7 @@ function curveOption(s, selected) {
 const EVENT_COLUMNS = [
   { key: 'no', label: '#', align: 'right', width: '40px' },
   { key: 'time', label: 'Time', width: '80px', render: (e) => clock(e.time) },
-  { key: 'protocol', label: 'Protocol', render: (e) => h('span', { style: { 'font-family': 'var(--font-sans)' } }, e.protocol) },
+  { key: 'protocol', label: 'Protocol', render: (e) => h('span', { class: 'sans' }, e.protocol) },
   { key: 'type', label: 'Type', width: '90px', render: (e) => h('span', { style: { color: `var(${e.type === 'fluoro' ? '--d1' : '--d2'})` } }, e.type === 'fluoro' ? 'FLUORO' : 'ACQ') },
   { key: 'plane', label: 'Pl', width: '36px' },
   { key: 'kvp', label: 'kVp', align: 'right' }, { key: 'ma', label: 'mA', align: 'right' },
@@ -144,7 +145,7 @@ const EVENT_COLUMNS = [
 export function revealButton(s, identity) {
   const btn = h('button', { class: 'btn xs no-print', type: 'button' }, t('study.reveal'));
   btn.addEventListener('click', async () => {
-    if (!confirm('Show the patient name and ID? This is recorded in the audit log.')) return;
+    if (!(await confirmDialog('Show the patient name and ID? This is recorded in the audit log.', { title: 'Show identity', label: 'Show' }))) return;
     try {
       const who = isSample ? s.patient.identified : await identifyStudy(s.id);
       identity.textContent = `${who.name || '—'} · ${who.id || '—'}${who.birth_date ? ` · ${who.birth_date}` : ''}`;
@@ -231,7 +232,7 @@ async function render() {
       h('div', { class: 'main' },
         h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
           h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, t('study.curve')), h('span', { class: 'spacer' }),
-            h('span', { class: 'muted', style: { 'font-size': '11px' } }, 'faded bar = plane B · click a bar to find it in the table'),
+            h('span', { class: 'muted small' }, 'faded bar = plane B · click a bar to find it in the table'),
             h('button', { class: 'btn xs no-print', type: 'button', onclick: () => chart.downloadPNG(`${s.accession}-dose-curve`) }, 'PNG')),
           h('div', { class: 'panel-body' }, chart)),
         grid,

@@ -62,7 +62,7 @@ class DtShell extends HTMLElement {
 
 // The signed-in user: initials on the button; the menu has the name, roles and sign-out.
 function userMenu() {
-  const btn = h('button', { class: 'avatar-btn', type: 'button', 'aria-label': t('shell.user'), 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '·');
+  const btn = h('button', { class: 'avatar-btn', type: 'button', 'aria-label': t('shell.user'), title: t('shell.user'), 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, '·');
   const menu = h('div', { class: 'menu account', role: 'menu', hidden: true });
   const wrap = h('span', { class: 'menu-wrap' }, btn, menu);
   const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
@@ -135,7 +135,7 @@ function passwordDialog() {
     field('current', t('shell.pw.current'), 'current-password'),
     field('next', t('shell.pw.new'), 'new-password'),
     field('repeat', t('shell.pw.repeat'), 'new-password'), err,
-    h('div', { class: 'row', style: { 'justify-content': 'flex-end' } },
+    h('div', { class: 'row jc-end' },
       h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, t('shell.pw.cancel')),
       h('button', { class: 'btn primary', type: 'submit' }, t('shell.pw.save'))));
   const dlg = h('dialog', { class: 'pw-dialog' }, form);

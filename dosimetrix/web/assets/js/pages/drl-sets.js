@@ -22,7 +22,7 @@ async function render() {
   const wanted = new URLSearchParams(location.search).get('set');
   const pick = h('select', { class: 'input', 'aria-label': 'Reference set' },
     sets.map((s) => h('option', { value: s.key, selected: s.key === wanted }, `${s.name} (${s.values})`)));
-  const filter = h('input', { class: 'input', type: 'search', placeholder: 'Filter: code, exam, band…', 'aria-label': 'Filter', style: { width: '260px' } });
+  const filter = h('input', { class: 'input w-260', type: 'search', placeholder: 'Filter: code, exam, band…', 'aria-label': 'Filter' });
   const meta = h('div', { class: 'muted small', style: { margin: 'var(--sp-2) 0' } });
   const holder = h('div');
   page.append(h('div', { class: 'toolbar', style: { display: 'flex', gap: 'var(--sp-2)', 'flex-wrap': 'wrap', 'align-items': 'center' } },

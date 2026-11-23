@@ -4,6 +4,7 @@
 // admin role and are audit-logged; the receiver picks up node changes within a minute. The HIS
 // password is write-only: the server only says whether one is set.
 
+import { confirmDialog } from '../core/confirm.js';
 import '../components/dt-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, toast } from '../core/dom.js';
@@ -54,8 +55,8 @@ async function render() {
         h('span', { class: 'm' }, st.qr ? st.qr.message : 'no query/retrieve has run yet'))),
     senders.length ? h('p', { class: 'muted small' }, 'Received since the receiver started: ',
       senders.map(([aet, x]) => `${aet} ${num(x.n)} (last ${x.last?.slice(11, 16) || '—'})`).join(' · ')) : null,
-    h('div', { class: 'toolbar', style: { 'margin-top': 'var(--sp-3)' } },
-      h('h2', { class: 'section-title', style: { margin: 0 } }, 'Remote nodes'), h('span', { class: 'spacer' }),
+    h('div', { class: 'toolbar mt-3' },
+      h('h2', { class: 'section-title m0' }, 'Remote nodes'), h('span', { class: 'spacer' }),
       h('button', { class: 'btn primary', type: 'button', onclick: () => edit(null) }, 'Add node')),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, nodeTable(st.nodes))),
     h('h2', { class: 'section-title' }, 'PACS sync coverage · last 120 days'),
@@ -80,9 +81,9 @@ function nodeTable(list) {
         render();
       } catch (err) { toast(err.message); echoBtn.disabled = false; }
     });
-    const del = h('button', { class: 'btn xs ghost', type: 'button' }, 'Delete');
+    const del = h('button', { class: 'btn xs ghost danger', type: 'button' }, 'Delete');
     del.addEventListener('click', async () => {
-      if (!window.confirm(`Delete DICOM node “${n.name}”?`)) return;
+      if (!(await confirmDialog(`Delete DICOM node “${n.name}”?`, { title: 'Delete node', label: 'Delete', danger: true }))) return;
       try { await deleteNode(n.id); toast(`Deleted ${n.name}`); render(); } catch (err) { toast(err.message); }
     });
     body.append(h('tr', { class: n.enabled ? '' : 'muted' },
@@ -105,8 +106,8 @@ const QUEUE_LABELS = { pending: 'waiting', matched: 'request found', patient_onl
   no_patient: 'patient not found', skipped: 'skipped', error: 'error' };
 
 function hisSection(his) {
-  const head = h('div', { class: 'toolbar', style: { 'margin-top': 'var(--sp-4)' } },
-    h('h2', { class: 'section-title', style: { margin: 0 } }, 'HIS / RIS servers'), h('span', { class: 'spacer' }),
+  const head = h('div', { class: 'toolbar mt-4' },
+    h('h2', { class: 'section-title m0' }, 'HIS / RIS servers'), h('span', { class: 'spacer' }),
     his.error ? null : h('button', { class: 'btn primary', type: 'button', onclick: () => editHis(null) }, 'Add server'));
   if (his.error) return [head, h('p', { class: 'muted' }, his.error)];
   const w = his.worker;
@@ -135,9 +136,9 @@ function hisTable(list) {
         render();
       } catch (err) { toast(err.message); test.disabled = false; }
     });
-    const del = h('button', { class: 'btn xs ghost', type: 'button' }, 'Delete');
+    const del = h('button', { class: 'btn xs ghost danger', type: 'button' }, 'Delete');
     del.addEventListener('click', async () => {
-      if (!window.confirm(`Delete HIS server “${s.name}”? Matched requests stay; new studies are no longer looked up.`)) return;
+      if (!(await confirmDialog(`Delete HIS server “${s.name}”? Matched requests stay; new studies are no longer looked up.`, { title: 'Delete HIS server', label: 'Delete', danger: true }))) return;
       try { await deleteHisServer(s.id); toast(`Deleted ${s.name}`); render(); } catch (err) { toast(err.message); }
     });
     body.append(h('tr', { class: s.enabled ? '' : 'muted' },
@@ -188,8 +189,8 @@ function editHis(server) {
       render();
     } catch (err) { toast(err.message); }
   });
-  const clearPw = server?.password_set ? h('button', { class: 'btn xs ghost', type: 'button', onclick: async () => {
-    if (!window.confirm('Remove the stored password?')) return;
+  const clearPw = server?.password_set ? h('button', { class: 'btn xs ghost danger', type: 'button', onclick: async () => {
+    if (!(await confirmDialog('Remove the stored password?', { title: 'Remove password', label: 'Remove', danger: true }))) return;
     try { await updateHisServer(server.id, { password: '' }); dlg.close(); toast('Password removed'); render(); } catch (err) { toast(err.message); }
   } }, 'Remove password') : null;
   clear(dlg).append(
@@ -204,7 +205,7 @@ function editHis(server) {
       field('History backfill hours', els.backfill_hours, 'start-end, e.g. 22-06 (night)'), field('Notes', els.notes),
       h('label', { class: 'chk' }, els.enabled, ' enabled'), clearPw),
     h('p', { class: 'muted small' }, 'Per device, HIS lookups can be limited to the patient or turned off in Admin → Devices.'),
-    h('div', { class: 'toolbar', style: { 'margin-top': 'var(--sp-3)', 'justify-content': 'flex-end' } },
+    h('div', { class: 'toolbar mt-3 jc-end' },
       h('button', { class: 'btn ghost', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save));
   dlg.showModal();
 }
@@ -261,7 +262,7 @@ function edit(node) {
       field('Modalities to query', els.modalities, 'one C-FIND per modality'), field('C-FIND result cap', els.max_results, 'capped days are split'),
       field('Timeout (s)', els.timeout), field('Sync window (days)', els.sync_days, 'scheduled sync looks back this far'),
       h('label', { class: 'chk' }, els.enabled, ' enabled'), field('Notes', els.notes)),
-    h('div', { class: 'toolbar', style: { 'margin-top': 'var(--sp-3)', 'justify-content': 'flex-end' } },
+    h('div', { class: 'toolbar mt-3 jc-end' },
       h('button', { class: 'btn ghost', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save));
   dlg.showModal();
 }

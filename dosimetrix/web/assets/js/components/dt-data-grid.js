@@ -49,8 +49,8 @@ class DtDataGrid extends HTMLElement {
     this.table = h('table', { class: 'grid', 'aria-label': this.getAttribute('label') || '' }, this.head, this.body);
     this.status = h('div', { class: 'grid-status', role: 'status' });
     this.pageInfo = h('span', { class: 'mono' });
-    this.prevBtn = h('button', { class: 'btn', type: 'button', 'aria-label': 'Previous page', onclick: () => this.go(this.state.page - 1) }, '‹');
-    this.nextBtn = h('button', { class: 'btn', type: 'button', 'aria-label': 'Next page', onclick: () => this.go(this.state.page + 1) }, '›');
+    this.prevBtn = h('button', { class: 'btn', type: 'button', 'aria-label': 'Previous page', title: 'Previous page', onclick: () => this.go(this.state.page - 1) }, '‹');
+    this.nextBtn = h('button', { class: 'btn', type: 'button', 'aria-label': 'Next page', title: 'Next page', onclick: () => this.go(this.state.page + 1) }, '›');
     this.pageNo = h('span', { class: 'mono' });
 
     this.append(

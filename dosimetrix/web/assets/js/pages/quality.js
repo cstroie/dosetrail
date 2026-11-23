@@ -1,6 +1,7 @@
 // Data quality: rule counts, completeness per device (exam code, age, weight, sex) and the
 // most recent studies with findings. Rules are explained in dosimetrix/quality.py.
 
+import { confirmDialog } from '../core/confirm.js';
 import '../components/dt-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import '../components/dt-query-bar.js';
@@ -79,7 +80,7 @@ function sizesPanel() {
       h('p', { class: 'muted small' }, 'Columns: a key (study_uid, accession, or patient_id + date [+ modality]), then weight_kg and/or height_m / height_cm (optionally source: measured, chart_same_day, chart_72h, imported, or measured_at), and/or indication (the request text) / indication_code. A weight or height replaces only a lower-ranked source, and only when plausible for age and sex.'),
       h('div', { class: 'row' }, file,
         h('button', { class: 'btn', onclick: () => run(false) }, 'Check'),
-        h('button', { class: 'btn primary', onclick: () => { if (confirm('Write these weights / heights?')) run(true); } }, 'Apply')),
+        h('button', { class: 'btn primary', onclick: async () => { if (await confirmDialog('Write these weights / heights?', { title: 'Write weights and heights', label: 'Write' })) run(true); } }, 'Apply')),
       out));
 }
 

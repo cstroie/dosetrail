@@ -29,7 +29,7 @@ async function load() {
   const dl = h('datalist', { id: 'ind-codes' }, vocab.map((c) => h('option', { value: c.code }, `${c.code} ${c.meaning}`)));
   const coded = Object.entries(r.coded);
   const body = h('tbody', {}, r.items.map((it) => {
-    const input = h('input', { class: 'input', list: 'ind-codes', placeholder: 'code…', style: { width: '120px' } });
+    const input = h('input', { class: 'input w-120', list: 'ind-codes', placeholder: 'code…' });
     return h('tr', {},
       h('td', {}, it.text, it.children ? h('span', { class: 'muted small' }, ' · mostly children') : null),
       h('td', { class: 'r' }, num(it.studies)),

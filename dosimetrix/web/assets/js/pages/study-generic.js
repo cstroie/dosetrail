@@ -31,7 +31,7 @@ function readout(label, value, unit, sub) {
 function ctColumns() {
   return [
     { key: 'no', label: '#', align: 'right', width: '40px' },
-    { key: 'protocol', label: 'Series / protocol', render: (e) => h('span', { style: { 'font-family': 'var(--font-sans)' } }, e.protocol || '—', e.localizer ? h('span', { class: 'tag', style: { 'margin-left': '6px' } }, 'localizer') : null) },
+    { key: 'protocol', label: 'Series / protocol', render: (e) => h('span', { class: 'sans' }, e.protocol || '—', e.localizer ? h('span', { class: 'tag', style: { 'margin-left': '6px' } }, 'localizer') : null) },
     { key: 'type', label: 'Type', width: '80px' },
     { key: 'ctdivol', label: 'CTDIvol', unit: 'mGy', align: 'right', render: (e) => (e.ctdivol == null ? '' : num(e.ctdivol, 2)) },
     { key: 'phantom_cm', label: 'Ph.', unit: 'cm', align: 'right' },
@@ -51,7 +51,7 @@ function rxColumns() {
   return [
     { key: 'no', label: '#', align: 'right', width: '40px' },
     { key: 'time', label: 'Time', width: '80px', render: (e) => (e.time ? clock(e.time) : '') },
-    { key: 'protocol', label: 'Protocol', render: (e) => h('span', { style: { 'font-family': 'var(--font-sans)' } }, e.protocol || '—') },
+    { key: 'protocol', label: 'Protocol', render: (e) => h('span', { class: 'sans' }, e.protocol || '—') },
     { key: 'anatomy', label: 'Anatomy' },
     { key: 'projection', label: 'Proj.', render: (e) => h('span', { title: e.view || 'derived from the protocol' }, e.projection || '') },
     { key: 'kvp', label: 'kV', align: 'right' },

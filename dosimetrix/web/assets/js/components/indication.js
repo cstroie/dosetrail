@@ -25,7 +25,7 @@ export function indicationRow(s) {
       const list = await codes('ro-nom-indications').catch(() => null);
       const items = (list?.codes || list || []);
       const id = `ind-${s.id}`;
-      const input = h('input', { class: 'input', list: id, placeholder: 'code or words…', style: { width: '260px' } });
+      const input = h('input', { class: 'input w-260', list: id, placeholder: 'code or words…' });
       const dl = h('datalist', { id }, items.map((c) => h('option', { value: c.code }, `${c.code} ${c.meaning}`)));
       const save = async (code) => {
         try { s.indication = await setStudyIndication(s.id, code); dd.replaceChildren(view(s.indication), ' ', btn); } catch (e) { alert(e.message); }

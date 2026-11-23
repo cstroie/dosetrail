@@ -58,7 +58,7 @@ async function render() {
     onclick: () => { family = k; famBtns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.fam === k))); loadTodo(); },
   }, label));
   page.append(
-    h('div', { class: 'toolbar', style: { 'margin-top': 'var(--sp-3)' } }, h('span', { class: 'seg' }, famBtns),
+    h('div', { class: 'toolbar mt-3' }, h('span', { class: 'seg' }, famBtns),
       h('span', { class: 'muted small' }, 'Most frequent texts without an exam code. Pick the text that identifies the exam, then the code.')),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid', id: 'todo' }))),
     h('h2', { class: 'section-title' }, 'Decisions'),

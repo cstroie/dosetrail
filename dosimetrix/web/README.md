@@ -37,6 +37,9 @@ Pages run on the synthetic data in `data/sample/` until the REST API exists.
 
 ## Conventions
 
+The interface rules (buttons, confirm dialog, breakpoints, utilities, dense text) are in
+[`docs/design-rules.md`](../../docs/design-rules.md). Build conventions:
+
 - **No `innerHTML`.** Build DOM with `h()` from `core/dom.js`; text always goes through `textContent`.
 - **Colours only from tokens.** Charts read tokens at draw time (`chartTheme()`) and redraw when the theme changes and around printing.
 - **Fixed storage units:** DAP in Gy·cm², DLP in mGy·cm, CTDIvol in mGy, Ka,r in mGy (events) or Gy (totals). `core/format.js` converts for display; the DAP unit is a user preference.

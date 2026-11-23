@@ -16,7 +16,7 @@ async function render() {
   const body = h('tbody');
   for (const r of rules) {
     const enabled = h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': 'Enabled' });
-    const threshold = h('input', { class: 'input num-input', type: 'number', step: 'any', value: r.threshold, 'aria-label': 'Threshold', style: { width: '90px' } });
+    const threshold = h('input', { class: 'input num-input w-90', type: 'number', step: 'any', value: r.threshold, 'aria-label': 'Threshold' });
     const severity = h('select', { class: 'input', 'aria-label': 'Severity' }, ['warn', 'alert'].map((s) => h('option', { value: s, selected: s === r.severity }, s)));
     const notifyBox = h('input', { type: 'checkbox', checked: r.notify, 'aria-label': 'Notify' });
     const save = h('button', { class: 'btn xs', type: 'button' }, 'Save');

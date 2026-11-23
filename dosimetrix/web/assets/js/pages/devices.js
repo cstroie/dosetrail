@@ -86,7 +86,7 @@ function renderTable(tbody) {
           main.display_name = name;
           toast(`Display name saved: ${main.display_name} (sample mode, this page only)`);
         } }),
-      sugg ? h('button', { class: 'btn xs', type: 'button', style: { 'margin-top': '4px' }, onclick: () => review(sugg) }, `Review merge (${sugg.record_ids.length})`) : null),
+      sugg ? h('button', { class: 'btn xs mt-1', type: 'button', onclick: () => review(sugg) }, `Review merge (${sugg.record_ids.length})`) : null),
       h('td', {}, `${main.manufacturer} ${main.model}`, h('br'), h('span', { class: 'muted', style: { 'font-weight': '400', 'font-size': '11px' } }, main.institution)),
       h('td', { class: 'mono' }, main.serial || '—'),
       h('td', { class: 'mono' }, main.station),
@@ -166,7 +166,7 @@ function inspector() {
       h('legend', { class: 'muted', style: { 'font-size': '11px', 'text-transform': 'uppercase', 'letter-spacing': '.06em', 'margin-bottom': '6px' } }, 'Surviving display name'),
       recs.map((r) => h('label', { class: 'opt' },
         h('input', { type: 'radio', name: 'survivor', value: r.id, checked: r.id === survivor, onchange: () => { survivor = r.id; mergeName = r.display_name; render(); } }),
-        h('span', {}, h('strong', {}, r.display_name), h('br'), h('span', { class: 'mono muted', style: { 'font-size': '11px' } }, `${r.station} · ${num(r.studies)} studies`))))),
+        h('span', {}, h('strong', {}, r.display_name), h('br'), h('span', { class: 'mono muted small' }, `${r.station} · ${num(r.studies)} studies`))))),
     h('label', { class: 'muted', style: { display: 'grid', gap: '4px', 'font-size': '11px' } }, 'Display name after merge',
       h('input', { class: 'input', value: mergeName || survivorRec.display_name, maxlength: 128,
         oninput: (e) => { mergeName = e.target.value; } })),
@@ -182,7 +182,7 @@ function inspector() {
           if (!isSample) { save(dismissMerge(current.record_ids), 'Suggestion dismissed'); return; }
           current.done = true; current = null; toast('Suggestion dismissed'); render();
         } }, t('admin.reject'))),
-    h('p', { class: 'muted', style: { 'font-size': '11px' } }, 'Reference levels and alert rules come from the surviving record. Merges are written to the audit log and can be split again.')));
+    h('p', { class: 'muted small' }, 'Reference levels and alert rules come from the surviving record. Merges are written to the audit log and can be split again.')));
   return box;
 }
 

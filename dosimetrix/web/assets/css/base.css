@@ -68,7 +68,7 @@ kbd { font: var(--fs-xs) var(--font-mono); border: 1px solid var(--line-2); bord
 .work { padding: var(--sp-3) var(--sp-4) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); }
 
 /* phone: rail becomes a bottom bar */
-@media (max-width: 640px) {
+@media (max-width: 575.98px) {
   .rail { order: 2; flex: 1 1 100%; flex-direction: row; justify-content: space-around; position: sticky; bottom: 0; z-index: 30; background: var(--panel); border-right: 0; border-top: 1px solid var(--line); padding: 4px 0 calc(4px + env(safe-area-inset-bottom)); }
   .rail .logo { display: none; }
   .rail a[aria-current="page"]::before { display: none; }
@@ -90,6 +90,10 @@ kbd { font: var(--fs-xs) var(--font-mono); border: 1px solid var(--line-2); bord
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.ghost { background: none; border-color: transparent; }
+.btn.danger { color: var(--alert); border-color: var(--alert); }  /* destructive, beside ordinary actions */
+.btn.danger:hover { background: var(--alert-soft); }
+.btn.ghost.danger { border-color: transparent; }
+.btn.danger.solid { background: var(--alert); border-color: var(--alert); color: var(--bg); }  /* only the confirm dialog */
 .btn.xs { height: 22px; padding: 0 7px; font-size: var(--fs-xs); }
 .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
 .icon-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: var(--r); background: none; color: var(--text); cursor: pointer; font-size: var(--fs-xs); font-weight: 700; }

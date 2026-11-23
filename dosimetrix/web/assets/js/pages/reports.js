@@ -127,10 +127,10 @@ async function loadOperators() {
     h('td', { class: 'small' }, o.exams.slice(0, 3).map((x) => `${x.exam} ${x.band} ${num(x.median_ratio, 2)}× (${x.n})`).join(' · ')),
     h('td', { class: 'small muted' }, o.devices.join(', ')))));
   if (!r.operators.length) body.append(h('tr', {}, h('td', { colspan: 7, class: 'empty' }, t('rep.operators.none'))));
-  append(host, [h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-5)' } }, t('rep.operators.table')),
+  append(host, [h('h2', { class: 'section-title mt-5' }, t('rep.operators.table')),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, t('rep.operators.cols').split('|').map((c, i) => h('th', { class: i >= 1 && i <= 4 ? 'r' : '' }, c)))), body))),
-    h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-5)' } }, t('rep.operators.coverage')),
+    h('h2', { class: 'section-title mt-5' }, t('rep.operators.coverage')),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, t('rep.operators.covcols').split('|').map((c, i) => h('th', { class: i ? 'r' : '' }, c)))),
       h('tbody', {}, r.coverage.map((c) => h('tr', {}, h('td', {}, c.device), h('td', { class: 'r' }, num(c.studies)),
@@ -164,7 +164,7 @@ async function loadGrid() {
         h('td', { class: 'r' }, x.status ? h('span', { class: `tag ${tone[x.status]}`, title: x.ratio ? `median / EDRL = ${num(x.ratio, 2)}` : '' }, x.ratio && x.status !== 'insufficient' ? `${num(x.ratio, 2)}×` : label[x.status]) : ''));
     }));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, t('rep.none'))));
-    append(host, [h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-5)' } }, title),
+    append(host, [h('h2', { class: 'section-title mt-5' }, title),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
         h('thead', {}, h('tr', {}, t('rep.cols').split('|').map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
   }
@@ -217,7 +217,7 @@ async function load() {
       s.count_bands.map((b) => h('td', { class: 'r' }, `${x.counts[b.key].M || '·'} / ${x.counts[b.key].F || '·'}`)),
       qs.map((q) => s.mean_bands.map((b) => h('td', { class: 'r' }, x.means[q.key][b.key] == null ? '' : smart(x.means[q.key][b.key])))))));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 40, class: 'empty' }, t('rep.none'))));
-    append(host, [h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-5)' } }, `${sheetTitle(s)} · ${qs.map((q) => `${qLabel(q)} (${q.unit})`).join(' · ')}`),
+    append(host, [h('h2', { class: 'section-title mt-5' }, `${sheetTitle(s)} · ${qs.map((q) => `${qLabel(q)} (${q.unit})`).join(' · ')}`),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, head, body)))]);
   }
 }

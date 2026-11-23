@@ -2,6 +2,7 @@
 // its median), choose and adopt as a reference set, review an adopted set against a new
 // period (yearly), delete. Server logic: dosimetrix/localdrl.py.
 
+import { confirmDialog } from '../core/confirm.js';
 import '../components/dt-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
@@ -23,8 +24,8 @@ function periodBar(onRun, label) {
   const inp = (k, attrs) => h('input', { class: 'input', value: state[k], ...attrs, onchange: (e) => { state[k] = attrs.type === 'number' ? Number(e.target.value) : e.target.value; } });
   return h('div', { class: 'toolbar' },
     field('From', inp('start', { type: 'date' })), field('to', inp('end', { type: 'date' })),
-    field('Selection', inp('q', { type: 'text', style: { width: '160px' } })),
-    field('Min. values per room', inp('min_n', { type: 'number', min: 1, style: { width: '70px' } })),
+    field('Selection', inp('q', { class: 'w-160', type: 'text' })),
+    field('Min. values per room', inp('min_n', { class: 'w-70', type: 'number', min: 1 })),
     h('button', { class: 'btn primary', type: 'button', onclick: onRun }, label));
 }
 
@@ -40,7 +41,7 @@ async function render() {
       h('label', { class: 'row', title: 'Body groups by weight: include weights estimated from the growth charts (median for age and sex)' },
         h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; } }), 'Include estimated weights')),
     h('div', { id: 'proposal' }),
-    h('h1', { class: 'section-title', style: { 'margin-top': 'var(--sp-4)' } }, 'Adopted local sets'),
+    h('h1', { class: 'section-title mt-4' }, 'Adopted local sets'),
     h('div', { id: 'sets' }));
   loadSets();
 }
@@ -55,7 +56,7 @@ async function propose() {
   const body = h('tbody');
   let last = null;
   for (const x of rows) {
-    const value = h('input', { class: 'input', type: 'number', step: 'any', value: x.value ?? '', style: { width: '90px' }, disabled: x.value == null });
+    const value = h('input', { class: 'input w-90', type: 'number', step: 'any', value: x.value ?? '', disabled: x.value == null });
     const box = h('input', { type: 'checkbox', checked: x.value != null, disabled: x.value == null });
     picks.set(x, { box, value });
     const rooms = x.rooms.map((d) => `${d.device_name}: median ${smart(d.median)} (n ${d.n})${d.counts ? '' : ' — too few'}`).join('\n');
@@ -75,7 +76,7 @@ async function propose() {
   const adopt = async () => {
     const chosen = rows.filter((x) => picks.get(x).box.checked).map((x) => ({ ...x, value: Number(picks.get(x).value.value) }));
     if (!chosen.length) { toast('Choose at least one value.'); return; }
-    if (!confirm(`Adopt ${chosen.length} values as "${name.value}"?`)) return;
+    if (!(await confirmDialog(`Adopt ${chosen.length} values as "${name.value}"?`, { title: 'Adopt values', label: 'Adopt' }))) return;
     try {
       const res = await adoptLocalDrl({ name: name.value, grid: r.grid, start: r.start, end: r.end, min_n: r.min_n, q: r.q, estimated: r.estimated_weights, rows: chosen });
       toast(`Adopted: ${res.name} (${res.values} values)`); loadSets();
@@ -103,8 +104,8 @@ async function loadSets() {
       h('td', { class: 'row' },
         h('button', { class: 'btn xs', type: 'button', onclick: () => review(s) }, 'Review…'),
         h('a', { class: 'btn xs ghost', href: `drl.html?set=${encodeURIComponent(s.key)}` }, 'Compare'),
-        h('button', { class: 'btn xs ghost', type: 'button', onclick: async () => {
-          if (!confirm(`Delete "${s.name}"? Comparisons and reports can no longer use it.`)) return;
+        h('button', { class: 'btn xs ghost danger', type: 'button', onclick: async () => {
+          if (!(await confirmDialog(`Delete "${s.name}"? Comparisons and reports can no longer use it.`, { title: 'Delete set', label: 'Delete', danger: true }))) return;
           try { await deleteDrlSet(s.key); loadSets(); } catch (e) { toast(e.message); }
         } }, 'Delete'))))))),
   h('div', { id: 'review' }));
@@ -132,7 +133,7 @@ async function review(set) {
           h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, x.status.replace('_', ' ')) : ''))))))));
   };
   const out = h('div');
-  clear(host).append(h('h2', { class: 'section-title', style: { 'margin-top': 'var(--sp-3)' } }, `Review: ${set.name}`), periodBar(run, 'Review this period'), out);
+  clear(host).append(h('h2', { class: 'section-title mt-3' }, `Review: ${set.name}`), periodBar(run, 'Review this period'), out);
   run();
 }
 
