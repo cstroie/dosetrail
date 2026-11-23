@@ -96,15 +96,20 @@ def curves(session) -> dict[int, tuple[list[tuple[float, float]], float]]:
 
 def update(session, study_ids=None) -> int:
     """Recalculate esak_calc for X-ray events (all, or of the given studies). Returns changes."""
-    from sqlalchemy import or_, select
+    from sqlalchemy import and_, or_, select
 
     from .db.models import Device, Event, Study
 
     cv = curves(session)
     merged = dict(session.execute(select(Device.id, Device.merged_into_id)).all())
+    # only what can change: events that carry a calculated value (to clear it if the curve or
+    # the data went away) and events without a DAP on a device that has a curve
+    with_curve = [d for d, m in merged.items() if (m or d) in cv]
     q = (select(Event, Study).join(Study, Study.id == Event.study_id)
          .where(Study.modality.in_(("DX", "CR")),
-                or_(Event.event_type.is_(None), Event.event_type != "fluoro")))
+                or_(Event.event_type.is_(None), Event.event_type != "fluoro"),
+                or_(Event.esak_calc.is_not(None),
+                    and_(Event.dap.is_(None), Study.device_id.in_(with_curve)))))
     if study_ids is not None:
         q = q.where(Event.study_id.in_(list(study_ids)))
     n = 0

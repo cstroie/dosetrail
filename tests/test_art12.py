@@ -112,3 +112,46 @@ def test_every_seeded_code_exists_in_the_national_systems(session):
                                    .where(CodeSystem.key == fam["system"])))
         for s in fam["sheet"]:
             assert set(s["codes"]) <= have, (fam["key"], s["name"], set(s["codes"]) - have)
+
+
+def test_one_injection_split_over_two_pet_studies_is_one_row(session):
+    load_all(session)
+    dev = Device(display_name="PET", identity_key="p", is_local=True)
+    pat = Patient(sex="F", pseudo_id="P-9")
+    session.add_all([dev, pat])
+    session.flush()
+    for i, (mbq, extra) in enumerate([(150.0, {}), (None, {"same_administration_as": 1})]):
+        when = dt.datetime(2026, 2, 5, 9 + i)
+        pet = Study(study_uid=f"pet.{i}", modality="PT", study_datetime=when,
+                    device_id=dev.id, patient_id=pat.id, age_days=Y7, source_kind="test",
+                    study_description="PET-CT", admin_activity_mbq=mbq,
+                    total_dlp=300.0 if i == 0 else None)
+        pet.events = [Ev(event_type="radiopharmaceutical", protocol="FDG",
+                         extra_json={"activity_mbq": 150.0, **extra})]
+        session.add(pet)
+    session.flush()
+    classify.run(session)
+    book = next(b for b in art12.build(session, 2026) if b.family == "nm_hibride")
+    sheet = next(s for s in book.sheets if s.name == "PET-CT")
+    assert sheet.available == 1 and len(sheet.rows) == 1  # the delayed scan is not another patient
+
+
+def test_twin_devices_with_one_name_get_distinct_files_in_the_zip(session):
+    load_all(session)
+    a = Device(display_name="Discovery", identity_key="d1", is_local=True)
+    b = Device(display_name="Discovery", identity_key="d2", is_local=True)
+    session.add_all([a, b])
+    session.flush()
+    for i, d in enumerate((a, b)):
+        s = Study(study_uid=f"tw.{i}", modality="CT", study_datetime=dt.datetime(2026, 2, 5),
+                  device_id=d.id, age_days=ADULT, source_kind="test", total_dlp=500.0,
+                  study_description="Head^CAP_SPIRAL_CONTRAST (Child)")
+        session.add(s)
+    session.flush()
+    classify.run(session)
+    books = [b for b in art12.build(session, 2026) if b.family == "ct"]
+    assert len(books) == 2 and len({b.filename for b in books}) == 2
+    buf = io.BytesIO()
+    art12.write_zip(books, buf)
+    with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as z:
+        assert len(z.namelist()) == 2

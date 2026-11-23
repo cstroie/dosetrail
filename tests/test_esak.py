@@ -93,3 +93,25 @@ def test_esak_curve_command_sets_shows_and_clears(tmp_path, capsys):
     assert cli.main([*base, "clear", "--device", "1"]) == 0
     capsys.readouterr()
     assert cli.main([*base, "show"]) == 0 and capsys.readouterr().out == ""
+
+
+def test_update_loads_nothing_when_there_is_no_curve_and_no_calculated_value(session):
+    dev = Device(display_name="Plain", identity_key="pl", is_local=True)
+    session.add(dev)
+    session.flush()
+    st = Study(study_uid="e.2", modality="DX", device_id=dev.id, source_kind="test",
+               study_datetime=dt.datetime(2026, 2, 3), weight_kg=20.0, height_m=1.15)
+    st.events = [Ev(kvp=70, mas=10, sid_mm=1000) for _ in range(5)]
+    session.add(st)
+    session.flush()
+    seen = []
+
+    from sqlalchemy import event as sa_event
+
+    @sa_event.listens_for(session.get_bind(), "before_cursor_execute")
+    def count(conn, cursor, statement, *a):
+        seen.append(statement)
+
+    assert esak.update(session) == 0
+    assert not any("FROM event" in q and "JOIN study" in q and "WHERE" in q
+                   and "esak_calc IS NOT NULL" not in q for q in seen)

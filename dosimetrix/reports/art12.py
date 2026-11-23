@@ -91,7 +91,8 @@ class Workbook:
     @property
     def filename(self) -> str:
         safe = "".join(c if c.isalnum() else "_" for c in self.device_name).strip("_")
-        return f"{self.file}_{safe or self.device_id}.xlsx"
+        # the id keeps two devices of the same name (aliases, twin rooms) apart in one zip
+        return f"{self.file}_{safe or 'device'}_{self.device_id}.xlsx"
 
 
 def seed() -> list[dict]:
@@ -226,7 +227,7 @@ def build(session: Session, year: int, conds: list | None = None,
         by_code = {c: s["name"] for s in fam["sheet"] for c in s["codes"]}
         cols = COLUMNS[fam["kind"]]
         rows = _studies(session, fam, start, end, conds)
-        if fam["kind"] == "nm":
+        if fam["kind"] in ("nm", "nmh"):  # one injection split over two studies counts once
             shared = _shared_administration(session, {g["study"] for g in rows})
             rows = [g for g in rows if g["study"] not in shared]
         per_dev: dict[int, dict[str, list[dict]]] = {}
