@@ -27,7 +27,11 @@ const PERIODS = { month: 'Month', quarter: 'Quarter', year: 'Year' };
 const SYSTEMS = { '': 'Local nomenclator', 'ro-drl-ms838-2025': 'National DRL exams', 'ec-rp185': 'RP 185 exams' };
 const AGE = { 'ro-drl-age': 'National 1–4/5–9/10–14/15+', 'rp185-head-age': 'RP 185 head', 'ext-head-age': 'RP 185 head + adults' };
 const DRL_SETS = { 'ro-ms838-2025': 'National OMS 838/2025', 'ec-rp185-2018': 'European RP 185' };
-const TOP = 16;
+const TOPS = { all: 'All', 5: '5', 8: '8', 10: '10', 16: '16', 20: '20', 30: '30', 50: '50' };
+/** How many groups a panel charts: its Top option, else the panel's default. */
+const topOf = (cfg, dflt) => (cfg.top === 'all' ? Infinity : Number(cfg.top) || dflt);
+const DEFAULT_TOP = { sbox: 16, sbar: 16, strend: 8, sdrl: Infinity };
+const topSelect = (cfg, select, update) => select('Top', String(cfg.top || (DEFAULT_TOP[cfg.type] === Infinity ? 'all' : DEFAULT_TOP[cfg.type])), TOPS, (v) => update({ top: v }));
 
 export function defaultsFor(type) {
   return { type, modality: 'CT', metric: 'dlp_total', by: type === 'strend' ? 'month' : 'exam', series: type === 'strend' ? 'exam' : '',
@@ -41,6 +45,7 @@ export function serverOptions(cfg, update, select) {
   const out = [select('Modality', mod, MODALITIES, (v) => update({ modality: v, metric: Object.keys(METRICS[v])[0] }))];
   if (cfg.type === 'sdrl') {
     out.push(select('Reference', cfg.set || 'ro-ms838-2025', DRL_SETS, (v) => update({ set: v })));
+    out.push(topSelect(cfg, select, update));
     return out;
   }
   out.push(select('Metric', metrics[cfg.metric] ? cfg.metric : Object.keys(metrics)[0], metrics, (v) => update({ metric: v })));
@@ -50,6 +55,7 @@ export function serverOptions(cfg, update, select) {
   if ([cfg.by, cfg.series].includes('exam')) out.push(select('Exams', cfg.system || '', SYSTEMS, (v) => update({ system: v })));
   if ([cfg.by, cfg.series].includes('age_band')) out.push(select('Age groups', cfg.age_scheme || 'ro-drl-age', AGE, (v) => update({ age_scheme: v })));
   if (cfg.type === 'sbar' || cfg.type === 'strend') out.push(select('Stat', cfg.stat || 'median', { median: 'Median', mean: 'Mean', p75: 'P75' }, (v) => update({ stat: v })));
+  if (cfg.type !== 'shist') out.push(topSelect(cfg, select, update));
   out.push(select('Min n', String(cfg.min_n ?? 5), { 1: '1', 5: '5', 10: '10', 20: '20' }, (v) => update({ min_n: Number(v) })));
   return out;
 }
@@ -89,13 +95,20 @@ export async function buildServer(cfg, q, devColor) {
   }
   const isTime = ['month', 'quarter', 'year'].includes(d1);
   let shown = isTime ? cats : cats.filter((c) => catN.get(c) >= (cfg.min_n ?? 5));
-  if (!isTime && !['age_band', 'weight_band', 'ref_group'].includes(d1) && shown.length > TOP) shown = [...shown].sort((a, b) => catN.get(b) - catN.get(a)).slice(0, TOP);
+  const banded = ['age_band', 'weight_band', 'ref_group'].includes(d1);
+  const limit = topOf(cfg, banded ? Infinity : 16);  // a time axis is not cut; bands keep their own order
+  if (cfg.type !== 'strend' && cfg.type !== 'shist' && shown.length > limit) {
+    if (banded) { const keep = new Set([...shown].sort((a, b) => catN.get(b) - catN.get(a)).slice(0, limit)); shown = shown.filter((c) => keep.has(c)); }
+    else shown = [...shown].sort((a, b) => catN.get(b) - catN.get(a)).slice(0, limit);
+  }
   let serNames = d2 ? [...new Set(res.groups.map((g) => lab(g, d2)))] : ['all'];
   const order = res.orders?.[d2];
   if (order) serNames = [...order.filter((x) => serNames.includes(x)), ...serNames.filter((x) => !order.includes(x))];
   const pick = (c, s) => res.groups.find((g) => lab(g, d1) === c && (!d2 || lab(g, d2) === s));
   const color = (th, i) => th.devices[i % th.devices.length];
-  const truncated = shown.length < cats.length ? ` · top ${shown.length} of ${cats.length}` : '';
+  const nSeries = d2 ? new Set(res.groups.map((g) => lab(g, d2))).size : 0;
+  const truncated = cfg.type === 'strend' ? (nSeries > topOf(cfg, 8) ? ` · top ${topOf(cfg, 8)} of ${nSeries} series` : '')
+    : shown.length < cats.length ? ` · top ${shown.length} of ${cats.length}` : '';
 
   const option = (th) => {
     const base = baseOption(th);
@@ -110,7 +123,7 @@ export async function buildServer(cfg, q, devColor) {
     }
     if (cfg.type === 'strend') {
       const top = [...new Set(res.groups.map((g) => lab(g, d2)))].map((s) => [s, res.groups.filter((g) => lab(g, d2) === s).reduce((a, g) => a + g.n, 0)])
-        .sort((a, b) => b[1] - a[1]).slice(0, 8).map(([s]) => s);
+        .sort((a, b) => b[1] - a[1]).slice(0, topOf(cfg, 8)).map(([s]) => s);
       return { ...base, legend: { ...base.legend, data: top }, grid: { left: 8, right: 16, top: 40, bottom: 30, containLabel: true },
         tooltip: { ...base.tooltip, trigger: 'axis' },
         xAxis: { type: 'category', data: cats, ...base._axis }, yAxis: { type: 'value', name: unit, ...base._axis },
@@ -136,11 +149,14 @@ export async function buildServer(cfg, q, devColor) {
 
 async function buildDrl(cfg, q) {
   const res = await drlCompare({ q: query(cfg, q), set: cfg.set || 'ro-ms838-2025', min_n: 1 });
-  const rows = res.rows.filter((r) => r.groups.length && r.groups[0].ratio != null);
+  const all = res.rows.filter((r) => r.groups.length && r.groups[0].ratio != null);
+  const lim = topOf(cfg, Infinity);  // the highest median / DRL ratios, kept in the server's order
+  const keep = all.length > lim ? new Set([...all].sort((a, b) => b.groups[0].ratio - a.groups[0].ratio).slice(0, lim)) : null;
+  const rows = keep ? all.filter((r) => keep.has(r)) : all;
   const labels = rows.map((r) => `${r.exam_meaning} · ${r.band_label || 'all'} · ${r.quantity}`);
   const csv = [['exam', 'group', 'quantity', 'n', 'median', 'drl', 'unit', 'median_over_drl', 'status']]
-    .concat(rows.map((r) => [r.exam, r.band_label, r.quantity, r.groups[0].n, r.groups[0].median, r.reference, r.unit, r.groups[0].ratio, r.groups[0].status]));
-  const summary = rows.map((r) => ({ label: `${r.exam} · ${r.band_label || 'all'} · ${r.quantity}`, n: r.groups[0].n, median: r.groups[0].median, p75: r.groups[0].p75, mean: r.groups[0].mean, drl: r.reference }));
+    .concat(all.map((r) => [r.exam, r.band_label, r.quantity, r.groups[0].n, r.groups[0].median, r.reference, r.unit, r.groups[0].ratio, r.groups[0].status]));
+  const summary = all.map((r) => ({ label: `${r.exam} · ${r.band_label || 'all'} · ${r.quantity}`, n: r.groups[0].n, median: r.groups[0].median, p75: r.groups[0].p75, mean: r.groups[0].mean, drl: r.reference }));
   const option = (th) => {
     const base = baseOption(th);
     const tone = { below: th.ok, above: th.warn, well_above: th.alert, insufficient: th.muted };
@@ -152,7 +168,7 @@ async function buildDrl(cfg, q) {
       series: [{ type: 'bar', barMaxWidth: 10, data: rows.map((r) => ({ value: r.groups[0].ratio * 100, itemStyle: { color: tone[r.groups[0].status] || th.muted } })),
         markLine: { silent: true, symbol: 'none', data: [{ xAxis: 100 }, { xAxis: 150 }], lineStyle: { color: th.ref, type: 'dashed' }, label: { formatter: (p) => `${p.value}%`, color: th.ref, position: 'end' } } }] };
   };
-  return { title: `Median vs ${DRL_SETS[cfg.set || 'ro-ms838-2025']} · ${MODALITIES[cfg.modality || 'CT']} · ${rows.length} exam groups`, option, csv, summary,
+  return { title: `Median vs ${DRL_SETS[cfg.set || 'ro-ms838-2025']} · ${MODALITIES[cfg.modality || 'CT']} · ${keep ? `top ${rows.length} of ${all.length}` : rows.length} exam groups`, option, csv, summary,
     height: String(Math.max(280, 26 * rows.length + 80)) };
 }
 

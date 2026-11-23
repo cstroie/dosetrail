@@ -360,7 +360,7 @@ function renderPanel(cfg, index) {
   const chart = h('dt-chart', { label: built?.title || 'Chart', height: built?.height || (cfg.type === 'sdrl' ? '420' : '320') });
   const update = (patch) => { Object.assign(cfg, patch); saveWs(); renderAll(); };
   const protos = Object.fromEntries(protocolsBy('name', 'ctdivol').map((p) => [p, p]));
-  const opts = server ? [select('Type', cfg.type, TYPES, (v) => update({ ...defaultsFor(v), modality: cfg.modality, span: cfg.span, type: v })),
+  const opts = server ? [select('Type', cfg.type, TYPES, (v) => update({ ...defaultsFor(v), top: undefined, modality: cfg.modality, span: cfg.span, type: v })),
     ...serverOptions(cfg, update, select), h('span', { class: 'spacer' }),
     h('span', { class: 'seg', role: 'group', 'aria-label': 'Panel width' }, Object.keys(SPANS).map((s) => h('button', { type: 'button', 'aria-pressed': String(cfg.span === s), onclick: () => update({ span: s }) }, s)))] : [
     select('Type', cfg.type, TYPES, (v) => update({ type: v })),
