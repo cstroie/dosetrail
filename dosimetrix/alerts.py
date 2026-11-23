@@ -36,6 +36,7 @@ from .db.models import (
 )
 from .stats import METRICS
 
+PREFETCH_MIN = 5  # studies in a chunk from which the window rules prefetch
 STUDY_METRICS = {k: m.column for k, m in METRICS.items() if m.level == "study"}
 # per-series / per-exposure metrics: a threshold rule takes the study's highest value
 EVENT_VALUE = {"ssde": lambda e: e.ssde if e.ssde is not None else e.ssde_calc}
@@ -92,6 +93,9 @@ class Evaluator:
         self.rules = list(session.scalars(select(AlertRule).where(AlertRule.enabled.is_(True))))
         self.checker = Checker(session) if any(r.kind == "drl_ratio" for r in self.rules) \
             else None
+        # per-chunk prefetch for the per-patient window rules (see prefetch)
+        self._studies: dict[int, dict[int, list]] = {}  # rule id -> patient -> study rows
+        self._alerts: dict[int, dict[int, list]] = {}  # rule id -> patient -> (study id, when)
 
     def _drl_ratio(self, s: Study, events: list[Event], national: dict) -> tuple | None:
         """The highest (value, reference, unit, code) ratio of the study's exams."""
@@ -136,8 +140,58 @@ class Evaluator:
             consider(s.admin_activity_mbq, national.get(None), "activity", "MBq")
         return best
 
+    def prefetch(self, studies: list[Study]) -> None:
+        """Load, per window rule, the studies and alerts of the chunk's patients in one
+        query each, instead of two queries per study and rule. Not worth it for a couple
+        of studies (the per-study queries are used then)."""
+        self._studies.clear()
+        self._alerts.clear()
+        if len(studies) < PREFETCH_MIN:
+            return
+        for rule in self.rules:
+            if rule.kind not in ("cumulative", "count"):
+                continue
+            todo = [s for s in studies if s.patient_id and s.study_datetime
+                    and _applies(rule, s)]
+            if not todo:
+                continue
+            w = dt.timedelta(days=rule.window_days or 0)
+            pats = {s.patient_id for s in todo}
+            lo = min(s.study_datetime for s in todo) - w
+            hi = max(s.study_datetime for s in todo) + w
+            col = STUDY_METRICS.get(rule.metric, Study.n_events)
+            rows: dict[int, list] = {p: [] for p in pats}
+            for pid, sid, when, mod, dlp, v in self.session.execute(
+                    select(Study.patient_id, Study.id, Study.study_datetime, Study.modality,
+                           Study.total_dlp, col)
+                    .where(Study.patient_id.in_(pats), Study.study_datetime > lo,
+                           Study.study_datetime <= hi)):
+                rows[pid].append((when, sid, mod, dlp, v))
+            raised: dict[int, list] = {p: [] for p in pats}
+            for pid, sid, when in self.session.execute(
+                    select(Study.patient_id, Alert.study_id, Alert.study_datetime)
+                    .join(Study, Study.id == Alert.study_id)
+                    .where(Alert.rule_id == rule.id, Study.patient_id.in_(pats),
+                           Alert.study_datetime > lo, Alert.study_datetime < hi)):
+                raised[pid].append((sid, when))
+            self._studies[rule.id], self._alerts[rule.id] = rows, raised
+
+    def note_alert(self, rule_id: int, s: Study, when: dt.datetime | None) -> None:
+        """An alert raised during the chunk counts for the studies evaluated after it."""
+        cached = self._alerts.get(rule_id)
+        if cached is not None and s.patient_id in cached:
+            cached[s.patient_id].append((s.id, when))
+
     def _window(self, rule: AlertRule, s: Study) -> tuple[float, int]:
         """Sum of the metric and number of studies for the patient over the window."""
+        rows = self._studies.get(rule.id, {}).get(s.patient_id)
+        if rows is not None:
+            mods = _modalities(rule) if rule.modality else None
+            lo = s.study_datetime - dt.timedelta(days=rule.window_days or 0)
+            sel = [v for when, _sid, mod, dlp, v in rows
+                   if lo < when <= s.study_datetime
+                   and (mods is None or hybrid.matches(mod, dlp, mods))]
+            return float(sum(v for v in sel if v is not None)), len(sel)
         lo = s.study_datetime - dt.timedelta(days=rule.window_days or 0)
         q = select(func.count(), func.sum(STUDY_METRICS.get(rule.metric, Study.n_events))) \
             .where(Study.patient_id == s.patient_id, Study.study_datetime > lo,
@@ -153,6 +207,10 @@ class Evaluator:
         # either side of the study: studies may be evaluated out of date order (a backfill
         # runs newest first)
         w = dt.timedelta(days=rule.window_days or 0)
+        cached = self._alerts.get(rule.id, {}).get(s.patient_id)
+        if cached is not None:
+            return any(sid != s.id and s.study_datetime - w < when < s.study_datetime + w
+                       for sid, when in cached if when is not None)
         return self.session.scalar(
             select(func.count()).select_from(Alert).join(Study, Study.id == Alert.study_id)
             .where(Alert.rule_id == rule.id, Study.patient_id == s.patient_id,
@@ -222,6 +280,7 @@ def evaluate(session: Session, study_ids: Iterable[int],
         national = _national_codes(session, chunk)
         existing = {(a.rule_id, a.study_id): a for a in session.scalars(
             select(Alert).where(Alert.study_id.in_(chunk)))}
+        ev.prefetch(studies)
         for s in studies:
             stats["studies"] += 1
             for a in ev.check(s, events.get(s.id, []), national.get(s.id, {})):
@@ -243,7 +302,9 @@ def evaluate(session: Session, study_ids: Iterable[int],
                     continue
                 stats["new"] += 1
                 stats[f"new_{a['severity']}"] += 1
+                ev.note_alert(a["rule_id"], s, a["study_datetime"])
         session.flush()
+        ev.prefetch([])  # drop the chunk's cache
     return stats
 
 

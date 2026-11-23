@@ -363,3 +363,33 @@ def test_drl_ratio_for_activity_and_mammography(session, world):
     assert a.value == pytest.approx(400.0) and a.message.startswith("PETCT-FDG: 400 MBq")
     b = _alerts(session, mg)["drl-2x"]  # left breast 6 mGy vs 2.65 mGy per breast
     assert b.value == pytest.approx(6.0) and b.message.startswith("MG-UNILATERAL: 6 mGy")
+
+
+def test_prefetched_windows_match_per_study_queries(session, world, monkeypatch):
+    """A chunk evaluated with the prefetched windows raises exactly the alerts that the
+    per-study queries do (counts, sums, once-per-window), CT hybrids included."""
+    dev, kid = world
+    other = Patient(pseudo_id="P-AL2", sex="F")
+    session.add(other)
+    session.flush()
+    ids = []
+    for i in range(16):
+        for pat, mod in ((kid, "DX"), (other, "CT" if i % 2 else "PT")):
+            s = _study(session, dev, pat, f"pf.{pat.id}.{i}", NOW - dt.timedelta(weeks=i),
+                       modality=mod, age_days=3000, total_dlp=400.0 if mod != "DX" else None,
+                       n_events=2)
+            ids.append(s.id)
+
+    def run():
+        session.execute(Alert.__table__.delete())
+        session.flush()
+        stats = alerts.evaluate(session, ids)
+        got = {(r.key, a.study_id, round(a.value, 3), a.message) for a, r in session.execute(
+            select(Alert, AlertRule).join(AlertRule))}
+        return stats, got
+
+    monkeypatch.setattr(alerts, "PREFETCH_MIN", 10**9)
+    _, per_study = run()
+    monkeypatch.setattr(alerts, "PREFETCH_MIN", 2)
+    _, prefetched = run()
+    assert per_study and prefetched == per_study
