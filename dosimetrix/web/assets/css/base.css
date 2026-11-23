@@ -29,6 +29,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
 /* ---------- shell: rail + context bar + work area ---------- */
+/* wraps only on a phone (rail + content basis must stay below the 576px breakpoint) */
 .shell { display: flex; flex-wrap: wrap; min-height: 100vh; }
 .rail {
   flex: 0 0 var(--rail-w);
@@ -50,7 +51,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .rail .dot { position: absolute; top: 4px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--alert); }
 
-.content { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; }
+.content { flex: 999 1 480px; min-width: 0; display: flex; flex-direction: column; }
 .ctx {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
   padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--line); background: var(--panel);
