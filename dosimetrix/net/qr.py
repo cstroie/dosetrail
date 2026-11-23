@@ -58,7 +58,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import AppSetting, Device, Event, IngestedObject, Study
-from ..ingest.parse import mark_series_instances
+from ..ingest.parse import mark_series_instances, mark_series_last_z
 from .spool import Spool
 
 log = logging.getLogger("dosimetrix.qr")
@@ -248,6 +248,11 @@ def find_series(node: Node, study_uid: str) -> list[dict]:
 
 def first_instance(node: Node, study_uid: str, series_uid: str) -> str | None:
     """The SOP Instance UID of the series' lowest-numbered image."""
+    return first_last_instance(node, study_uid, series_uid)[0]
+
+
+def first_last_instance(node: Node, study_uid: str, series_uid: str):
+    """SOP Instance UIDs of the series' lowest- and highest-numbered images."""
     q = Dataset()
     q.QueryRetrieveLevel = "IMAGE"
     q.StudyInstanceUID = study_uid
@@ -266,7 +271,34 @@ def first_instance(node: Node, study_uid: str, series_uid: str) -> str | None:
         except (TypeError, ValueError):
             return 1 << 30
     rows = [r for r in rows if r.get("SOPInstanceUID")]
-    return str(min(rows, key=number).SOPInstanceUID) if rows else None
+    if not rows:
+        return None, None
+    return str(min(rows, key=number).SOPInstanceUID), str(max(rows, key=number).SOPInstanceUID)
+
+
+def last_image_z(node: Node, study_uid: str, series_uid: str, sop: str) -> float | None:
+    """Z position (mm) of one image, fetched into memory (not the spool)."""
+    got: list[float] = []
+
+    def on_store(event) -> int:
+        pos = event.dataset.get("ImagePositionPatient")
+        if pos is not None and len(pos) == 3:
+            got.append(float(pos[2]))
+        return 0x0000
+
+    ae, roles = _get_ae(node)
+    assoc = ae.associate(node.host, node.port, ae_title=node.aet, ext_neg=roles,
+                         evt_handlers=[(evt.EVT_C_STORE, on_store)])
+    if not assoc.is_established:
+        raise ConnectionError("C-GET association refused")
+    try:
+        q = Dataset()
+        _level(q, study_uid, series_uid, {series_uid: sop})
+        for _status, _ident in assoc.send_c_get(q, GET):
+            pass
+    finally:
+        assoc.release()
+    return got[0] if got else None
 
 
 # ---------------------------------------------------------------------------- C-GET
@@ -333,14 +365,15 @@ def move_series(node: Node, study_uid: str, series_uids: list[str],
 
 def retrieve(node: Node, study_uid: str, series_uids: list[str], spool: Spool,
              instances: dict[str, str] | None = None,
-             counts: dict[str, int] | None = None) -> dict:
+             counts: dict[str, int] | None = None,
+             last_z: dict[str, float] | None = None) -> dict:
     """C-GET or C-MOVE, with one retry after a timeout or a dropped association.
     ``instances``: series UID -> the one SOP instance to fetch from it. ``counts``: series
     UID -> its image count, written into the object (C-GET only: C-MOVE objects go
     straight to the receiver, so their CT dose is estimated without a scan length)."""
     fn = (lambda: move_series(node, study_uid, series_uids, instances)) \
         if node.retrieve == "move" \
-        else (lambda: get_series(node, study_uid, series_uids, spool, instances, counts))
+        else (lambda: get_series(node, study_uid, series_uids, spool, instances, counts, last_z))
     try:
         return fn()
     except (TimeoutError, ConnectionError, RuntimeError) as first:
@@ -354,18 +387,24 @@ def retrieve(node: Node, study_uid: str, series_uids: list[str], spool: Spool,
 
 def get_series(node: Node, study_uid: str, series_uids: list[str], spool: Spool,
                instances: dict[str, str] | None = None,
-               counts: dict[str, int] | None = None) -> dict:
+               counts: dict[str, int] | None = None,
+               last_z: dict[str, float] | None = None) -> dict:
     """C-GET the series into the spool; returns delivered/claimed counts."""
     delivered = 0
 
     def on_store(event) -> int:
         nonlocal delivered
         uid = str(event.request.AffectedSOPInstanceUID)
-        n = (counts or {}).get(str(getattr(event.dataset, "SeriesInstanceUID", "")))
-        if n:  # the image count of the series, for the CT dose estimate (parse_ct_header)
+        series = str(getattr(event.dataset, "SeriesInstanceUID", ""))
+        n = (counts or {}).get(series)
+        z = (last_z or {}).get(series)
+        if n or z is not None:  # image count / last z of the series: the CT dose estimate
             ds = event.dataset
             ds.file_meta = event.file_meta
-            mark_series_instances(ds, n)
+            if n:
+                mark_series_instances(ds, n)
+            if z is not None:
+                mark_series_last_z(ds, z)
             spool.write(uid, lambda p: dcmwrite(p, ds, enforce_file_format=True))
         else:
             data = event.encoded_dataset()
@@ -520,17 +559,30 @@ def needs_staff(session: Session, study_uid: str) -> bool:
 
 def one_per_series(node: Node, study_uid: str, series: list[dict], spool: Spool,
                    stats: QRStats, key: str, with_counts: bool = False) -> int:
-    """Retrieve the first image of each series (its header is all we read)."""
-    instances = {}
+    """Retrieve the first image of each series (its header is all we read). With
+    ``with_counts`` (CT dose estimate) the object also records the series' image count and
+    the z position of its last image (one more image fetched, kept in memory)."""
+    instances: dict[str, str] = {}
+    last_z: dict[str, float] = {}
     for s in series:
-        sop = first_instance(node, study_uid, s["uid"])
-        if sop:
-            instances[s["uid"]] = sop
+        first, last = first_last_instance(node, study_uid, s["uid"])
+        if not first:
+            continue
+        instances[s["uid"]] = first
+        if with_counts and last and last != first:
+            try:
+                z = last_image_z(node, study_uid, s["uid"], last)
+            except (ConnectionError, TimeoutError, RuntimeError) as e:  # the count remains
+                log.info("last image of %s: %s", s["uid"], e)
+                z = None
+            if z is not None:
+                last_z[s["uid"]] = z
     if not instances:
         return 0
     counts = {s["uid"]: s["instances"] for s in series
               if with_counts and s["instances"] and s["uid"] in instances}
-    r = retrieve(node, study_uid, list(instances), spool, instances, counts or None)
+    r = retrieve(node, study_uid, list(instances), spool, instances, counts or None,
+                 last_z or None)
     stats.add(key, r["delivered"])
     stats.tally(r)
     return r["delivered"]

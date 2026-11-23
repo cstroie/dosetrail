@@ -308,6 +308,7 @@ def test_ct_without_a_dose_report_falls_back_to_one_image_per_series(env):
                                   ctdivol=4.0, count=None, spacing=3.0))
     for i, o in enumerate(imgs):
         o.InstanceNumber = i + 1
+        o.ImagePositionPatient = [0, 0, -5.0 * i]  # 5 mm apart
         _date(o)
     pacs = FakePACS(imgs)
     try:
@@ -315,12 +316,13 @@ def test_ct_without_a_dose_report_falls_back_to_one_image_per_series(env):
         stats = qr.QRStats()
         qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None)
         assert stats.counts["ct_header_images"] == 2  # one image per series, not all four
-        assert len(pacs.gets) == 2
+        assert len(pacs.gets) == 3  # + the last image of the 3-image series (its z position)
         with maker() as s:
             st = s.scalar(select(Study).filter_by(study_uid="6.9"))
             assert st.source_kind == "ct_header" and st.n_events == 2
-            # series 1: 3 images x 5 mm = 15 mm at 10 mGy; series 2: 1 x 3 mm at 4 mGy
-            assert st.total_dlp == pytest.approx(10.0 * 1.5 + 4.0 * 0.3)
+            # series 1 (10 mGy): z range 10 mm + 5 mm slice + 0.7 x 20 mm beam over-ranging
+            # = 29 mm; series 2 (4 mGy): one image, 1 x 3 mm
+            assert st.total_dlp == pytest.approx(10.0 * 2.9 + 4.0 * 0.3)
             assert qr.needs_ct_sr(s, "6.9")
         stats2 = qr.QRStats()  # known only by headers: looked at again for a dose report
         qr.run_day(node, DAY, spool, drain, maker, stats2, pause=0, progress=lambda _m: None)

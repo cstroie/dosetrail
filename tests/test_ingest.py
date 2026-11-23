@@ -469,3 +469,25 @@ def test_ct_header_scan_type_without_acquisition_type():
     assert parse(f.ct_series_image(acquisition="SEQUENCED", pitch=None)).events[0][
         "event_type"] == "axial"
     assert parse(f.ct_series_image(acquisition=None)).events[0]["event_type"] == "spiral"  # pitch
+
+
+def test_ct_header_dlp_uses_the_z_range_not_count_times_thickness():
+    """Aquilion PRIME cardiac CTA: 696 images 0.3 mm apart, 0.5 mm thick, 40 mm beam. The
+    console's own DLP for the acquisition is 199.0 mGy.cm (8.4 mGy over 237 mm)."""
+    from dosimetrix.ingest.parse import mark_series_instances, mark_series_last_z
+    ds = f.ct_series_image(ctdivol=8.4, count=None, spacing=0.5)
+    ds.TotalCollimationWidth = 40.0
+    ds.ImagePositionPatient = [0, 0, -917.5]
+    mark_series_instances(ds, 696)
+    mark_series_last_z(ds, -1126.0)
+    e = parse(ds).events[0]
+    assert e["scan_length_mm"] == pytest.approx(208.5 + 0.5 + 28.0)
+    assert e["dlp"] == pytest.approx(199.1, abs=0.2)
+    assert e["extra_json"]["dlp_method"] == "z_extent" and e["extra_json"]["overrange_mm"] == 28.0
+    # an axial series gets no over-ranging; without the last z the old estimate remains
+    ax = f.ct_series_image(ctdivol=8.4, count=None, spacing=0.5, acquisition="SEQUENCED", pitch=None)
+    ax.ImagePositionPatient = [0, 0, 0.0]
+    mark_series_last_z(ax, -100.0)
+    assert parse(ax).events[0]["scan_length_mm"] == pytest.approx(100.5)
+    old = f.ct_series_image(ctdivol=8.4, count=696, spacing=0.5)
+    assert parse(old).events[0]["extra_json"]["dlp_method"] == "count_x_thickness"

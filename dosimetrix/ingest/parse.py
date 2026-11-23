@@ -523,6 +523,34 @@ def mark_series_instances(ds, n: int) -> None:
     ds.private_block(PRIVATE_GROUP, PRIVATE_CREATOR, create=True).add_new(0x01, "IS", int(n))
 
 
+def series_last_z(ds) -> float | None:
+    """Z position (mm) of the series' last image, when Q/R recorded it (private tag)."""
+    try:
+        v = ds.private_block(PRIVATE_GROUP, PRIVATE_CREATOR)[0x02].value
+        return float(v) if v not in (None, "") else None
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def mark_series_last_z(ds, z: float) -> None:
+    ds.private_block(PRIVATE_GROUP, PRIVATE_CREATOR, create=True).add_new(0x02, "DS", f"{z:.4f}")
+
+
+def _image_z(ds) -> float | None:
+    pos = ds.get("ImagePositionPatient")
+    try:
+        return float(pos[2]) if pos is not None and len(pos) == 3 else None
+    except (TypeError, ValueError):
+        return None
+
+
+# Helical scans irradiate more than the images show: the beam needs a margin of about one
+# rotation's table travel before and after the reconstructed range. Fitted on one Toshiba
+# Aquilion PRIME cardiac CTA against the console's own DLP (237 mm irradiated for 209 mm
+# reconstructed with a 40 mm beam: 0.7 x collimation); to be refitted on more studies.
+OVERRANGE_PER_COLLIMATION = 0.7
+
+
 def parse_ct_header(ds) -> ParsedObject | None:
     """One CT image of a series, retrieved because the study has no dose report: its header
     carries CTDIvol, kV, mA, pitch and collimation of the whole (constant) series. The DLP
@@ -537,7 +565,16 @@ def parse_ct_header(ds) -> ParsedObject | None:
     study["modality"] = "CT"
     n = series_instances(ds)
     spacing = _f(ds.get("SpacingBetweenSlices")) or _f(ds.get("SliceThickness"))
-    length = n * abs(spacing) if n and spacing else None
+    thickness = _f(ds.get("SliceThickness"))
+    z0, z1 = _image_z(ds), series_last_z(ds)
+    method, recon, over = "count_x_thickness", None, 0.0
+    if z0 is not None and z1 is not None:
+        # the true z range of the reconstruction: first to last image position plus one
+        # slice (the series' image count x thickness is wrong when the images overlap)
+        recon = abs(z1 - z0) + (abs(thickness) if thickness else 0.0)
+        length, method = recon, "z_extent"
+    else:
+        length = n * abs(spacing) if n and spacing else None
     pitch = _f(ds.get("SpiralPitchFactor"))
     etype = _scan_type(ds, itype, pitch)
     seq = ds.get("CTDIPhantomTypeCodeSequence")
@@ -549,6 +586,10 @@ def parse_ct_header(ds) -> ParsedObject | None:
     when = parse_dt(_s(ds.get("AcquisitionDateTime"))) or \
         _datetime(ds.get("AcquisitionDate"), ds.get("AcquisitionTime")) or study["study_datetime"]
     t = _f(ds.get("ExposureTime"))
+    collimation = _f(ds.get("TotalCollimationWidth"))
+    if method == "z_extent" and etype == "spiral" and collimation:
+        over = OVERRANGE_PER_COLLIMATION * collimation
+        length += over
     event = {
         "event_uid": _s(ds.get("SeriesInstanceUID"), 64), "event_datetime": when,
         "event_type": etype,
@@ -557,13 +598,15 @@ def parse_ct_header(ds) -> ParsedObject | None:
         "comment": _s(ds.get("SeriesDescription")),
         "ctdivol": ctdivol, "dlp": ctdivol * length / 10 if length else None,
         "ct_phantom_cm": phantom, "scan_length_mm": length, "pitch": pitch,
-        "collimation_mm": _f(ds.get("TotalCollimationWidth")),
+        "collimation_mm": collimation,
         "rotation_time_s": _f(ds.get("RevolutionTime")),
         "exposure_time_s": t / 1000 if t is not None else None,
         "kvp": _f(ds.get("KVP")), "ma": _f(ds.get("XRayTubeCurrent")),
         "is_localizer": etype == "localizer",
         "extra_json": {"source": "header", "dlp_estimated": length is not None,
-                       "series_instances": n, "slice_spacing_mm": spacing},
+                       "series_instances": n, "slice_spacing_mm": spacing,
+                       "dlp_method": method, "recon_length_mm": recon,
+                       "overrange_mm": over or None},
     }
     return ParsedObject("ct_header", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
                         study=study, patient=patient, device=device, events=[event])
