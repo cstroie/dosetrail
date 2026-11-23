@@ -474,7 +474,6 @@ async function init() {
       h('div', { style: { flex: '1 1 600px' } }, qb),
       h('a', { class: 'btn', href: '#', style: { 'margin-top': '7px' }, onclick: (e) => { e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:CT ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
       h('span', { class: 'mt-3' }, countEl)),
-    h('p', { class: 'muted small' }, `${t('charts.query')}: every panel uses it. Keys here: date, device, proto, weight, origin. Protocol names are standardised and case-merged on the server.`),
     gridHost);
   await loadRows();
 }
