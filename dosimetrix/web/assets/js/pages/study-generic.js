@@ -9,7 +9,7 @@ import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, clock } from '../core/format.js';
-import { studyHref } from '../core/api.js';
+import { studyHref, setGlandularity, isSample } from '../core/api.js';
 
 const SYSTEMS = { 'ro-nom-ct': 'Nomenclator CT', 'ro-nom-rx': 'Nomenclator radiologie', 'ro-drl-ms838-2025': 'NRD OMS 838/2025',
   'ec-rp185': 'EU RP 185', 'ro-insp-1255-ct': 'INSP 1255 CT', 'ro-insp-1255-rx': 'INSP 1255 radiologie',
@@ -63,6 +63,16 @@ function rxColumns() {
     { key: 'exam', label: 'Exam', render: (e) => e.exam || '' },
     { key: 'drl', label: 'DAP / DRL', align: 'right', render: (e) => (e.drl?.dap ? h('span', { title: `${e.drl.code}: DRL ${e.drl.dap} Gy·cm² per projection (retakes add up)` }, ratioTag(e.dap_gycm2, e.drl.dap)) : '') },
   ];
+}
+
+// Breast glandularity (Order 1255/2016 art. 3): not in DICOM, so typed in; the form's own steps.
+function glandularityRow(s) {
+  if (s.modality !== 'MG') return [];
+  const steps = ['', '0.1', '25', '50', '75', '100'];
+  const sel = h('select', { class: 'input no-print', 'aria-label': 'Glandularity', disabled: isSample, onchange: async (e) => {
+    try { await setGlandularity(s.id, e.target.value === '' ? null : Number(e.target.value)); toast('Saved'); } catch (err) { toast(err.message); }
+  } }, steps.map((v) => h('option', { value: v, selected: String(s.glandularity_pct ?? '') === v }, v === '' ? '—' : `${v} %`)));
+  return [h('dt', {}, 'Glandularity'), h('dd', {}, sel)];
 }
 
 export function renderStudy(page, s, { revealButton, ackAlert }) {
@@ -128,7 +138,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
             h('dt', {}, 'Date'), h('dd', { class: 'mono' }, (s.start || '').replace('T', ' ')),
             h('dt', {}, 'Device'), h('dd', {}, s.device.name || '—'),
             h('dt', {}, 'Modality'), h('dd', {}, s.modality_label || s.modality),
-            ...indicationRow(s))),
+            ...glandularityRow(s), ...indicationRow(s))),
         h('section', { class: 'panel', 'aria-labelledby': 'h-ro' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ro' }, t('study.readouts'))), ...ro),
         h('section', { class: 'panel', 'aria-labelledby': 'h-ex' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ex' }, 'Exam codes')),
           (s.exams || []).length ? s.exams.map((x) => h('div', { class: 'readout' }, h('span', { class: 'l' }, SYSTEMS[x.system] || x.system),

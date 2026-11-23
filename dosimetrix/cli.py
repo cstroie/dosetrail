@@ -224,6 +224,50 @@ def _cmd_esak_curve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_effective_dose(args: argparse.Namespace) -> int:
+    """Effective dose coefficients (mSv/MBq) for nuclear medicine: set / show / clear."""
+    import csv
+    import getpass
+
+    from sqlalchemy import delete, select
+
+    from .db.models import AuditLog
+    from .db.models import EffectiveDoseCoefficient as C
+    from .db.session import make_engine, make_sessionmaker
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        if args.action == "show":
+            for c in session.scalars(select(C).order_by(C.nuclide, C.form, C.age_to_years)):
+                age = "adult" if c.age_to_years is None else f"to {c.age_to_years:g} y"
+                print(f"{c.nuclide} / {c.form} ({age}): {c.msv_per_mbq:g} mSv/MBq  [{c.source}]")
+            return 0
+        rows: list[C] = []
+        if args.action == "set":
+            if not args.file:
+                print("set needs --file: nuclide,form,age_to_years,msv_per_mbq,source",
+                      file=sys.stderr)
+                return 2
+            with open(args.file, newline="", encoding="utf-8") as fh:
+                for r in csv.reader(fh):
+                    try:
+                        age = float(r[2]) if r[2].strip() else None
+                        rows.append(C(nuclide=r[0].strip(), form=r[1].strip(), age_to_years=age,
+                                      msv_per_mbq=float(r[3]), source=r[4].strip()))
+                    except (ValueError, IndexError):
+                        continue  # a header or a blank line
+            if not rows or any(c.msv_per_mbq <= 0 or not c.source for c in rows):
+                print("each row needs a positive coefficient and its source", file=sys.stderr)
+                return 2
+        session.execute(delete(C))
+        session.add_all(rows)
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="config",
+                             target=f"effective-dose:{args.action}", detail={"rows": len(rows)}))
+        session.commit()
+        print(f"{len(rows)} coefficients" if rows else "coefficients removed")
+    return 0
+
+
 def _cmd_art12(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
@@ -1104,6 +1148,14 @@ def build_parser() -> argparse.ArgumentParser:
     ec.add_argument("--fdd", type=float, default=50.0, help="distance of the measurement, cm")
     ec.add_argument("--url")
     ec.set_defaults(func=_cmd_esak_curve)
+
+    ed = sub.add_parser("effective-dose", help="mSv/MBq coefficients for the estimated effective "
+                                               "dose of nuclear medicine (none ship)")
+    ed.add_argument("action", choices=["set", "show", "clear"])
+    ed.add_argument("--file", help="CSV: nuclide,form,age_to_years (empty = adult),"
+                                   "msv_per_mbq,source")
+    ed.add_argument("--url")
+    ed.set_defaults(func=_cmd_effective_dose)
 
     a12 = sub.add_parser("art12", help="annual DRL return, Order 1255/2016 art. 12: 20 patients "
                                        "per examination and device, Feb-Mar (zip of xlsx)")

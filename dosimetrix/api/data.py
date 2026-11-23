@@ -295,6 +295,7 @@ def study(session: Session, study_id: int) -> dict | None:
                    "model": d.model_name if d else None, "biplane": len(planes) > 1},
         "physician": s.performing_physician, "operator": s.operator_name,
         "requested_procedure": s.requested_procedure, "procedure": s.procedure_name,
+        "glandularity_pct": s.glandularity_pct,
         "patient": {**_patient_summary(s, p),
                     "age_display": format_age(s.age_days) if s.age_days is not None else None,
                     "height_cm": round(s.height_m * 100) if s.height_m else None,

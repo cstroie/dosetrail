@@ -59,6 +59,7 @@ STUDY_COLUMNS: list[Col] = [
     ("Weight source", lambda r: r["s"].weight_source.value if r["s"].weight_source else None),
     ("Weight reported [kg]", lambda r: r["s"].weight_reported_kg),
     ("Height [m]", lambda r: r["s"].height_m),
+    ("Glandularity [%]", lambda r: r["s"].glandularity_pct),
     ("Study description", lambda r: r["s"].study_description),
     ("Exam code", lambda r: "; ".join(r["exam"])),
     ("Exam", lambda r: "; ".join(r["exam_name"])),

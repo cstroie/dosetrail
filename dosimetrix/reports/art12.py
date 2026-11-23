@@ -22,7 +22,7 @@ examination sheet, in the official column order:
   Fluoroscopy: the study's DAP. Mammography: the mean glandular dose of each view. Nuclear
   medicine: the administered activity (one injection split over two studies counts once);
   hybrid: also the CT DLP. The estimated effective dose of nuclear medicine is filled only for
-  radiopharmaceuticals that have a coefficient in the coefficient table (``effective_dose``).
+  radiopharmaceuticals that have a coefficient in the table (effdose.py; none ship).
 
 Which national code goes on which sheet is seed data (``seeds/art12_sheets.toml``). Interventional
 cardiology and radiology, dental and bone densitometry have their own INSP files and are not
@@ -175,7 +175,7 @@ def _studies(session: Session, fam: dict, start: dt.datetime, end: dt.datetime,
     return list(grouped.values())
 
 
-def _row(kind: str, g: dict, n: int, coefficients: dict[str, float]) -> list:
+def _row(kind: str, g: dict, n: int, coefficients) -> list:
     dose = g["dap"] if g["event_level"] else g["study_dap"]
     height = round(g["height"] * 100) if g["height"] else ""
     head = [n, cnp7(g["patient_id"], g["sex"], g["birth"]), _age(g["age_days"]),
@@ -197,7 +197,7 @@ def _row(kind: str, g: dict, n: int, coefficients: dict[str, float]) -> list:
     base = [*head, ind, nuc, form, g["code"], _num(g["activity"], 1)]
     if kind == "nmh":
         return [*base, _num(g["dlp"], 1)]
-    coef = coefficients.get(f"{nuc}/{form}".lower())
+    coef = coefficients(nuc, form, g["age_days"])
     msv = g["activity"] * coef if coef is not None and g["activity"] is not None else None
     return [*base, _num(msv, 2)]
 
@@ -207,11 +207,14 @@ def _num(v, digits: int):
 
 
 def build(session: Session, year: int, conds: list | None = None,
-          coefficients: dict[str, float] | None = None) -> list[Workbook]:
+          coefficients=None) -> list[Workbook]:
     """The workbooks of the year: one per family and physical device with examinations."""
     start, end = window(year)
     conds = conds or []
-    coefficients = coefficients or {}
+    if coefficients is None:
+        from ..effdose import load
+
+        coefficients = load(session)
     devs = {d.id: d for d in session.scalars(select(Device))}
 
     def physical(i: int | None) -> Device | None:

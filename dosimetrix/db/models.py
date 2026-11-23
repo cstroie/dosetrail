@@ -132,6 +132,22 @@ class DeviceOutput(Base):
     __table_args__ = (UniqueConstraint("device_id", "kvp", name="uq_device_output_kvp"),)
 
 
+class EffectiveDoseCoefficient(Base):
+    """mSv per MBq administered, for one radiopharmaceutical (nuclide and chemical form) up to an
+    age. No values ship with the program: they come from a source the physicist names (ICRP 128
+    and 106, EANM dosage card, ...), which is kept in ``source``."""
+
+    __tablename__ = "effective_dose_coefficient"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nuclide: Mapped[str] = mapped_column(Text(32))  # Tc-99m
+    form: Mapped[str] = mapped_column(Text(64))  # the chemical form, as in the national code: DMSA
+    age_to_years: Mapped[float | None] = mapped_column(Float)  # None: adult (no upper age)
+    msv_per_mbq: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(Text(255))
+
+    __table_args__ = (UniqueConstraint("nuclide", "form", "age_to_years", name="uq_effdose"),)
+
+
 # -------------------------------------------------------------------------- patient
 
 
@@ -212,6 +228,8 @@ class Study(TimestampMixin, Base):
     total_fluoro_time: Mapped[float | None] = mapped_column(Float)
     total_fluoro_dap: Mapped[float | None] = mapped_column(Float)
     total_acq_dap: Mapped[float | None] = mapped_column(Float)
+    # breast glandularity in %, typed in per study (DICOM does not carry it): art. 3(2)
+    glandularity_pct: Mapped[float | None] = mapped_column(Float)
     agd_left: Mapped[float | None] = mapped_column(Float)
     agd_right: Mapped[float | None] = mapped_column(Float)
     admin_activity_mbq: Mapped[float | None] = mapped_column(Float)

@@ -67,6 +67,10 @@ class LocalDRLIn(BaseModel):
     rows: list[dict]
 
 
+class GlandularityIn(BaseModel):
+    percent: float | None = None  # 0..100, None removes it
+
+
 class IndicationIn(BaseModel):
     code: str | None = None
 
@@ -523,6 +527,24 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         out["indication"] = indications.of_study(session, study_id)
         return out
+
+    @app.put("/api/studies/{study_id}/glandularity")
+    def study_glandularity(study_id: int, body: GlandularityIn, request: Request,
+                           user: User = Depends(admin_user), session: Session = Depends(db)):
+        """The breast glandularity of a mammography study, typed in (DICOM does not carry it)."""
+        st = session.get(Study, study_id)
+        if st is None:
+            raise HTTPException(404, "study not found")
+        if st.modality != "MG":
+            raise HTTPException(400, "glandularity is for mammography studies")
+        if body.percent is not None and not 0 <= body.percent <= 100:
+            raise HTTPException(400, "percent is 0..100")
+        before = st.glandularity_pct
+        st.glandularity_pct = body.percent
+        _audit(session, request, user, "glandularity", f"study:{study_id}",
+               {"from": before, "to": body.percent})
+        session.commit()
+        return {"study_id": study_id, "glandularity_pct": st.glandularity_pct}
 
     @app.put("/api/studies/{study_id}/indication")
     def study_indication(study_id: int, body: IndicationIn, request: Request,

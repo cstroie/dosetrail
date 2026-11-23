@@ -215,6 +215,8 @@ export function drlSets() {
 
 /** GET /api/drl/sets/{key} → { key, name, source, notes, values: [{ exam, exam_meaning, modality,
  *  scheme, band, band_label, quantity, value, unit, applies_to }] } */
+/** PUT /api/studies/{id}/glandularity {percent|null} (admin): mammography, typed in. */
+export const setGlandularity = (id, percent) => send('PUT', `/api/studies/${id}/glandularity`, { percent });
 /** PUT /api/studies/{id}/indication {code|null} (admin); PUT /api/indications/mappings. */
 export const setStudyIndication = (id, code) => send('PUT', `/api/studies/${id}/indication`, { code });
 export const decideIndication = (text, code) => send('PUT', '/api/indications/mappings', { text, code });

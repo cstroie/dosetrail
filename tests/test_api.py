@@ -54,6 +54,9 @@ def client(tmp_path_factory):
         rx.events = [Event(protocol="COLOANA", anatomy="Spine", dap=0.2),
                      Event(protocol="W035 Torace a.p. 10kg", view="antero-posterior", dap=0.05)]
         s.add(rx)
+        s.add(Study(study_uid="1.2.5", accession="A3", modality="MG", device_id=dev.id,
+                    study_datetime=NOW - dt.timedelta(days=1), study_description="Mamografie",
+                    source_kind="test"))
         s.flush()
         classify.run(s)
         s.commit()
@@ -349,6 +352,22 @@ def test_dose_statement_names_the_patient_so_needs_pid_and_is_audited(client):
     login(client, "boss", "boss-pass-123")
     log = client.get("/api/audit", params={"action": "identify"}).json()["rows"]
     assert any(x["target"] == "dose-statement:study:1" and x["user"] == "phys" for x in log)
+
+
+def test_glandularity_is_typed_in_for_mammography_only(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.put("/api/studies/3/glandularity", json={"percent": 50}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    mg = client.get("/api/studies", params={"q": "modality:MG"}).json()
+    sid = next(r["id"] for r in mg["rows"] if r["modality"] == "MG")
+    assert client.put(f"/api/studies/{sid}/glandularity", json={"percent": 25}).json() == {
+        "study_id": sid, "glandularity_pct": 25.0}
+    assert client.get(f"/api/studies/{sid}").json()["glandularity_pct"] == 25.0
+    assert client.put(f"/api/studies/{sid}/glandularity", json={"percent": 140}).status_code == 400
+    assert client.put("/api/studies/1/glandularity", json={"percent": 50}).status_code == 400  # XA
+    assert client.put(f"/api/studies/{sid}/glandularity", json={"percent": None}).status_code == 200
+    log = client.get("/api/audit", params={"action": "glandularity"}).json()["rows"]
+    assert log and log[0]["detail"]["from"] == 25.0
 
 
 def test_survey_export_endpoint(client):
