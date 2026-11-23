@@ -57,7 +57,7 @@ from pynetdicom.sop_class import (
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db.models import AppSetting, Event, IngestedObject, Study
+from ..db.models import AppSetting, Device, Event, IngestedObject, Study
 from ..ingest.parse import mark_series_instances
 from .spool import Spool
 
@@ -443,6 +443,59 @@ def needs_ct_sr(session: Session, study_uid: str) -> bool:
         IngestedObject.sop_class_uid.startswith(SR_CLASS)).limit(1)) is None
 
 
+DOSE_PAGE_MAX_IMAGES = 5  # the console's dose screenshot is a series of a few pages
+
+
+def needs_dose_page(session: Session, study_uid: str) -> bool:
+    """A Toshiba CT study known only from image headers (no dose report exists): the dose
+    pages the console sends as a small Secondary Capture series hold the scanner's own DLP."""
+    return session.scalar(select(Study.id).join(Device, Device.id == Study.device_id).where(
+        Study.study_uid == study_uid, Study.modality == "CT", Study.source_kind == "ct_header",
+        Device.manufacturer.ilike("%toshiba%")).limit(1)) is not None
+
+
+def fetch_dose_pages(node: Node, study_uid: str, spool: Spool, drain: Callable[[], int],
+                     stats: QRStats, series: list[dict] | None = None) -> int:
+    """Every image of the study's short CT series (the dose pages), whole."""
+    series = find_series(node, study_uid) if series is None else series
+    small = [s["uid"] for s in series if s["modality"] == "CT" and s["instances"]
+             and s["instances"] <= DOSE_PAGE_MAX_IMAGES]
+    if not small:
+        stats.add("no_dose_page_series")
+        return 0
+    r = retrieve(node, study_uid, small, spool)
+    stats.add("dose_page_objects", r["delivered"])
+    stats.tally(r)
+    if r["delivered"]:
+        drain()
+    return r["delivered"]
+
+
+def dose_page_backfill(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
+                       session_factory, stats: QRStats, pause: float = 0.2,
+                       progress: Callable[[str], None] = print) -> None:
+    """Toshiba CT studies of the day already in the database from headers only: fetch
+    their dose pages."""
+    lo = dt.datetime.combine(day, dt.time())
+    with session_factory() as session:
+        uids = [u for u in session.scalars(
+            select(Study.study_uid).where(Study.modality == "CT",
+                                          Study.source_kind == "ct_header",
+                                          Study.study_datetime >= lo,
+                                          Study.study_datetime < lo + dt.timedelta(days=1)))
+                if needs_dose_page(session, u)]
+    if uids:
+        progress(f"{day}: {len(uids)} Toshiba CT studies without a dose page")
+    for uid in uids:
+        try:
+            fetch_dose_pages(node, uid, spool, drain, stats)
+            stats.add("dose_page_studies")
+        except Exception as e:  # keep going
+            stats.add("study_errors")
+            log.warning("dose pages of %s failed: %s", uid, e)
+        time.sleep(pause)
+
+
 def fetch_sr(node: Node, study_uid: str, spool: Spool, drain: Callable[[], int],
              stats: QRStats) -> int:
     """Only the study's SR series (the dose report)."""
@@ -518,6 +571,9 @@ def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], 
     with session_factory() as session:
         covered = has_dose_report(session, hit.uid)
         staff = needs_staff(session, hit.uid)
+        dose_page = ct_headers and needs_dose_page(session, hit.uid)
+    if dose_page:  # a Toshiba without a dose SR: the console's own dose pages
+        fetch_dose_pages(node, hit.uid, spool, drain, stats, series)
     if staff and not ct_headers:  # the CT headers carry the names as well
         fetch_staff(node, hit.uid, series, spool, drain, stats)
     if covered:

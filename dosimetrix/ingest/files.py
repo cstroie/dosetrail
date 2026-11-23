@@ -10,6 +10,7 @@ from pydicom import config as dicom_config
 from pydicom.errors import InvalidDicomError
 from sqlalchemy.orm import Session
 
+from . import dosepage
 from .parse import parse
 from .store import Result, Store
 
@@ -26,10 +27,17 @@ def iter_files(paths: Iterable[str | Path]) -> Iterator[Path]:
 
 
 def read(path: Path):
+    """The object's header; the pixels too for the few objects whose picture is read (a
+    scanner's dose screenshot, see dosepage.py)."""
     try:
-        return pydicom.dcmread(path, stop_before_pixels=True)
+        ds = pydicom.dcmread(path, stop_before_pixels=True)
+        force = False
     except InvalidDicomError:
-        return pydicom.dcmread(path, stop_before_pixels=True, force=True)
+        ds = pydicom.dcmread(path, stop_before_pixels=True, force=True)
+        force = True
+    if dosepage.wants_pixels(ds):
+        ds = pydicom.dcmread(path, force=force)
+    return ds
 
 
 def import_paths(session: Session, paths: Iterable[str | Path], secret: bytes,

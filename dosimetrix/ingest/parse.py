@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 
 from ..dicom.sr import Node, code_in, parse_dt, tree
 from ..patient_age import parse_dicom_age
+from . import dosepage
 
 RDSR_TITLE = "113701"  # X-Ray Radiation Dose Report
 HEADER_SOP = {
@@ -54,7 +55,7 @@ PROJ_ACQ = ({"113611", "113612", "113613"},
 
 @dataclass
 class ParsedObject:
-    kind: str  # ct_rdsr | proj_rdsr | header | ct_header | nm_header | staff | ignored
+    kind: str  # ct_rdsr | proj_rdsr | header | ct_header | dose_page | nm_header | staff | ignored
     sop_instance_uid: str
     sop_class_uid: str
     reason: str = ""
@@ -235,7 +236,45 @@ def parse(ds) -> ParsedObject:
         staff = {k: study[k] for k in ("study_uid", "operator_name", "performing_physician")}
         if staff["operator_name"] or staff["performing_physician"]:
             return ParsedObject("staff", sop_uid, sop_class, study=staff)
+    if dosepage.wants_pixels(ds):
+        got = parse_dose_page(ds)
+        if got is not None:
+            return got
     return ParsedObject("ignored", sop_uid, sop_class, reason="no dose information")
+
+
+def parse_dose_page(ds) -> ParsedObject | None:
+    """A scanner's dose screenshot (Secondary Capture) read by OCR: page 1 gives the weight,
+    the table pages one event per acquisition with the scanner's own CTDIvol and DLP. Only
+    trusted when the page names this very patient and day; None otherwise (ignored)."""
+    page = dosepage.read(ds)
+    if not page:
+        return None
+    if page.get("patient_id") != _s(ds.get("PatientID")) \
+            or page.get("study_date") != str(ds.get("StudyDate", "")):
+        return None
+    for r in page["rows"]:  # DLP / CTDIvol is the scanned length in cm: a misread is not that
+        if (r["dlp"] is None) != (r["ctdivol"] is None) or (
+                r["dlp"] is not None and not 0.1 <= r["dlp"] / r["ctdivol"] <= 200):
+            return None
+    study, patient, device = _header(ds)
+    study["modality"] = "CT"
+    if page.get("weight_kg") and not study.get("weight_kg"):
+        study["weight_kg"] = page["weight_kg"]
+    events = []
+    for r in page["rows"]:
+        etype = dosepage.event_type(r["protocol"])
+        events.append({
+            "event_uid": dosepage.event_uid(study["study_uid"], r["section"], r["no"]),
+            "event_datetime": study["study_datetime"], "event_type": etype,
+            "protocol": r["protocol"], "comment": r["exam"], "ctdivol": r["ctdivol"],
+            "dlp": r["dlp"], "kvp": r["kvp"], "ct_phantom_cm": r["phantom"],
+            "is_localizer": etype == "localizer",
+            "extra_json": {"source": "ocr", "row": r["no"], "section": r["section"]}})
+    if not events and not study.get("weight_kg"):
+        return None
+    return ParsedObject("dose_page", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
+                        study=study, patient=patient, device=device, events=events)
 
 
 # ------------------------------------------------------------------- NM / PET headers

@@ -200,13 +200,13 @@ class Store:
 
         existing = list(self.session.scalars(select(Event).where(Event.study_id == study.id)))
         projection = obj.kind in ("proj_rdsr", "header")
-        if obj.kind in ("header", "ct_header") and any(_source(e) == "rdsr" for e in existing):
+        if obj.kind in ("header", "ct_header") and any(_source(e) in ("rdsr", "ocr") for e in existing):
             self._record(obj, study.id, "superseded", "study has a dose report", seen)
             return self._count(Result("superseded", study.id,
                                       message="a dose report already covers this study"))
-        if obj.kind in ("proj_rdsr", "ct_rdsr"):
-            # a CT dose report replaces the estimated CT header events, not the
-            # radiopharmaceutical administrations of a PET/CT (also from headers)
+        if obj.kind in ("proj_rdsr", "ct_rdsr") or (obj.kind == "dose_page" and obj.events):
+            # a CT dose report (or the scanner's dose page) replaces the estimated CT header
+            # events, not the radiopharmaceutical administrations of a PET/CT (also from headers)
             stale = [e for e in existing if _source(e) == "header"
                      and (obj.kind == "proj_rdsr" or e.event_type != "radiopharmaceutical")]
             for e in stale:
@@ -286,11 +286,13 @@ class Store:
             study.weight_reported_kg = None
         if study.height_m is None and s.get("height_m"):
             study.height_m, study.height_source = s["height_m"], SizeSource.dicom_unknown
-        if obj.kind in ("ct_rdsr", "proj_rdsr", "ct_header") \
+        if obj.kind in ("ct_rdsr", "proj_rdsr", "ct_header", "dose_page") \
                 and study.modality in ("SR", "OT", None):
             study.modality = s.get("modality") or study.modality
-        if obj.kind == "ct_rdsr" and study.source_kind == "ct_header":
+        if obj.kind == "ct_rdsr" and study.source_kind in ("ct_header", "dose_page"):
             study.source_kind = "ct_rdsr"  # the dose report replaced the image headers
+        if obj.kind == "dose_page" and obj.events and study.source_kind == "ct_header":
+            study.source_kind = "dose_page"  # the scanner's own values replaced the estimates
         if obj.kind == "nm_header" and study.modality in ("CT", "SR", "OT", None) \
                 and s.get("modality") in ("PT", "NM"):
             # a PET/CT or SPECT/CT whose CT dose report came first (hybrid.py)

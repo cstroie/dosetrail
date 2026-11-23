@@ -23,6 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6", "httpx>=0.27"]
+ocr = ["numpy", "pillow"]  # the scanner dose pages are read with tesseract (dosepage.py)
 
 [project.scripts]
 dosimetrix = "dosimetrix.cli:main"
