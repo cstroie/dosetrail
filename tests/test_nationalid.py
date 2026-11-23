@@ -100,3 +100,17 @@ def test_backfill_corrects_and_reages(session):
     assert counts["sex_corrected"] == 1 and counts["birth_corrected"] == 1
     assert studies == [st.id]
     assert st.age_days == (dt.date(2025, 1, 1) - dt.date(2018, 1, 1)).days
+
+
+def test_impossible_header_birth_date_does_not_veto_a_valid_national_id():
+    """A header year of 1015 (typo of 2015) or the 1753-01-01 placeholder is no evidence of
+    "another person's ID": the national ID's birth date wins."""
+    for bad in (dt.date(1015, 1, 15), dt.date(1753, 1, 1), dt.date(222, 5, 27)):
+        p = Patient(patient_id=cnp("518010140001"), birth_date=bad, sex=None)
+        assert demographics.reconcile(p, on=ON)
+        assert p.birth_date == dt.date(2018, 1, 1) and p.demo_source == "cnp"
+        assert not p.demo_conflict or "another person" not in p.demo_conflict
+    # a plausible but different header date is still treated as another person's record
+    q = Patient(patient_id=cnp("518010140001"), birth_date=dt.date(1975, 6, 6))
+    demographics.reconcile(q, on=ON)
+    assert "another person" in (q.demo_conflict or "")

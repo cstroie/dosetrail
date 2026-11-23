@@ -385,6 +385,8 @@ class OpenREMImporter:
     @staticmethod
     def _age(r: dict, study_dt: dt.datetime | None) -> tuple[int | None, AgePrecision]:
         birth = parse_date(r.get("patient_birth_date"))
+        if birth and birth.year < 1901:  # an "unknown" placeholder (1753-01-01), not a birth date
+            birth = None
         if birth and study_dt and study_dt.date() >= birth:
             return (study_dt.date() - birth).days, AgePrecision.exact
         parsed = parse_dicom_age(r.get("patient_age"))

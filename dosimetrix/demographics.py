@@ -25,8 +25,10 @@ FOREIGN_YEARS = 12  # a national/HIS birth date this far from the header's is so
 
 
 def _real(birth: dt.date | None) -> bool:
-    """A header birth date that is not an age-only placeholder (1 January)."""
-    return birth is not None and (birth.month, birth.day) != (1, 1)
+    """A header birth date that is not an age-only placeholder (1 January) and not an
+    impossible one (before 1901: 1753-01-01 stands for "unknown", 1015 or 0222 are typos
+    of 2015 / 2022): those say nothing against a national ID."""
+    return birth is not None and (birth.month, birth.day) != (1, 1) and birth.year >= 1901
 
 
 def _foreign(birth: dt.date | None, headers: list[dt.date]) -> dt.date | None:
