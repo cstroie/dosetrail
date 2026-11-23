@@ -42,7 +42,7 @@ class DtShell extends HTMLElement {
 
     const palette = h('dt-command-palette');
     const ctx = h('header', { class: 'ctx' },
-      h('span', { class: 'ctx-logo', role: 'img', 'aria-label': 'Dosimetrix' }, icon('logo', 24, 2)),
+      h('a', { class: 'ctx-logo', href: 'index.html', 'aria-label': `Dosimetrix · ${t('nav.overview')}`, title: t('nav.overview') }, icon('logo', 24, 2)),
       crumb,
       h('button', { class: 'cmdk-trigger', type: 'button', onclick: () => palette.open() },
         icon('search', 14, 2), h('span', { class: 'cmdk-label' }, t('shell.search')), h('kbd', {}, 'Ctrl K')),
