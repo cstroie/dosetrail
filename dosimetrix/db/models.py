@@ -626,6 +626,7 @@ class Alert(Base):
     ack_note: Mapped[str | None] = mapped_column(Text(1024))
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
     notify_error: Mapped[str | None] = mapped_column(Text(512))
+    notified_channels: Mapped[str | None] = mapped_column(AsciiId(64))  # comma list delivered
 
     __table_args__ = (
         UniqueConstraint("rule_id", "study_id", name="uq_alert_rule_study"),

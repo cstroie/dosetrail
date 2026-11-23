@@ -5,8 +5,9 @@
   marked "not sent (historical)" so nobody gets a flood of old news.
 * Messages carry **no patient identifiers**: the rule, the value, the exam, the device, the
   study date and a link to the study, which needs a login.
-* A failure is recorded on the alert (``notify_error``) and retried on the next run; after
-  5 failed runs it is given up.
+* A failure is recorded on the alert (``notify_error``) and retried on the next run, for the
+  failed channels only (``notified_channels`` lists those already delivered); after 5 failed
+  runs it is given up.
 
 Configuration (dosimetrix.toml)::
 
@@ -182,15 +183,20 @@ def dispatch(session: Session, cfg: NotifySettings, now: dt.datetime | None = No
             stats["no_channel"] += 1
             continue
         m = compose(a, rule, s, names.get(s.device_id), cfg.base_url)
+        done = set(filter(None, (a.notified_channels or "").split(",")))
         errors = []
         for ch in channels:
+            if ch in done:  # already delivered on an earlier run: do not send twice
+                continue
             try:
                 senders[ch](cfg, m)
+                done.add(ch)
                 stats[f"sent_{ch}"] += 1
             except Exception as exc:  # noqa: BLE001 – report and retry later
                 log.warning("alert %s: %s failed: %s", a.id, ch, exc)
                 errors.append(f"{ch}: {exc}")
-        if errors and len(errors) == len(channels):
+        a.notified_channels = ",".join(c for c in channels if c in done) or None
+        if errors:  # only the failed channels are retried, up to MAX_TRIES runs
             prev = re.match(r"failed \(try (\d+)\)", a.notify_error or "")
             tries = (int(prev.group(1)) if prev else 0) + 1
             a.notify_error = f"failed (try {tries}): " + "; ".join(errors)
@@ -199,6 +205,6 @@ def dispatch(session: Session, cfg: NotifySettings, now: dt.datetime | None = No
             stats["failed"] += 1
         else:
             a.notified_at = now
-            a.notify_error = "; ".join(errors) or None
+            a.notify_error = None
     session.flush()
     return stats

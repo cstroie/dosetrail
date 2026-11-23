@@ -127,6 +127,35 @@ def test_notification_failures_retry_then_give_up(session, world):
     assert a.notified_at is not None  # given up after MAX_TRIES
 
 
+def test_partial_channel_failure_retries_only_the_failed_channel(session, world):
+    dev, kid = world
+    s = _study(session, dev, kid, "al.8", NOW, modality="XA", total_rp_dose=6.0,
+               age_days=4000)
+    alerts.evaluate(session, [s.id])
+    cfg = notify.NotifySettings(smtp_host="h", email_to=["a@b"], ntfy_url="http://x/t")
+    calls = {"email": 0, "ntfy": 0}
+    mail_up = False
+
+    def ntfy(c, m):
+        calls["ntfy"] += 1
+
+    def email(c, m):
+        calls["email"] += 1
+        if not mail_up:
+            raise OSError("smtp down")
+
+    senders = {"email": email, "ntfy": ntfy}
+    notify.dispatch(session, cfg, NOW, senders)
+    a = _alerts(session, s)["fluoro-kar-5gy"]
+    assert a.notified_at is None and a.notified_channels == "ntfy"
+    assert a.notify_error.startswith("failed (try 1)")
+    mail_up = True
+    notify.dispatch(session, cfg, NOW, senders)
+    assert a.notified_at is not None and a.notify_error is None
+    assert a.notified_channels == "email,ntfy"
+    assert calls == {"email": 2, "ntfy": 1}  # ntfy was not sent a second time
+
+
 def test_per_patient_rules_alert_once_per_window(session, world):
     dev, kid = world
     ids = []
