@@ -160,7 +160,6 @@ async function init() {
   page.replaceChildren(
     tabsHost,
     qb,
-    h('p', { class: 'muted small' }, t('studies.query.hint')),
     h('div', { class: 'split' }, grid,
       h('aside', { class: 'panel preview', 'aria-labelledby': 'h-prev' },
         h('div', { class: 'panel-head' }, h('h2', { id: 'h-prev' }, t('studies.preview'))),
