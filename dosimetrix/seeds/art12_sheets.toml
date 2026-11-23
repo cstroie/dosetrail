@@ -1,0 +1,308 @@
+# Order MS 1255/2016 art. 12: which official workbook sheet (reference/insp-forms/Art12_*.xls)
+# each national procedure code (the quarterly-report codes) is entered on.
+# Families without a sheet here (cardio / non-cardio interventional, dental, bone
+# densitometry) are not generated.
+
+[[family]]
+key = "ct"
+title = "CT (DLP)"
+file = "Art12_CT_DLP"
+system = "ro-insp-1255-ct"
+modalities = ["CT"]
+kind = "ct"
+
+[[family.sheet]]
+name = "Cap"
+codes = ["C", "CSC"]
+
+[[family.sheet]]
+name = "Ureche"
+codes = ["U", "USC"]
+
+[[family.sheet]]
+name = "Orbita"
+codes = ["OR", "ORSC"]
+
+[[family.sheet]]
+name = "Sinus"
+codes = ["S", "SSC"]
+
+[[family.sheet]]
+name = "Gat(parti moi)"
+codes = ["G", "GSC"]
+
+[[family.sheet]]
+name = "Coloana cervicala"
+codes = ["CC", "CCSC"]
+
+[[family.sheet]]
+name = "Cap+Col cervicala"
+codes = ["CCC", "CCCSC"]
+
+[[family.sheet]]
+name = "Coloana toracala"
+codes = ["CT", "CTSC"]
+
+[[family.sheet]]
+name = "Coloana lombara"
+codes = ["CL", "CLSC"]
+
+[[family.sheet]]
+name = "Torace"
+codes = ["T", "TSC", "TLD", "TEP"]
+
+[[family.sheet]]
+name = "Abdomen"
+codes = ["A", "ASC"]
+
+[[family.sheet]]
+name = "Pelvis"
+codes = ["P", "PSC"]
+
+[[family.sheet]]
+name = "Trunchi"
+codes = ["TR", "TRSC"]
+
+[[family.sheet]]
+name = "Torace+Abdomen"
+codes = ["TA", "TASC"]
+
+[[family.sheet]]
+name = "Abdomen + Pelvis"
+codes = ["AP", "APSC"]
+
+[[family.sheet]]
+name = "Cap+Torace+Abdomen"
+codes = ["CTA", "CTASC"]
+
+[[family.sheet]]
+name = "Cap+Abdomen+Pelvis"
+codes = ["CAP", "CAPSC"]
+
+[[family.sheet]]
+name = "Cap+Torace+Abdomen+Pelvis"
+codes = ["CTAP", "CTAPSC"]
+
+[[family.sheet]]
+name = "Cap+Gat"
+codes = ["CG", "CGSC"]
+
+[[family.sheet]]
+name = "Cap+Gat+Torace"
+codes = ["CGT", "CGTSC"]
+
+[[family.sheet]]
+name = "Gat+Torace"
+codes = ["GT", "GTSC"]
+
+[[family.sheet]]
+name = "Gat+Torace+Abdomen"
+codes = ["GTA", "GTASC"]
+
+[[family.sheet]]
+name = "Gat+Torace+Abdomen+Pelvis"
+codes = ["GTAP", "GTAPSC"]
+
+[[family.sheet]]
+name = "Urografie CT"
+codes = ["URO", "UROSC"]
+
+[[family.sheet]]
+name = "Extremitati"
+codes = ["E", "ESC"]
+
+[[family]]
+key = "radiografie"
+title = "Radiologie conventionala (DAP)"
+file = "Art12_Radiografie_DAP"
+system = "ro-insp-1255-rx"
+modalities = ["DX", "CR"]
+kind = "rx"
+
+[[family.sheet]]
+name = "CRANIU"
+codes = ["C1", "C2"]
+
+[[family.sheet]]
+name = "SINUS"
+codes = ["S1"]
+
+[[family.sheet]]
+name = "TORACE CP"
+codes = ["T1", "T2", "T3"]
+
+[[family.sheet]]
+name = "TORACE OSOS"
+codes = ["T4", "T5"]
+
+[[family.sheet]]
+name = "MEMBRE SI ARTICULATII"
+codes = ["OL"]
+
+[[family.sheet]]
+name = "COLOANA CERVICALA"
+codes = ["CC1", "CC2"]
+
+[[family.sheet]]
+name = "COLOANA TORACALA"
+codes = ["CT1", "CT2"]
+
+[[family.sheet]]
+name = "COLOANA LOMBARA"
+codes = ["CL1", "CL2", "CL3", "CL4"]
+
+[[family.sheet]]
+name = "PELVIS SI SOLD"
+codes = ["P1", "P2"]
+
+[[family.sheet]]
+name = "ABDOMEN"
+codes = ["A1"]
+
+[[family.sheet]]
+name = "TRACT GASTRODUODENAL"
+codes = ["TG1", "TG2", "TG3", "TG4", "TG5", "TG6"]
+
+[[family.sheet]]
+name = "UROGRAFIE"
+codes = ["U2"]
+
+[[family.sheet]]
+name = "HISTEROSALPINGOGRAFIE"
+codes = ["H1"]
+
+[[family.sheet]]
+name = "PIELOGRAFIE"
+codes = ["PR1"]
+
+[[family.sheet]]
+name = "URETRO-CISTOGRAFIE"
+codes = ["UCR1"]
+
+[[family.sheet]]
+name = "RRVS"
+codes = ["R1"]
+
+[[family.sheet]]
+name = "COLANGIOGRAFIE"
+codes = ["CLG1"]
+
+[[family]]
+key = "fluoroscopie"
+title = "Fluoroscopie (DAP)"
+file = "Art12_Fluoroscopie_DAP"
+system = "ro-insp-1255-rx"
+modalities = ["RF"]
+kind = "fluoro"
+
+[[family.sheet]]
+name = "TORACE"
+codes = ["T3"]
+
+[[family.sheet]]
+name = "GASTRODUODEN"
+codes = ["TG1", "TG2", "TG4"]
+
+[[family.sheet]]
+name = "COLON"
+codes = ["TG3", "TG5"]
+
+[[family.sheet]]
+name = "PANSDORF"
+codes = ["TG6"]
+
+[[family]]
+key = "mamografie"
+title = "Mamografie / tomosinteza (MGD)"
+file = "Art12_Mamografie_MGD"
+system = "ro-insp-1255-rx"
+modalities = ["MG"]
+kind = "mg"
+
+[[family.sheet]]
+name = "Mamografie"
+codes = ["SMB1", "SMB2", "SMU1", "SMU2"]
+
+[[family.sheet]]
+name = "Tomosinteza"
+codes = ["STB", "STU"]
+
+[[family]]
+key = "nm_diagnostic"
+title = "Medicina nucleara diagnostic"
+file = "Art12_NM_diagnostic"
+system = "ro-insp-1255-nm"
+modalities = ["NM"]
+kind = "nm"
+
+[[family.sheet]]
+name = "SCINTIGRAFIE TIROIDIANA"
+codes = ["ST1", "ST2"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE FUNCTIE TIROIDIANA"
+codes = ["ST3", "ST4"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE PULMONARA PERFUZIE"
+codes = ["SP1", "SP2"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE PULMONARA VENTILAT"
+codes = ["SP3"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE CARDIOVASCULARA"
+codes = ["SV1", "SV2", "SV3", "SV4", "SV5", "SV6", "SV7"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE HEPATICA BILIARA S"
+codes = ["SH1", "SH2"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE RENALA"
+codes = ["SR1", "SR2", "SR3", "SR4", "SR5"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE OSOASA"
+codes = ["SO1", "SO2", "SO3", "SO4"]
+
+[[family.sheet]]
+name = "TRACT GASTROINTESTINAL"
+codes = ["SG1"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE PARATIROIDIANA"
+codes = ["SPT1", "SPT2", "SPT3"]
+
+[[family.sheet]]
+name = "LIMFOSCINTIGRAFIE"
+codes = ["SL1"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE NEUROENDOCRINA"
+codes = ["SNE"]
+
+[[family.sheet]]
+name = "ALTELE"
+codes = ["SDM", "ALTMN"]
+
+[[family]]
+key = "nm_hibride"
+title = "Medicina nucleara hibrida"
+file = "Art12_NM_hibride"
+system = "ro-insp-1255-nm-hybrid"
+modalities = ["PT", "NM"]
+kind = "nmh"
+
+[[family.sheet]]
+name = "PET-CT"
+codes = ["PCT1", "PCT2", "PCT3", "PCT4", "PCT5"]
+
+[[family.sheet]]
+name = "SPECT-CT"
+codes = ["SCTO", "SCTC", "SCTN", "SCTR1", "SCTR2", "SCTT", "SCTP", "SCTA", "SCTL"]
+
+[[family.sheet]]
+name = "ALTELE"
+codes = ["ALTSCT"]

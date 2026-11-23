@@ -170,6 +170,33 @@ def _cmd_survey_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_art12(args: argparse.Namespace) -> int:
+    import datetime as dt
+    import getpass
+
+    from .api.data import conditions, overrides, parse
+    from .db.models import AuditLog
+    from .db.session import make_engine, make_sessionmaker
+    from .reports import art12
+
+    now = dt.datetime.now()
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        conds = conditions(parse(args.query), now, overrides(session))
+        books = art12.build(session, args.year, conds)
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="report",
+                             target=f"art12:{args.year}:zip",
+                             detail={"q": args.query, "file": args.output, "pid": True}))
+        session.commit()
+    with open(args.output, "wb") as fh:
+        art12.write_zip(books, fh, {"Generat": now.isoformat(sep=" ", timespec="seconds")})
+    for b in art12.summary(books):
+        short = [f"{s['name']} {s['patients']}/{art12.PATIENTS_PER_SHEET}" for s in b["sheets"]]
+        print(f"{b['file']}: {', '.join(short) or 'no examinations'}")
+    print(f"{len(books)} workbooks -> {args.output}")
+    return 0
+
+
 def _cmd_report_1255(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
@@ -1014,6 +1041,14 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("-o", "--output", required=True)
     rp.add_argument("--url")
     rp.set_defaults(func=_cmd_report_1255)
+
+    a12 = sub.add_parser("art12", help="annual DRL return, Order 1255/2016 art. 12: 20 patients "
+                                       "per examination and device, Feb-Mar (zip of xlsx)")
+    a12.add_argument("--year", type=int, required=True)
+    a12.add_argument("-q", "--query", default="origin:local")
+    a12.add_argument("-o", "--output", required=True, help="a .zip file")
+    a12.add_argument("--url")
+    a12.set_defaults(func=_cmd_art12)
 
     gr = sub.add_parser("growth", help="weight-for-age tables: install (setup), or check "
                                        "(estimate missing / implausible weights, then "

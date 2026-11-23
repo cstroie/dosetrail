@@ -7,7 +7,7 @@ import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
-import { inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
+import { art12Report, art12Url, inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
@@ -20,14 +20,14 @@ const Q_KEYS = { 'DAP mediu': 'dap', 'DLP mediu': 'dlp', 'Doza medie în punctul
 const qLabel = (q) => (Q_KEYS[q.label] ? t(`rep.q.${Q_KEYS[q.label]}`) : q.label);
 
 // One report at a time, chosen by whom it goes to (the choice is kept between visits).
-const TARGETS = ['insp', 'trend', 'operators', 'grid', 'survey'];
+const TARGETS = ['insp', 'art12', 'trend', 'operators', 'grid', 'survey'];
 const fromUrl = new URLSearchParams(location.search).get('r');
 state.target = TARGETS.includes(fromUrl) ? fromUrl : (TARGETS.includes(prefs.get('reports.target')) ? prefs.get('reports.target') : 'insp');
 
 function render() {
   const years = [];
   for (let y = today.getFullYear(); y >= today.getFullYear() - 8; y -= 1) years.push(y);
-  const reload = () => ({ insp: load, trend: loadTrend, grid: loadGrid, operators: loadOperators })[state.target]?.();
+  const reload = () => ({ insp: load, art12: loadArt12, trend: loadTrend, grid: loadGrid, operators: loadOperators })[state.target]?.();
   const targetSel = h('select', { class: 'input', 'aria-label': t('rep.target'), onchange: (e) => {
     state.target = e.target.value;
     prefs.set('reports.target', state.target);
@@ -50,6 +50,17 @@ function render() {
         xlsx(() => inspReportUrl({ year: state.year, quarter: state.quarter })),
         h('span', { class: 'muted small' }, t('rep.insp.hint'))),
       h('div', { id: 'rep' })],
+    art12: () => [
+      h('div', { class: 'toolbar' }, yearSel,
+        h('button', { class: 'btn primary', type: 'button', onclick: loadArt12 }, t('rep.preview')),
+        h('button', { class: 'btn', type: 'button', onclick: () => {
+          const href = art12Url({ year: state.year });
+          if (!href) { toast(t('rep.needserver')); return; }
+          h('a', { href, download: '' }).click();
+          toast(t('rep.started'));
+        } }, t('rep.zip')),
+        h('span', { class: 'muted small' }, t('rep.art12.hint'))),
+      h('div', { id: 'art12' })],
     trend: () => [
       h('div', { class: 'toolbar' }, yearSel, qSel,
         h('button', { class: 'btn primary', type: 'button', onclick: loadTrend }, t('rep.trend.btn')),
@@ -78,6 +89,24 @@ function render() {
   clear(page).append(h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, t('rep.target')), targetSel),
     h('h1', { class: 'section-title' }, t(`rep.${state.target}`)), ...sections[state.target]());
   reload();
+}
+
+// Art. 12: 20 patients per examination and device, February and March, due 15 April.
+async function loadArt12() {
+  const host = document.getElementById('art12');
+  clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
+  let r;
+  try { r = await art12Report({ year: state.year }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
+  clear(host).append(h('p', { class: 'muted small' }, t('rep.art12.window').replace('{from}', r.window[0]).replace('{to}', r.window[1]).replace('{n}', r.per_sheet)));
+  if (!r.workbooks.length) { host.append(h('p', { class: 'empty' }, t('rep.none'))); return; }
+  for (const w of r.workbooks) {
+    const rows = w.sheets.map((s) => h('tr', {}, h('td', {}, s.name), h('td', { class: 'r mono' }, `${s.patients} / ${r.per_sheet}`),
+      h('td', { class: 'r mono' }, num(s.available)), h('td', {}, s.missing ? h('span', { class: 'tag warn' }, t('rep.art12.missing').replace('{n}', s.missing)) : h('span', { class: 'tag ok' }, 'OK'))));
+    append(host, [h('h2', { class: 'section-title mt-4' }, `${w.title} · ${w.device}`, h('span', { class: 'muted small mono ml-1' }, w.file)),
+      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll panel-scroll' }, h('table', { class: 'grid' },
+        h('thead', {}, h('tr', {}, h('th', {}, t('rep.examination')), h('th', { class: 'r' }, t('rep.art12.patients')), h('th', { class: 'r' }, t('rep.art12.available')), h('th', {}, ''))),
+        h('tbody', {}, rows))))]);
+  }
 }
 
 async function loadTrend() {

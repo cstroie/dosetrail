@@ -30,6 +30,8 @@ def client(tmp_path_factory):
             User(username="phys", password_hash=hash_password("phys-pass-12"), roles="viewer,pid"),
             User(username="boss", password_hash=hash_password("boss-pass-123"),
                  roles="viewer,admin"),
+            User(username="regist", password_hash=hash_password("regist-pass-12"),
+                 roles="viewer,exporter,pid"),
         ])
         dev = Device(display_name="Angio Suite", model_name="Azurion", identity_key="k1",
                      is_local=True, n_studies=1, last_study_at=NOW - dt.timedelta(days=5))
@@ -313,6 +315,22 @@ def test_insp1255_report_endpoint(client):
     login(client, "viewer", "viewer-pass-1")
     assert client.get("/api/reports/insp1255", params={"year": 2026,
                                                        "quarter": 1}).status_code == 403
+
+
+def test_art12_needs_exporter_and_pid_for_the_workbooks(client):
+    login(client, "boss", "boss-pass-123")  # admin: may look, may not take patient identifiers
+    r = client.get("/api/reports/art12", params={"year": 2026, "q": ""})
+    assert r.status_code == 200 and r.json()["per_sheet"] == 20
+    assert r.json()["window"] == ["2026-02-01", "2026-03-31"]
+    assert client.get("/api/reports/art12", params={"year": 2026, "format": "zip"}
+                      ).status_code == 403
+    login(client, "regist", "regist-pass-12")
+    z = client.get("/api/reports/art12", params={"year": 2026, "q": "", "format": "zip"})
+    assert z.status_code == 200 and z.content[:2] == b"PK"
+    assert client.get("/api/reports/art12", params={"year": 2026, "format": "xls"}
+                      ).status_code == 400
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/reports/art12", params={"year": 2026}).status_code == 403
 
 
 def test_survey_export_endpoint(client):

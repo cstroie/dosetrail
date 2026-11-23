@@ -1081,6 +1081,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         import tempfile
 
         media = {"csv": "text/csv", "json": "application/json", "dcm": "application/dicom",
+                 "zip": "application/zip",
                  "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
         # closed by the streaming generator once the file has been sent
         tmp = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)  # noqa: SIM115
@@ -1380,6 +1381,34 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 "De": user.display_name or user.username, "Selecție": q or "(toate)"}
         return _file(lambda fh: insp1255.write_xlsx(report, fh, info), "xlsx",
                      f"insp-1255-{year}-T{quarter}", now)
+
+    @app.get("/api/reports/art12")
+    def report_art12(request: Request, year: int, q: str = "origin:local", format: str = "json",
+                     user: User = Depends(current_user), session: Session = Depends(db)):
+        """Annual DRL return (art. 12): the summary as JSON, or the zip of workbooks. The
+        workbooks carry the first 7 CNP digits and the indication, so they need ``pid``."""
+        from ..reports import art12
+
+        _exporter(user)
+        if format not in ("json", "zip"):
+            raise HTTPException(400, "format is json|zip")
+        if format == "zip" and "pid" not in user.role_set():
+            raise HTTPException(403, "the pid role is required: the workbooks hold patient "
+                                     "identifiers")
+        now = clock()
+        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        books = art12.build(session, year, conds)
+        _audit(session, request, user, "report", f"art12:{year}:{format}",
+               {"q": q, "pid": format == "zip"})
+        session.commit()
+        if format == "json":
+            return {"year": year, "per_sheet": art12.PATIENTS_PER_SHEET,
+                    "window": [art12.window(year)[0].date().isoformat(),
+                               (art12.window(year)[1] - dt.timedelta(days=1)).date().isoformat()],
+                    "workbooks": art12.summary(books)}
+        info = {"Generat": now.isoformat(sep=" ", timespec="seconds"),
+                "De": user.display_name or user.username, "Selecție": q or "(toate)"}
+        return _file(lambda fh: art12.write_zip(books, fh, info), "zip", f"art12-{year}", now)
 
     @app.get("/api/reports/grid")
     def report_grid(request: Request, year: int, quarter: int, q: str = "origin:local",

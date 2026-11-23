@@ -348,6 +348,20 @@ export function gridReportUrl({ year, quarter, q = 'origin:local', estimated = f
   return u.href;
 }
 
+/** GET /api/reports/art12?year=&q= → { year, per_sheet, window, workbooks: [{ family, title, device,
+ *  file, sheets: [{ name, patients, available, missing }] }] } (annual DRL return, art. 12) */
+export function art12Report(params) {
+  return isSample ? serverOnly('Reports') : remote('/api/reports/art12', params);
+}
+
+/** Download link: the zip of the art. 12 workbooks (needs the pid role). */
+export function art12Url({ year, q = 'origin:local' }) {
+  if (isSample) return null;
+  const u = new URL('/api/reports/art12', MODE);
+  for (const [k, v] of Object.entries({ year, q, format: 'zip' })) u.searchParams.set(k, String(v));
+  return u.href;
+}
+
 /** Download link for the same report as XLSX (official column order). */
 export function inspReportUrl({ year, quarter, q = 'origin:local' }) {
   if (isSample) return null;
