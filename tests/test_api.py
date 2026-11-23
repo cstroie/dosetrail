@@ -336,6 +336,16 @@ def test_art12_needs_exporter_and_pid_for_the_workbooks(client):
     assert client.get("/api/reports/art12", params={"year": 2026}).status_code == 403
 
 
+def test_every_page_in_the_web_folder_is_served(client):
+    from dosimetrix.api.app import PAGES, WEB
+
+    login(client, "viewer", "viewer-pass-1")
+    on_disk = {p.name for p in WEB.glob("*.html")}
+    assert on_disk <= set(PAGES.values()), on_disk - set(PAGES.values())  # a page nobody can open
+    r = client.get("/dose-statement.html")
+    assert r.status_code == 200 and "dose-statement.js" in r.text
+
+
 def test_dose_statement_names_the_patient_so_needs_pid_and_is_audited(client):
     login(client, "viewer", "viewer-pass-1")
     assert client.get("/api/studies/1/dose-statement").status_code == 403

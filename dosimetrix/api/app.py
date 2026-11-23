@@ -48,7 +48,8 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "rules.html": "rules.html", "dicom.html": "dicom.html",
          "users.html": "users.html", "audit.html": "audit.html",
          "alerts.html": "alerts.html", "local-drl.html": "local-drl.html",
-         "indications.html": "indications.html", "survey-central.html": "survey-central.html"}
+         "indications.html": "indications.html", "survey-central.html": "survey-central.html",
+         "dose-statement.html": "dose-statement.html"}
 
 
 class LoginIn(BaseModel):
