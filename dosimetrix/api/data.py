@@ -64,8 +64,14 @@ def overview(session: Session, now: dt.datetime) -> dict:
         return sum(n for (m, d), n in counts.items() if m in mods and start <= d < end)
 
     today = now.date() + dt.timedelta(days=1)
+    # only the modalities the local devices actually produce (no MG tile without a mammograph)
+    present = set(session.scalars(
+        select(Study.modality).join(Device, Device.id == Study.device_id)
+        .where(Device.is_local.is_(True)).distinct()))
     modalities = []
     for code, label, mods in GROUPS:
+        if not present.intersection(mods):
+            continue
         week = total(mods, today - dt.timedelta(days=7), today)
         prev = total(mods, today - dt.timedelta(days=14), today - dt.timedelta(days=7))
         weekly = [total(mods, today - dt.timedelta(days=7 * (i + 1)),

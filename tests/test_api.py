@@ -135,7 +135,8 @@ def test_audit_entry_written(client, tmp_path_factory):
 def test_overview_and_pages(client):
     login(client, "viewer", "viewer-pass-1")
     ov = client.get("/api/overview").json()
-    assert [m["code"] for m in ov["modalities"]] == ["CT", "DX", "RF", "MG"]
+    # tiles follow the modalities the local devices produce: the fixture has no CT, so no CT tile
+    assert [m["code"] for m in ov["modalities"]] == ["DX", "RF", "MG"]
     assert ov["feeds"][0]["status"] == "stale"  # last study 5 days ago
     page = client.get("/studies.html")
     assert page.status_code == 200 and 'data-api="http://testserver"' in page.text
