@@ -26,7 +26,7 @@ const STRINGS = {
     'studies.chart': 'Chart this →', 'studies.preview': 'Preview', 'studies.open': 'Open ↗', 'studies.keys': 'J/K move · Enter opens',
     'study.readouts': 'Dose readouts', 'study.cumulative': '12-week cumulative', 'study.curve': 'Running Ka,r and events',
     'study.events': 'Events', 'study.skin': 'Skin dose map', 'study.planned': 'planned', 'study.reveal': 'Reveal…', 'study.print': 'Print',
-    'charts.workspace': 'Workspace', 'charts.add': 'Add panel', 'charts.reset': 'Reset workspace',
+    'charts.workspace': 'Workspace', 'charts.add': 'Add panel', 'charts.reset': 'Reset',
     'admin.devices': 'Physical devices', 'admin.inspector': 'Merge inspector', 'admin.merge': 'Merge', 'admin.reject': 'Not the same device',
     'rep.target': 'Report for',
     'rep.to.insp': 'INSP — quarterly report (OMS 1255/2016)',
