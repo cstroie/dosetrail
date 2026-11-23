@@ -439,6 +439,15 @@ export const checkHisServer = (id) => send('POST', `/api/his/servers/${id}/check
 /** POST /api/studies/{id}/his → queue the study for another HIS lookup (admin) */
 export const requeryHis = (id) => send('POST', `/api/studies/${id}/his`);
 
+/** GET /api/studies/{id}/dose-statement → { patient, exam, when, device, doses: [{ key, label,
+ *  value, unit, note }] } (pid role; audit-logged): the written dose information of art. 4 */
+export function doseStatement(id) {
+  return isSample ? Promise.reject(new Error('sample mode')) : remote(`/api/studies/${id}/dose-statement`);
+}
+
+/** Page that prints it. */
+export const doseStatementHref = (id) => `dose-statement.html?id=${encodeURIComponent(id)}`;
+
 /** POST /api/studies/{id}/identify → { name, id, birth_date } (pid role; audit-logged) */
 export function identifyStudy(id) {
   return isSample ? Promise.reject(new Error('sample mode')) : send('POST', `/api/studies/${id}/identify`);

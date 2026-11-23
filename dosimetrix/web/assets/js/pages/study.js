@@ -12,7 +12,7 @@ import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mmss, clock, DAP_UNITS } from '../core/format.js';
-import { rdsrUrl, study, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
+import { rdsrUrl, doseStatementHref, study, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
 import { renderStudy } from './study-generic.js';
 import { prefs } from '../core/prefs.js';
 
@@ -153,8 +153,9 @@ export function revealButton(s, identity) {
     } catch (err) { toast(err.message.includes('pid') ? 'Your account does not have the identified-data (pid) role.' : err.message); }
   });
   const sr = rdsrUrl(s.id);
+  const stmt = isSample ? null : h('a', { class: 'btn xs ghost', href: doseStatementHref(s.id), target: '_blank', rel: 'noopener', title: 'Written dose information for the patient (Order 1255/2016 art. 4). Names the patient: pid role, audited.' }, 'Dose statement');
   return h('span', { class: 'row no-print', style: { display: 'inline-flex' } }, btn,
-    sr ? h('a', { class: 'btn xs ghost', href: sr, download: '', title: 'Dose SR (IHE REM RDSR) of this study, pseudonymised (exporter role)' }, 'Dose SR') : null);
+    stmt, sr ? h('a', { class: 'btn xs ghost', href: sr, download: '', title: 'Dose SR (IHE REM RDSR) of this study, pseudonymised (exporter role)' }, 'Dose SR') : null);
 }
 
 async function render() {

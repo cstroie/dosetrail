@@ -78,7 +78,7 @@ def overview(session: Session, now: dt.datetime) -> dict:
     from .. import alerts
 
     return {"generated": iso_min(now), "modalities": modalities,
-            "alerts": alerts.listing(session, "open", 20, names=device_names(session)),
+            "alerts": alerts.listing(session, "open", 10, names=device_names(session)),
             "alerts_open": alerts.open_count(session),
             "feeds": feeds(session, now)}
 
@@ -491,6 +491,43 @@ def identify(session: Session, study_id: int) -> dict | None:
     return {"study_id": s.id, "accession": s.accession,
             "name": p.name if p else None, "id": p.patient_id if p else None,
             "birth_date": p.birth_date.isoformat() if p and p.birth_date else None}
+
+
+def dose_statement(session: Session, study_id: int) -> dict | None:
+    """What the patient is told in writing with the result (Order 1255/2016 art. 4): who, which
+    examination and the dose quantities that apply to it, in the units of the norm."""
+    row = session.execute(select(Study, Patient).outerjoin(Patient, Patient.id == Study.patient_id)
+                          .where(Study.id == study_id)).first()
+    if row is None:
+        return None
+    s, p = row
+    esd = session.scalar(select(func.sum(Event.esd)).where(Event.study_id == s.id))
+    calc = session.scalar(select(func.sum(Event.esak_calc)).where(Event.study_id == s.id))
+    doses: list[dict] = []
+
+    def add(key, label, value, unit, note=None):
+        if value is not None:
+            doses.append({"key": key, "label": label, "value": value, "unit": unit, "note": note})
+
+    add("dap", "DAP", s.total_dap, "Gy·cm²")
+    add("esak", "ESAK", esd if esd is not None else calc, "mGy",
+        None if esd is not None else "calculated")
+    add("rp", "Reference point dose (Ka,r)", s.total_rp_dose * 1000 if s.total_rp_dose is not None
+        else None, "mGy")
+    add("mgd_right", "MGD right breast", s.agd_right, "mGy")
+    add("mgd_left", "MGD left breast", s.agd_left, "mGy")
+    add("dlp", "DLP", s.total_dlp, "mGy·cm")
+    add("activity", "Administered activity", s.admin_activity_mbq, "MBq")
+    dev = session.get(Device, s.device_id) if s.device_id else None
+    names = device_names(session)
+    return {"study_id": s.id, "accession": s.accession, "modality": s.modality,
+            "when": s.study_datetime.isoformat(timespec="minutes") if s.study_datetime else None,
+            "exam": s.procedure_name or s.study_description,
+            "device": names.get(s.device_id) if dev else None,
+            "institution": (dev.institution_name if dev else None),
+            "patient": {"name": p.name if p else None, "id": p.patient_id if p else None,
+                        "birth_date": p.birth_date.isoformat() if p and p.birth_date else None},
+            "doses": doses}
 
 
 def lookup(session: Session, text: str, limit: int) -> list[dict]:

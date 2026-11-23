@@ -641,6 +641,19 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         session.commit()
         return out
 
+    @app.get("/api/studies/{study_id}/dose-statement")
+    def dose_statement(study_id: int, request: Request, user: User = Depends(current_user),
+                       session: Session = Depends(db)):
+        """The written dose information of art. 4. It names the patient: pid role, audited."""
+        if "pid" not in user.role_set():
+            raise HTTPException(403, "the pid role is required to see patient identifiers")
+        out = data.dose_statement(session, study_id)
+        if out is None:
+            raise HTTPException(404, "study not found")
+        _audit(session, request, user, "identify", f"dose-statement:study:{study_id}")
+        session.commit()
+        return out
+
     @app.get("/api/stats")
     def stats(q: str = "", metric: str = "dlp_total", by: str = "exam",
               system: str | None = None, exam: str | None = None,

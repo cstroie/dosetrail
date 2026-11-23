@@ -38,7 +38,10 @@ function alertHref(a) {
   return studyHref(a.study_id != null ? { id: a.study_id } : { accession: a.accession });
 }
 
-function alertQueue(alerts, now, total) {
+const QUEUE_MAX = 10;  // the overview shows the most recent open alerts; the full list is on alerts.html
+
+function alertQueue(allAlerts, now, total) {
+  const alerts = allAlerts.slice(0, QUEUE_MAX);
   const list = h('ul', { class: 'queue' });
   for (const a of alerts) {
     const li = h('li', {},
@@ -68,9 +71,10 @@ function alertQueue(alerts, now, total) {
         } }, t('overview.ack'))));
     list.append(li);
   }
-  const open = total ?? alerts.length;  // the API lists the newest 20 and sends the total
+  const open = total ?? allAlerts.length;  // the API lists the newest 10 and sends the total
   return h('section', { class: 'panel', id: 'alerts', 'aria-labelledby': 'h-q' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-q' }, t('overview.alerts')), h('span', { class: 'tag alert' }, `${open} open`)),
+    h('div', { class: 'panel-head' }, h('h2', { id: 'h-q' }, t('overview.alerts')), h('span', { class: 'tag alert' }, `${open} open`),
+      open > alerts.length ? h('a', { class: 'btn xs ghost', href: 'alerts.html' }, t('overview.allalerts').replace('{n}', open)) : null),
     list);
 }
 
