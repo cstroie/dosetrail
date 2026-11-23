@@ -58,11 +58,21 @@ function savedQueries() {
 }
 
 function tabs(currentQ, onPick) {
-  const all = [...BUILTIN, ...savedQueries()];
+  const saved = savedQueries();
+  const all = [...BUILTIN, ...saved];
   const nav = h('nav', { class: 'tabs', 'aria-label': 'Saved queries' });
   const match = all.find((s) => s.q === currentQ);
   for (const s of all) {
-    nav.append(h('button', { type: 'button', 'aria-current': s === match ? 'page' : false, title: s.q, onclick: () => onPick(s.q) }, s.name));
+    const tab = h('button', { type: 'button', 'aria-current': s === match ? 'page' : false, title: s.q, onclick: () => onPick(s.q) }, s.name);
+    if (!saved.includes(s)) { nav.append(tab); continue; }
+    // a saved query (this browser only) can be deleted again; the built-in ones cannot
+    nav.append(h('span', { class: 'tab-saved' }, tab,
+      h('button', { type: 'button', class: 'tab-x', 'aria-label': `Delete “${s.name}”`, title: 'Delete this saved query', onclick: () => {
+        if (!confirm(`Delete the saved query “${s.name}”?`)) return;
+        prefs.set(SAVED_KEY, savedQueries().filter((x) => x.name !== s.name || x.q !== s.q));
+        toast(`Deleted “${s.name}”`);
+        onPick(currentQ);
+      } }, '×')));
   }
   nav.append(h('button', { type: 'button', onclick: () => {
     const name = prompt('Name for this query', '');

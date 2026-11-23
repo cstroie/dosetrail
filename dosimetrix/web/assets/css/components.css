@@ -34,6 +34,10 @@ dt-query-bar { display: block; position: relative; }
 /* ---------- tabs (saved queries, workspaces) ---------- */
 .tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); }
 .tabs a, .tabs button { padding: 7px 12px; font-size: var(--fs-sm); text-decoration: none; color: var(--muted); border: 0; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.tabs .tab-saved { display: inline-flex; align-items: stretch; }
+.tabs .tab-saved > :first-child { padding-right: 4px; }
+.tabs .tab-x { padding: 7px 8px 7px 2px; color: var(--muted); }
+.tabs .tab-x:hover { color: var(--alert); }
 .tabs [aria-current="page"] { color: var(--text); border-color: var(--accent); }
 
 /* ---------- data grid ---------- */
