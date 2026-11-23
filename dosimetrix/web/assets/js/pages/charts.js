@@ -41,7 +41,8 @@ let devices = [];
 let drlSet;
 
 function wsKey(name) { return `workspace.${name}`; }
-function wsNames() { return prefs.get('workspaces') || ['My audit · CT 2026 H2']; }
+const DEFAULT_WS = 'My audit · CT 2026 H2';
+function wsNames() { const n = prefs.get('workspaces'); return n?.length ? n : [DEFAULT_WS]; }
 function loadWs(name) {
   const saved = prefs.get(wsKey(name));
   return saved ? structuredClone(saved) : { name, q: DEFAULT_Q, panels: structuredClone(DEFAULT_PANELS) };
@@ -455,8 +456,9 @@ async function init() {
 
   const wsSelect = h('select', { 'aria-label': t('charts.workspace'), onchange: (e) => {
     if (e.target.value === '__new') {
-      const name = prompt('Name of the new workspace', '');
+      const name = (prompt('Name of the new workspace', '') || '').trim();
       if (!name) { e.target.value = ws.name; return; }
+      if (wsNames().includes(name)) { toast(`A workspace named “${name}” exists already.`); e.target.value = ws.name; return; }
       prefs.set('workspaces', [...wsNames(), name]);
       prefs.set('workspace.current', name);
     } else prefs.set('workspace.current', e.target.value);
@@ -469,6 +471,14 @@ async function init() {
       h('span', { class: 'muted small' }, isSample ? 'saved in this browser' : 'auto-saved'),
       h('span', { class: 'spacer' }),
       h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied. Sharing whole workspaces needs the server.'); } }, 'Share'),
+      h('button', { class: 'btn danger', type: 'button', onclick: async () => {
+        if (!await confirmDialog(`Delete the workspace “${ws.name}” and its panels? This cannot be undone.`, { title: 'Delete workspace', label: 'Delete', danger: true })) return;
+        const left = wsNames().filter((n) => n !== ws.name);
+        prefs.set(wsKey(ws.name), null);
+        prefs.set('workspaces', left.length ? left : [DEFAULT_WS]);  // the last one is replaced by a fresh default
+        prefs.set('workspace.current', (left.length ? left : [DEFAULT_WS])[0]);
+        location.reload();
+      } }, 'Delete workspace'),
       h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog('Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { ws.panels = structuredClone(DEFAULT_PANELS); ws.q = DEFAULT_Q; saveWs(); location.reload(); } } }, t('charts.reset'))),
     h('div', { class: 'row', style: { 'align-items': 'flex-start' } },
       h('div', { style: { flex: '1 1 600px' } }, qb),
