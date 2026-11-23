@@ -8,7 +8,7 @@
 // The server will receive the same string; in sample mode `matchStudy` filters locally.
 
 export const KEYS = {
-  modality: { label: 'modality', kind: 'enum', values: ['CT', 'DX', 'XA', 'RF', 'MG'], hint: 'CT, DX, XA, RF, MG' },
+  modality: { label: 'modality', kind: 'enum', values: ['CT', 'DX', 'XA', 'RF', 'MG', 'NM', 'PT'], hint: 'CT, DX, XA, RF, MG, NM, PT (PT = PET/CT)' },
   date: { label: 'date', kind: 'date', hint: 'YYYY-MM-DD..YYYY-MM-DD, or 7d / 30d / 90d' },
   device: { label: 'device', kind: 'text', hint: 'display name, model or station; comma-separated' },
   desc: { label: 'desc', kind: 'text', hint: 'study description contains' },
