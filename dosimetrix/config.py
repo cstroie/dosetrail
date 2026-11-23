@@ -2,7 +2,8 @@
 
 Lookup order for the config file: $DOSIMETRIX_CONFIG, ./dosimetrix.toml,
 ~/.config/dosimetrix/dosimetrix.toml. Environment variables override file values:
-DOSIMETRIX_DATABASE_URL, DOSIMETRIX_SECRET_FILE.
+DOSIMETRIX_DATABASE_URL, DOSIMETRIX_SECRET_FILE. The database URL (and, for the tests,
+[database] test_url) belongs in that one file, next to [web], [dicom] and [pacs].
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ DEFAULT_DB_URL = "sqlite:///dosimetrix.sqlite3"
 @dataclass
 class Settings:
     database_url: str = DEFAULT_DB_URL
+    test_database_url: str | None = None  # [database] test_url: a scratch DB for the test suite
     echo_sql: bool = False
     data_dir: Path = field(default_factory=lambda: Path("var"))
     secret_file: Path = field(default_factory=lambda: _config_dir() / "secret")
@@ -72,6 +74,7 @@ def load_settings() -> Settings:
                 raw = tomllib.load(fh)
             db = raw.get("database", {})
             s.database_url = db.get("url", s.database_url)
+            s.test_database_url = db.get("test_url", s.test_database_url)
             s.echo_sql = bool(db.get("echo", s.echo_sql))
             if "data_dir" in raw.get("paths", {}):
                 s.data_dir = Path(raw["paths"]["data_dir"])

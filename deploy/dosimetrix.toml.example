@@ -2,6 +2,7 @@
 
 [database]
 url = "mysql+pymysql://dosimetrix:CHANGE-ME@localhost/dosimetrix?charset=utf8mb4"
+# test_url = "mysql+pymysql://dosimetrix:CHANGE-ME@localhost/dosimetrix_test?charset=utf8mb4"   # optional: the test suite also runs on this scratch DB (it is wiped)
 
 [security]
 secret_file = "/var/lib/dosimetrix/secret"   # created on first start; back it up

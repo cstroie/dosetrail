@@ -8,12 +8,13 @@ import os
 import pytest
 from sqlalchemy import text
 
+from dosimetrix.config import load_settings
 from dosimetrix.db.migrate import upgrade
 from dosimetrix.db.models import Base
 from dosimetrix.db.session import make_engine, make_sessionmaker
 
 BACKENDS = ["sqlite"]
-TEST_URL = os.environ.get("DOSIMETRIX_TEST_DATABASE_URL")
+TEST_URL = os.environ.get("DOSIMETRIX_TEST_DATABASE_URL") or load_settings().test_database_url
 if TEST_URL:
     BACKENDS.append("mariadb")
 
