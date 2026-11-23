@@ -79,7 +79,7 @@ kbd { font: var(--fs-xs) var(--font-mono); border: 1px solid var(--line-2); bord
   .ctx-logo { display: inline-flex; flex: none; }
   .ctx-narrow { display: flex; }
   .menu-sep.ctx-narrow { display: block; }
-  .ctx-wide, .ctx .crumb, .cmdk-trigger kbd { display: none; }
+  .ctx .ctx-wide, .ctx .crumb, .cmdk-trigger kbd { display: none; }
   .cmdk-trigger { flex: 1 1 0; min-width: 0; max-width: none; margin: 0; }
   .rail { order: 2; flex: 1 1 100%; flex-direction: row; justify-content: space-around; position: sticky; bottom: 0; z-index: 30; background: var(--panel); border-right: 0; border-top: 1px solid var(--line); padding: 4px 0 calc(4px + env(safe-area-inset-bottom)); }
   .rail .logo { display: none; }
