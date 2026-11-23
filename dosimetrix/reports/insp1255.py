@@ -53,7 +53,6 @@ from ..db.models import Classification, Code, CodeSystem, Device, Event, Patient
 from ..export.xlsx import XlsxWriter
 from ..stats import BandLookup
 
-
 MIN_PATIENTS = 30  # Order 1255/2016 art. 7(3)
 
 
