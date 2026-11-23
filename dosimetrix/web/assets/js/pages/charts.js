@@ -470,6 +470,7 @@ async function init() {
       h('span', { class: 'pill' }, `${t('charts.workspace')}:`, wsSelect),
       h('span', { class: 'muted small' }, isSample ? 'saved in this browser' : 'auto-saved'),
       h('span', { class: 'spacer' }),
+      h('a', { class: 'btn', href: '#', onclick: (e) => { e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:CT ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
       h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied. Sharing whole workspaces needs the server.'); } }, 'Share'),
       h('button', { class: 'btn danger', type: 'button', onclick: async () => {
         if (!await confirmDialog(`Delete the workspace “${ws.name}” and its panels? This cannot be undone.`, { title: 'Delete workspace', label: 'Delete', danger: true })) return;
@@ -482,7 +483,6 @@ async function init() {
       h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog('Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { ws.panels = structuredClone(DEFAULT_PANELS); ws.q = DEFAULT_Q; saveWs(); location.reload(); } } }, t('charts.reset'))),
     h('div', { class: 'row', style: { 'align-items': 'flex-start' } },
       h('div', { style: { flex: '1 1 600px' } }, qb),
-      h('a', { class: 'btn', href: '#', style: { 'margin-top': '7px' }, onclick: (e) => { e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:CT ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
       h('span', { class: 'mt-3' }, countEl)),
     gridHost);
   await loadRows();
