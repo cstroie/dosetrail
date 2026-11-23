@@ -13,8 +13,7 @@ from dosimetrix.db.models import Base
 from dosimetrix.db.session import make_engine, make_sessionmaker
 
 BACKENDS = ["sqlite"]
-TEST_URL = (os.environ.get("DOSIMETRIX_TEST_DATABASE_URL")
-            or os.environ.get("DOSETRAIL_TEST_DATABASE_URL"))  # the former name
+TEST_URL = os.environ.get("DOSIMETRIX_TEST_DATABASE_URL")
 if TEST_URL:
     BACKENDS.append("mariadb")
 

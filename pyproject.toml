@@ -26,7 +26,6 @@ dev = ["pytest>=8", "ruff>=0.6", "httpx>=0.27"]
 
 [project.scripts]
 dosimetrix = "dosimetrix.cli:main"
-dosetrail = "dosimetrix.cli:main"  # the former name, for existing scripts and units
 
 [tool.setuptools.packages.find]
 include = ["dosimetrix*"]

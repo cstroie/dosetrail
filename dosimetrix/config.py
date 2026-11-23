@@ -3,10 +3,6 @@
 Lookup order for the config file: $DOSIMETRIX_CONFIG, ./dosimetrix.toml,
 ~/.config/dosimetrix/dosimetrix.toml. Environment variables override file values:
 DOSIMETRIX_DATABASE_URL, DOSIMETRIX_SECRET_FILE.
-
-Installs made under the former name (DoseTrail) keep working: DOSETRAIL_* variables,
-./dosetrail.toml and ~/.config/dosetrail/ are read when the new names are absent, and the
-site secret stays where it is (a new one would change every pseudonym).
 """
 
 from __future__ import annotations
@@ -52,13 +48,12 @@ class Settings:
 
 
 def _env(name: str) -> str | None:
-    """DOSIMETRIX_<name>, else the former DOSETRAIL_<name>."""
-    return os.environ.get(f"DOSIMETRIX_{name}") or os.environ.get(f"DOSETRAIL_{name}")
+    """DOSIMETRIX_<name>."""
+    return os.environ.get(f"DOSIMETRIX_{name}")
 
 
 def _config_dir() -> Path:
-    new, old = Path.home() / ".config" / "dosimetrix", Path.home() / ".config" / "dosetrail"
-    return old if old.is_dir() and not new.is_dir() else new
+    return Path.home() / ".config" / "dosimetrix"
 
 
 def _candidate_files() -> list[Path]:
@@ -66,8 +61,7 @@ def _candidate_files() -> list[Path]:
     if env:
         return [Path(env)]
     d = _config_dir()
-    return [Path("dosimetrix.toml"), Path("dosetrail.toml"), d / "dosimetrix.toml",
-            d / "dosetrail.toml"]
+    return [Path("dosimetrix.toml"), d / "dosimetrix.toml"]
 
 
 def load_settings() -> Settings:

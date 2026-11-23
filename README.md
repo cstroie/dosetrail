@@ -1,7 +1,5 @@
 # Dosimetrix
 
-*Formerly DoseTrail. Existing installs keep working: the former command, environment variables and config folder are still read.*
-
 **Open-source patient radiation exposure monitoring for medical imaging.**
 
 Dosimetrix collects radiation dose data from imaging equipment. It covers CT, radiography (DX/CR), fluoroscopy (RF/XA) and mammography, with nuclear medicine planned. The data is normalised into one database, where you can do the following:

@@ -141,10 +141,6 @@ def recompute_all(session: Session, secret: bytes | None = None) -> list[str]:
     out.append(f"clinical indications: {dict(indications.update(session))}")
     if secret is not None:
         out.append(f"pseudonyms assigned: {assign_pseudonyms(session, secret)}")
-        from .his.servers import reseal_secrets
-
-        out.append(f"stored secrets resealed with the current key: "
-                   f"{reseal_secrets(session, secret)}")
     return out
 
 

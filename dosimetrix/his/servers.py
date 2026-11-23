@@ -144,14 +144,3 @@ def write_status(session: Session, value: dict) -> None:
     session.add(row)
     session.flush()
 
-
-def reseal_secrets(session: Session, secret: bytes) -> int:
-    """Passwords sealed under the former name's key, sealed again with the current one."""
-    n = 0
-    for srv in session.scalars(select(HisServer).where(HisServer.password_enc.is_not(None))):
-        if not secretbox.is_current(secret, srv.password_enc):
-            srv.password_enc = secretbox.reseal(secret, srv.password_enc)
-            n += 1
-    session.flush()
-    return n
-

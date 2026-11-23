@@ -89,18 +89,3 @@ def test_client_errors(stub):
     with pytest.raises(hb.HisError) as e:
         hb.Client("http://127.0.0.1:9", "u", "p", timeout=2).metadata()
     assert e.value.kind == "retry"
-
-
-def test_secrets_sealed_under_the_former_name_are_read_and_resealed(session):
-    from dosimetrix import secretbox
-    from dosimetrix.db.models import HisServer
-    from dosimetrix.his.servers import reseal_secrets
-
-    site = b"k" * 32
-    old = secretbox._fernet(site, secretbox._FORMER).encrypt(b"pw").decode()
-    assert secretbox.open_(site, old) == "pw" and not secretbox.is_current(site, old)
-    srv = HisServer(name="H", kind="hippobridge", base_url="http://x", password_enc=old)
-    session.add(srv)
-    session.flush()
-    assert reseal_secrets(session, site) == 1 and secretbox.is_current(site, srv.password_enc)
-    assert secretbox.open_(site, srv.password_enc) == "pw" and reseal_secrets(session, site) == 0

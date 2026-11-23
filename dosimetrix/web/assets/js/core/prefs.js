@@ -6,7 +6,7 @@ const DEFAULTS = { theme: 'dark', palette: 'film', paletteV: 2, lang: 'en', dapU
 
 function load() {
   let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem('dosetrail.prefs') || '{}'); } catch { /* ignore */ }
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { /* ignore */ }
   if (saved.palette === 'instrument') saved.palette = 'film';  // renamed 2026-11-22
   // Film became the default (2026-11-22): a palette stored before then was the old default
   // written along with other preferences, not a choice
