@@ -407,7 +407,7 @@ def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool
               now: dt.datetime | None = None, client=None, sleep=time.sleep,
               report=None) -> Counter:
     """Process up to `limit` due lookups with the first enabled server."""
-    from ..ingest.store import derive
+    from ..ingest.store import Helpers, derive
 
     stats: Counter = Counter()
     active = servers.active(session)
@@ -421,6 +421,7 @@ def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool
         return stats
     client = client or servers.client(server, secret)
     ctx = Context(canary=_canary(session))
+    helpers = Helpers(session)
     for row in rows:
         study_when = session.scalar(select(Study.study_datetime)
                                     .where(Study.id == row.study_id))
@@ -433,7 +434,7 @@ def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool
                     if row.next_try_at is not None:
                         row.status = "pending"  # try again later: forms come late
                 if status in ("matched", "patient_only") and not dry_run:
-                    derive(session, [row.study_id])
+                    derive(session, [row.study_id], helpers.get())
             stats[status] += 1
         except HisError as e:
             if e.kind == "auth":

@@ -310,3 +310,23 @@ def test_one_administration_in_two_studies_counts_once(session):
 
     assert settle_administrations(session) == 0  # stable
     assert not needs_activity(session, "1.2.3.530")  # not fetched again
+
+
+def test_lookup_tables_are_built_once_per_store(session, monkeypatch):
+    """Classifier / Matcher / Evaluator load whole tables: not once per object."""
+    from dosimetrix import alerts, classify, indications
+
+    built = {"c": 0, "m": 0, "e": 0}
+    for mod, name, key in ((classify, "Classifier", "c"), (indications, "Matcher", "m"),
+                           (alerts, "Evaluator", "e")):
+        orig = getattr(mod, name)
+
+        def make(*a, _o=orig, _k=key, **kw):
+            built[_k] += 1
+            return _o(*a, **kw)
+        monkeypatch.setattr(mod, name, make)
+    store = Store(session, SECRET)
+    for i in range(3):
+        r = store.store(parse(f.ct_rdsr(study_uid=f"1.2.3.9{i}", sop_uid=f"1.2.3.9{i}.1")))
+        assert r.status == "imported"
+    assert built["c"] == 1 and built["e"] == 1 and built["m"] <= 1

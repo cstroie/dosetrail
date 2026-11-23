@@ -19,6 +19,7 @@ Rules
 from __future__ import annotations
 
 import datetime as dt
+import time
 from collections import Counter
 from dataclasses import dataclass
 
@@ -70,6 +71,35 @@ def _source(e) -> str | None:
     return (e.extra_json or {}).get("source")
 
 
+class Helpers:
+    """Classifier, indication matcher and alert evaluator, built once and reused for many
+    objects (each loads whole tables); rebuilt after ``ttl`` seconds so that edits to
+    confirmed mappings, the vocabulary or alert rules reach a long-running worker."""
+
+    def __init__(self, session: Session, ttl: float = 60.0):
+        self.session, self.ttl = session, ttl
+        self._built = float("-inf")
+        self.classifier = self.matcher = self.evaluator = None
+
+    def _fresh(self) -> None:
+        now = time.monotonic()
+        if now - self._built < self.ttl:
+            return
+        from .. import alerts, classify, indications
+
+        self.classifier = classify.Classifier(self.session)
+        try:
+            self.matcher = indications.Matcher(self.session)
+        except ValueError:  # vocabulary not seeded: indications.update handles it
+            self.matcher = None
+        self.evaluator = alerts.Evaluator(self.session)
+        self._built = now
+
+    def get(self) -> Helpers:
+        self._fresh()
+        return self
+
+
 class Store:
     def __init__(self, session: Session, secret: bytes, institution_code: str = "DEFAULT",
                  source: str = "file"):
@@ -79,6 +109,7 @@ class Store:
         self.institution_id = self._institution(institution_code)
         self.stats: Counter = Counter()
         self._his_enabled: bool | None = None  # any enabled HIS server (looked up once)
+        self._helpers = Helpers(session)
 
     # ------------------------------------------------------------------ entities
 
@@ -272,8 +303,9 @@ class Store:
 
         try:
             with self.session.begin_nested():
-                classify.run(self.session, [study_id])
-                derive(self.session, [study_id])
+                h = self._helpers.get()
+                classify.run(self.session, [study_id], classifier=h.classifier)
+                derive(self.session, [study_id], h)
         except Exception as exc:  # noqa: BLE001 – classification is best effort here
             logging.getLogger(__name__).warning("classification of study %s failed: %s",
                                                 study_id, exc)
@@ -299,17 +331,19 @@ def _recent(when: dt.datetime | None) -> bool:
     return when is None or when >= dt.datetime.now() - dt.timedelta(days=HIS_NEW_DAYS)
 
 
-def derive(session: Session, study_ids: list[int]) -> None:
+def derive(session: Session, study_ids: list[int], helpers: Helpers | None = None) -> None:
     """Values derived from weight, age and doses: weight estimates, DRL exclusions, skin
-    dose, alerts. Run after anything changes them (ingest, HIS enrichment)."""
+    dose, alerts. Run after anything changes them (ingest, HIS enrichment). ``helpers``
+    reuses prebuilt lookup tables when called per object."""
     from .. import alerts, growth, indications, skindose, ssde
 
     growth.estimate_weights(session, study_ids)
     ssde.update(session, study_ids)
-    indications.update(session, study_ids)
+    if helpers is None or helpers.matcher is not None:  # no vocabulary: nothing to code
+        indications.update(session, study_ids, matcher=helpers.matcher if helpers else None)
     growth.apply_exclusions(session, study_ids)
     skindose.update_psd(session, study_ids)
-    alerts.evaluate(session, study_ids)
+    alerts.evaluate(session, study_ids, evaluator=helpers.evaluator if helpers else None)
 
 
 def _touch_device(device: Device, when: dt.datetime | None, new_study: bool) -> None:
