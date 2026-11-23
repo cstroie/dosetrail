@@ -1,7 +1,14 @@
 """Exam classification: local text -> standard exam codes, and on to DRL codes.
 
 * **Rules** (seeds/classify_rules.toml) map normalised text to a nomenclator code, per
-  family: rx = DX/CR/MG, rf = RF/XA, ct = CT. The first matching rule wins.
+  family: rx = DX/CR, rf = RF/XA, ct = CT. The first matching rule wins.
+* **Straight to national codes** where no local nomenclator exists:
+  * mammography (MG): per exposure, the OMS 1255 code by side and view (bilateral /
+    unilateral, CC / MLO), plus the OMS 838 DRL code (2D: per breast; tomosynthesis: per
+    study, bilateral or unilateral);
+  * nuclear medicine: per study, from the description and the radiopharmaceutical
+    (agent, radionuclide). ``nm`` = OMS 1255 "MN diagnostic" (NM without a CT dose),
+    ``nmh`` = "MN Hibride" (PET, and NM with a CT dose: SPECT/CT). Crosswalk to OMS 838.
 * **Human decisions** (code_mapping rows with status "confirmed") always win over rules.
 * **Granularity:**
   * radiography is classified per exposure (protocol -> anatomy -> study description), and
@@ -41,8 +48,13 @@ from .db.models import (
 
 SEEDS = Path(__file__).parent / "seeds"
 NOMENCLATOR = {"rx": "ro-nom-rx", "rf": "ro-nom-rx", "ct": "ro-nom-ct",
-               "xa": "ro-insp-1255-xa"}
-FAMILY = {"DX": "rx", "CR": "rx", "MG": "rx", "PX": "rx", "RF": "rf", "XA": "rf", "CT": "ct"}
+               "xa": "ro-insp-1255-xa", "mg": "ro-insp-1255-rx", "nm": "ro-insp-1255-nm",
+               "nmh": "ro-insp-1255-nm-hybrid"}
+FAMILY = {"DX": "rx", "CR": "rx", "PX": "rx", "RF": "rf", "XA": "rf", "CT": "ct",
+          "MG": "mg", "NM": "nm", "PT": "nmh"}
+# modalities whose studies a family's human decisions apply to (NM with a CT dose is nmh)
+FAMILY_MODALITIES = {"rx": ["DX", "CR", "PX"], "rf": ["RF", "XA"], "ct": ["CT"],
+                     "mg": ["MG"], "nm": ["NM"], "nmh": ["PT", "NM"]}
 STUDY_FIELDS = ("study_description", "procedure_name", "requested_procedure")
 DRL_SYSTEMS = ("ro-drl-ms838-2025", "ec-rp185")
 HEAD_CT = {"CT-CR", "CT-CRLD", "CT-CROR", "CT-CRMS", "CT-CRMF", "CT-CRPF", "CT-SN", "CT-SNLD",
@@ -81,6 +93,47 @@ _VIEW_TEXT = [
 FRONTAL_BY_DEFAULT = {"RG-TH", "RG-THPT"}
 
 
+_MG_VIEW = [
+    (re.compile(r"\bmlo\b|medio ?lateral obl|mediolateral obl|\boblic"), "MLO"),
+    (re.compile(r"\bx?ccl?\b|cranio ?caudal|craniocaudal"), "CC"),
+]
+_MG_DBT = re.compile(r"tomo|\bdbt\b|\b3d\b|\bvolume\b")
+# MG DRL (OMS 838): 2D per breast; tomosynthesis per study (bilateral or unilateral)
+MG_2D, MG_DBT_BI, MG_DBT_UNI = "MG-UNILATERAL", "MG-DBT-BILATERAL", "MG-DBT-UNILATERAL"
+# OMS 1255 "Radiologie": (bilateral, view) -> code
+MG_INSP = {(True, "CC"): "SMB1", (True, "MLO"): "SMB2",
+           (False, "CC"): "SMU1", (False, "MLO"): "SMU2"}
+
+
+def mg_view(view: str | None, protocol: str | None) -> str | None:
+    """CC or MLO (the view field first, then the protocol); other views give None."""
+    for text in (normalise(view), normalise(protocol)):
+        for rx, code in _MG_VIEW:
+            if text and rx.search(text):
+                return code
+    return None
+
+
+# radionuclide implied by the agent, when the header leaves the radionuclide empty
+_IMPLIED_NUCLIDE = [(re.compile(r"\bfdg\b|fluorodeox|\bfluciclov|\bpsma 1007\b"), " f 18 "),
+                    (re.compile(r"pertechnet|\bmdp\b|\bhdp\b|\bdtpa\b|\bdmsa\b|\bmaa\b"
+                                r"|\bmibi\b|sestamibi|tetrofosmin|\bmag ?3\b|nanocol"),
+                     " tc 99m ")]
+
+
+def nm_text(study: dict, events: list[dict]) -> str:
+    """Description, procedure, agents and radionuclides of an NM / PET study, normalised."""
+    parts = [normalise(study.get(f)) for f in STUDY_FIELDS]
+    for e in events:
+        if e.get("event_type") == "radiopharmaceutical":
+            parts += [normalise(e.get("protocol")), normalise(e.get("comment"))]
+    text = " ".join(p.strip() for p in parts if p)
+    for rx, nuclide in _IMPLIED_NUCLIDE:
+        if rx.search(f" {text} "):
+            text += nuclide
+    return f" {text.strip()} " if text.strip() else ""
+
+
 def view_code(view: str | None, protocol: str | None) -> str | None:
     """Projection from the DICOM view (preferred) or the protocol name."""
     v = normalise(view)
@@ -105,7 +158,7 @@ class Rules:
         with path.open("rb") as fh:
             raw = tomllib.load(fh)
         fams = {f: [(r["code"], re.compile(r["match"])) for r in raw.get(f, [])]
-                for f in ("rx", "rf", "ct", "xa")}
+                for f in ("rx", "rf", "ct", "xa", "nm", "nmh")}
         con = {k: re.compile(v) for k, v in raw.get("contrast", {}).items()}
         return cls(fams, con)
 
@@ -215,6 +268,22 @@ class Classifier:
             out.rows.append({"study_id": sid, "event_id": event_id, "code_id": code_id,
                              "status": status, "mapping_id": mapping_id})
 
+        if family == "mg":
+            return self._mammography(study, events, out, row)
+        if family in ("nm", "nmh"):
+            if family == "nm" and any(e.get("dlp") is not None for e in events):
+                family = "nmh"  # SPECT/CT
+            hit = self.first(family, study_pairs)
+            if hit is None:
+                code = self.rules.match(family, nm_text(study, events))
+                cid = self.code_id.get((NOMENCLATOR[family], code)) if code else None
+                hit = (cid, None) if cid else None
+            if hit:
+                row(*hit)
+                for dst in self.drl_codes(hit[0], None):
+                    row(dst, None)
+            return out
+
         if family == "rx":
             found: dict[int, int | None] = {}
             for e in events:
@@ -270,6 +339,37 @@ class Classifier:
                 row(xa[0], xa[1])
         return out
 
+    def _mammography(self, study: dict, events: list[dict], out: Result, row) -> Result:
+        """Per exposure: the OMS 1255 code (side and view) and the OMS 838 DRL code; the
+        study gets the distinct OMS 1255 codes. A human decision on the protocol or the
+        description (family mg) replaces the OMS 1255 code."""
+        exposures = [e for e in events if e.get("agd") is not None or e.get("view")
+                     or e.get("laterality")]
+        sides = {e.get("laterality") for e in exposures} & {"L", "R"}
+        bilateral = len(sides) == 2
+        texts = [normalise(study.get(f)) for f in STUDY_FIELDS]
+        dbt = any(_MG_DBT.search(t) for t in texts if t) or any(
+            _MG_DBT.search(normalise(e.get("protocol")) or " ") for e in exposures)
+        drl = MG_DBT_BI if dbt and bilateral else MG_DBT_UNI if dbt else MG_2D
+        drl_id = self.code_id.get(("ro-drl-ms838-2025", drl))
+        found: dict[int, int | None] = {}
+        for e in exposures:
+            hit = self.first("mg", [("protocol", e.get("protocol")),
+                                    *[(f, study.get(f)) for f in STUDY_FIELDS]]) \
+                if self.overrides else None
+            if hit is None:
+                code = MG_INSP.get((bilateral, mg_view(e.get("view"), e.get("protocol"))))
+                cid = self.code_id.get(("ro-insp-1255-rx", code)) if code else None
+                hit = (cid, None) if cid else None
+            if hit:
+                row(hit[0], hit[1], e["id"])
+                found.setdefault(hit[0], hit[1])
+            if drl_id and e.get("agd") is not None:
+                row(drl_id, None, e["id"])
+        for cid, mid in found.items():
+            row(cid, mid)
+        return out
+
     def _ct_series(self, events: list[dict], study_code: int | None, row) -> None:
         """A series whose own protocol names another region than the study, head vs not
         head (a trunk series in a 'head' trauma study, a head series in a 'TAP' study),
@@ -309,7 +409,8 @@ class Classifier:
 _STUDY_COLS = (Study.id, Study.modality, Study.study_description, Study.procedure_name,
                Study.requested_procedure)
 _EVENT_COLS = (Event.id, Event.study_id, Event.protocol, Event.anatomy, Event.view,
-               Event.is_localizer)
+               Event.is_localizer, Event.event_type, Event.comment, Event.dlp, Event.agd,
+               Event.laterality)
 
 
 def run(session: Session, study_ids: Iterable[int] | None = None,
@@ -393,7 +494,7 @@ def set_mapping(session: Session, family: str, fld: str, raw: str, code: Code | 
 def studies_with_text(session: Session, family: str, fld: str, raw: str) -> list[int]:
     """Study ids whose field normalises to the same text as ``raw`` (to reclassify)."""
     text = normalise(raw)
-    mods = [m for m, f in FAMILY.items() if f == family]
+    mods = FAMILY_MODALITIES.get(family, [])
     if fld in EVENT_FIELDS:
         col = getattr(Event, fld)
         values = [v for v in session.scalars(

@@ -9,8 +9,8 @@ import { num } from '../core/format.js';
 import { classificationSummary, unclassified, mappings, codes, decideMapping } from '../core/api.js';
 
 const page = document.getElementById('page');
-const FAMILIES = { rx: 'Radiography', rf: 'Fluoroscopy / angiography', ct: 'CT' };
-const SYSTEM = { rx: 'ro-nom-rx', rf: 'ro-nom-rx', ct: 'ro-nom-ct' };
+const FAMILIES = { rx: 'Radiography', rf: 'Fluoroscopy / angiography', ct: 'CT', mg: 'Mammography', nm: 'Nuclear medicine', nmh: 'PET/CT, SPECT/CT' };
+const SYSTEM = { rx: 'ro-nom-rx', rf: 'ro-nom-rx', ct: 'ro-nom-ct', mg: 'ro-insp-1255-rx', nm: 'ro-insp-1255-nm', nmh: 'ro-insp-1255-nm-hybrid' };
 const FIELD_LABEL = { protocol: 'Protocol', anatomy: 'Anatomy', study_description: 'Study description', procedure_name: 'Procedure' };
 const codeCache = new Map();
 let family = 'rx';
@@ -22,6 +22,7 @@ async function codeList(fam) {
   // radiography and fluoroscopy share one nomenclator: offer the relevant half
   if (fam === 'rx') return all.filter((c) => c.code.startsWith('RG-'));
   if (fam === 'rf') return all.filter((c) => c.code.startsWith('RF-'));
+  if (fam === 'mg') return all.filter((c) => c.code.startsWith('SM'));
   return all;
 }
 

@@ -17,7 +17,7 @@ from ..db.models import (
     Study,
 )
 
-FAMILIES = {"rx": ["DX", "CR", "MG", "PX"], "rf": ["RF", "XA"], "ct": ["CT"]}
+FAMILIES = classify.FAMILY_MODALITIES
 FIELDS = {"protocol", "anatomy", "study_description", "procedure_name", "requested_procedure"}
 
 

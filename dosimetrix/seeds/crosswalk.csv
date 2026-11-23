@@ -164,3 +164,14 @@ ro-nom-ct,AG-SCCA,*,ro-insp-1255-ct,SC
 ro-nom-ct,AG-TAVI,*,ro-insp-1255-ct,TAVI CT
 ro-nom-ct,PG-MLCV,*,ro-insp-1255-ct,MLO
 ro-nom-rx,RG-CROP,*,ro-insp-1255-dental,D2
+ro-insp-1255-nm,ST1,*,ro-drl-ms838-2025,NM-TIROIDA-TC
+ro-insp-1255-nm,SV3,*,ro-drl-ms838-2025,NM-CARDIAC-MIBI
+ro-insp-1255-nm,SPT3,*,ro-drl-ms838-2025,NM-PARATIROIDA-MIBI
+ro-insp-1255-nm,SL1,*,ro-drl-ms838-2025,NM-LIMFO-NANOCOLOID
+ro-insp-1255-nm,SO3,*,ro-drl-ms838-2025,NM-OSOS-HDP
+ro-insp-1255-nm,SR2,*,ro-drl-ms838-2025,NM-RENAL-DTPA
+ro-insp-1255-nm,SR4,*,ro-drl-ms838-2025,NM-RENAL-DMSA
+ro-insp-1255-nm,SP1,*,ro-drl-ms838-2025,NM-PULM-MAA
+ro-insp-1255-nm-hybrid,PCT1,*,ro-drl-ms838-2025,PETCT-FDG
+ro-insp-1255-nm-hybrid,PCT4,*,ro-drl-ms838-2025,PETCT-FDG
+ro-insp-1255-nm-hybrid,PCT5,*,ro-drl-ms838-2025,PETCT-FDG

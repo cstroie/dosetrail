@@ -162,3 +162,96 @@ def test_chest_without_projection_is_frontal_and_pr_is_lateral(session):
     classify.run(session, [s.id])
     assert "ro-insp-1255-rx:T1" in _codes(session, s.id, front.id)
     assert "ro-insp-1255-rx:T2" in _codes(session, s.id, side.id)
+
+
+# ---------------------------------------------------------------- MG, NM, PET
+
+
+@pytest.mark.parametrize("text,family,code", [
+    (" pet ct fdg fluorodeoxyglucose f 18 ", "nmh", "PCT1"),
+    (" pet ct psma ga 68 ", "nmh", "PCT3"),
+    (" pet ct prostata psma 1007 f 18 ", "nmh", "PCT2"),
+    (" pet ct hepatic fdg f 18 ", "nmh", "PCT4"),
+    (" wb bone tc99m mdp ", "nmh", "SCTO"),
+    (" pet ct ", "nmh", None),  # agent unknown: left for review
+    (" scintigrafie osoasa tc99m mdp tc 99m ", "nm", "SO2"),
+    (" scintigrafie osoasa hdp tc 99m ", "nm", "SO3"),
+    (" wb trifazica ", "nm", None),
+    (" scintigrafie tiroidiana pertechnetat tc 99m ", "nm", "ST1"),
+    (" captare tiroidiana i 131 ", "nm", "ST3"),
+    (" scintigrafie paratiroidiana sestamibi tc 99m ", "nm", "SPT3"),
+    (" scintigrafie renala dmsa tc 99m ", "nm", "SR4"),
+    (" limfoscintigrafie nanocoloid tc 99m ", "nm", "SL1"),
+])
+def test_nm_rules(text, family, code):
+    assert Rules.load().match(family, text) == code
+
+
+def test_nm_text_adds_the_implied_radionuclide():
+    text = classify.nm_text({"study_description": "PET-CT"},
+                            [{"event_type": "radiopharmaceutical",
+                              "protocol": "FDG -- fluorodeoxyglucose", "comment": None}])
+    assert " f 18 " in text and " fdg " in text
+
+
+def test_mammography_views():
+    assert classify.mg_view("cranio-caudal", None) == "CC"
+    assert classify.mg_view("medio-lateral oblique", None) == "MLO"
+    assert classify.mg_view(None, "L MLO") == "MLO"
+    assert classify.mg_view("latero-medial", None) is None
+
+
+def test_run_mammography_nm_and_pet(session):
+    load_all(session)
+    bi = Study(study_uid="m.1", modality="MG", study_datetime=T, source_kind="test")
+    bi.events = [Event(view="cranio-caudal", laterality="R", agd=1.1),
+                 Event(view="MLO", laterality="R", agd=1.3),
+                 Event(view="cranio-caudal", laterality="L", agd=1.0),
+                 Event(protocol="L MLO", laterality="L", agd=1.2)]
+    uni = Study(study_uid="m.2", modality="MG", study_datetime=T, source_kind="test")
+    uni.events = [Event(view="cranio-caudal", laterality="L", agd=1.0)]
+    dbt = Study(study_uid="m.3", modality="MG", study_datetime=T, source_kind="test",
+                study_description="Tomosynthesis bilateral")
+    dbt.events = [Event(view="CC", laterality="R", agd=2.0),
+                  Event(view="CC", laterality="L", agd=2.0)]
+    pet = Study(study_uid="n.1", modality="PT", study_datetime=T, source_kind="test",
+                study_description="PET-CT")
+    pet.events = [Event(event_type="radiopharmaceutical", protocol="FDG -- fluorodeoxyglucose")]
+    spect = Study(study_uid="n.2", modality="NM", study_datetime=T, source_kind="test",
+                  study_description="WB Bone")
+    spect.events = [Event(event_type="radiopharmaceutical", protocol="Tc99m MDP"),
+                    Event(event_type="spiral", dlp=120.0)]
+    bone = Study(study_uid="n.3", modality="NM", study_datetime=T, source_kind="test",
+                 study_description="Scintigrafie osoasa")
+    bone.events = [Event(event_type="radiopharmaceutical", protocol="HDP")]
+    unknown = Study(study_uid="n.4", modality="NM", study_datetime=T, source_kind="test",
+                    study_description="WB TRIFAZICA")
+    unknown.events = [Event(event_type="radiopharmaceutical", comment="Tc-99m")]
+    session.add_all([bi, uni, dbt, pet, spect, bone, unknown])
+    session.flush()
+    classify.run(session)
+
+    rcc, rmlo, lcc, lmlo = bi.events
+    assert _codes(session, bi.id, rcc.id) == {"ro-insp-1255-rx:SMB1",
+                                               "ro-drl-ms838-2025:MG-UNILATERAL"}
+    assert _codes(session, bi.id, lmlo.id) == {"ro-insp-1255-rx:SMB2",
+                                                "ro-drl-ms838-2025:MG-UNILATERAL"}
+    assert _codes(session, bi.id, None) == {"ro-insp-1255-rx:SMB1", "ro-insp-1255-rx:SMB2"}
+    assert _codes(session, uni.id) == {"ro-insp-1255-rx:SMU1",
+                                       "ro-drl-ms838-2025:MG-UNILATERAL"}
+    assert "ro-drl-ms838-2025:MG-DBT-BILATERAL" in _codes(session, dbt.id)
+    assert _codes(session, pet.id) == {"ro-insp-1255-nm-hybrid:PCT1",
+                                       "ro-drl-ms838-2025:PETCT-FDG"}
+    assert _codes(session, spect.id) == {"ro-insp-1255-nm-hybrid:SCTO"}
+    assert _codes(session, bone.id) == {"ro-insp-1255-nm:SO3",
+                                        "ro-drl-ms838-2025:NM-OSOS-HDP"}
+    assert _codes(session, unknown.id) == set()
+
+    # a person maps this site's "WB TRIFAZICA" (no agent in the header)
+    so2 = session.scalar(select(Code).join(CodeSystem)
+                         .where(CodeSystem.key == "ro-insp-1255-nm", Code.code == "SO2"))
+    classify.set_mapping(session, "nm", "study_description", "WB TRIFAZICA", so2)
+    ids = classify.studies_with_text(session, "nm", "study_description", "wb trifazica")
+    assert ids == [unknown.id]
+    classify.run(session, ids)
+    assert _codes(session, unknown.id) == {"ro-insp-1255-nm:SO2"}

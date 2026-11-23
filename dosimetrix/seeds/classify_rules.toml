@@ -13,9 +13,16 @@
 # Human decisions are stored in the database (code_mapping, status "confirmed") and always
 # win over these rules.
 #
-# Families: rx = DX/CR (and MG for now), rf = RF/XA, ct = CT.
+# Families: rx = DX/CR, rf = RF/XA, ct = CT.
 # xa = interventional procedures on RF/XA studies, mapped straight to the national codes
 # of OMS 1255/2016 (sheet "Interventionala RX"): no local nomenclator exists for them.
+# Mammography (MG) is coded by side and view in classify.py, not by rules.
+# nm / nmh = nuclear medicine, straight to the OMS 1255 codes ("MN diagnostic" / "MN
+# Hibride"). The text is the description, procedure, agents and radionuclides together
+# (" scintigrafie osoasa tc99m mdp "); an agent that implies its radionuclide adds it
+# ("fdg" adds " f 18 ", "mdp" adds " tc 99m "). Codes name an agent: a study whose agent
+# is unknown matches no rule and is left for review, except where the code is the only
+# one of its kind (PET-CT FDG total body, SPECT-CT bone).
 
 [[rx]]
 code = "RG-CRSN"
@@ -377,3 +384,148 @@ match = 'gamba|tibi'
 multiphase = 'multifaz|multiphas|trifaz|bifaz|triphas|biphas|arterial\w* (venos|venous|portal)'
 contrast = 'contrast|bolus|\bangio|\bcu sdc\b|\bc\b'
 native = 'nativ|native|non ?contrast|without|fara|simplu|\bn\b'
+
+# ---------------------------------------------------------------- nuclear medicine (national codes)
+# Tc-99m in its spellings: "tc 99m", "tc99m", "99mtc", "technetium"
+# I-131 / I-123: "i 131", "131i", "iod 131"
+
+[[nm]]
+code = "SDM"
+match = 'meckel'
+[[nm]]
+code = "SNE"
+match = 'tektrotyd|hynic|octreo|somatostat|neuroendocr'
+[[nm]]
+code = "SL1"
+match = 'limfo|lympho|santinel|sentinel|nanocol|nanoscan'
+[[nm]]
+code = "SPT1"
+match = '(?=.*paratir|.*parathyr)(?=.*tetrofosmin)'
+[[nm]]
+code = "SPT2"
+match = '(?=.*paratir|.*parathyr)(?=.*pertechnet|.*tco4)(?=.*mibi)'
+[[nm]]
+code = "SPT3"
+match = '(?=.*paratir|.*parathyr)(?=.*mibi)'
+[[nm]]
+code = "SV6"
+match = '(?=.*mibg)(?=.*\b(i ?131|131 ?i|iod ?131)\b)'
+[[nm]]
+code = "SV7"
+match = '(?=.*mibg)(?=.*\b(i ?123|123 ?i|iod ?123)\b)'
+[[nm]]
+code = "ST3"
+match = '(?=.*tiroid|.*thyr)(?=.*captare|.*functi|.*uptake)(?=.*\b(i ?131|131 ?i|iod ?131|nai)\b)'
+[[nm]]
+code = "ST4"
+match = '(?=.*tiroid|.*thyr)(?=.*captare|.*functi|.*uptake)(?=.*pertechnet|.*tco4|.*\btc ?99m|.*99m ?tc)'
+[[nm]]
+code = "ST2"
+match = '(?=.*tiroid|.*thyr)(?=.*\b(i ?131|131 ?i|iod ?131|nai)\b)'
+[[nm]]
+code = "ST1"
+match = '(?=.*tiroid|.*thyr)(?=.*pertechnet|.*tco4|.*\btc ?99m|.*99m ?tc)'
+[[nm]]
+code = "SV3"
+match = 'sestamibi|\bmibi\b'
+[[nm]]
+code = "SV4"
+match = 'tetrofosmin|myoview'
+[[nm]]
+code = "SV2"
+match = '(?=.*\brbc\b|.*eritrocit|.*hemati|.*\bmuga\b|.*ventriculogra)'
+[[nm]]
+code = "SV5"
+match = '(?=.*\bpyp\b|.*pirofosfat|.*pyrophosph)(?=.*cardi|.*amiloid|.*amyloid)'
+[[nm]]
+code = "SV1"
+match = '(?=.*cardi|.*miocard|.*myocard)(?=.*pertechnet|.*tco4)'
+[[nm]]
+code = "SH2"
+match = '\bhida\b|\bdipa\b|disida|mebrofenin|biliar|colescint|hepatobil'
+[[nm]]
+code = "SH1"
+match = '(?=.*hepat|.*splen|.*ficat)(?=.*pertechnet|.*tco4|.*coloid|.*colloid)'
+[[nm]]
+code = "SR5"
+match = '\bmag ?3\b|mertiat'
+[[nm]]
+code = "SR4"
+match = '\bdmsa\b|succimer'
+[[nm]]
+code = "SR2"
+match = '\bdtpa\b|pentetat'
+[[nm]]
+code = "SR3"
+match = 'glucoheptonat'
+[[nm]]
+code = "SR1"
+match = '(?=.*renal|.*rinich|.*kidney|.*nefro)(?=.*pertechnet|.*tco4)'
+[[nm]]
+code = "SO3"
+match = '\bhdp\b|\bhmdp\b|oxidronat'
+[[nm]]
+code = "SO2"
+match = '\bmdp\b|\bmdt\b|medronat'
+[[nm]]
+code = "SO4"
+match = '(?=.*\bpyp\b|.*pirofosfat|.*pyrophosph)(?=.*\bos|.*bone|.*schelet)'
+[[nm]]
+code = "SO1"
+match = '(?=.*\bosoas|.*\bbone\b|.*schelet)(?=.*pertechnet|.*tco4)'
+[[nm]]
+code = "SP3"
+match = 'ventila|technegas|aerosol'
+[[nm]]
+code = "SP1"
+match = '\bmaa\b|macroagreg|macroaggreg'
+[[nm]]
+code = "SP2"
+match = '(?=.*pulmon|.*\blung)(?=.*\btc ?99m|.*99m ?tc|.*pertechnet)'
+[[nm]]
+code = "SG1"
+match = '(?=.*gastr|.*esofag|.*oesoph|.*reflux|.*golire|.*digestiv|.*intestin)(?=.*pertechnet|.*tco4|.*\btc ?99m|.*99m ?tc)'
+
+# PET (always reported as hybrid) and SPECT/CT
+[[nmh]]
+code = "PCT3"
+match = '(?=.*psma)(?=.*\bga ?68\b|.*68 ?ga\b|.*gallium)'
+[[nmh]]
+code = "PCT2"
+match = '(?=.*psma)(?=.*\bf ?18\b|.*18 ?f\b|.*1007|.*dcfpyl|.*fluor)'
+[[nmh]]
+code = "PCT5"
+match = '(?=.*\bf 18\b)(?=.*cardi|.*miocard|.*myocard)'
+[[nmh]]
+code = "PCT4"
+match = '(?=.*\bf 18\b)(?=.*\bfdg\b|.*fluorodeox)(?=.*hepat|.*ficat|.*\bliver\b)'
+[[nmh]]
+code = "PCT1"
+match = '\bfdg\b|fluorodeox'
+[[nmh]]
+code = "SCTL"
+match = 'limfo|lympho|santinel|sentinel|nanocol|nanoscan'
+[[nmh]]
+code = "SCTN"
+match = 'tektrotyd|hynic|octreo|somatostat|neuroendocr'
+[[nmh]]
+code = "SCTP"
+match = '(?=.*paratir|.*parathyr)(?=.*mibi)'
+[[nmh]]
+code = "SCTC"
+match = '(?=.*cardi|.*miocard|.*myocard|.*perfuzi)(?=.*mibi)'
+[[nmh]]
+code = "SCTA"
+match = 'amiloid|amyloid'
+[[nmh]]
+code = "SCTT"
+match = '(?=.*tiroid|.*thyr)(?=.*pertechnet|.*tco4|.*\btc ?99m|.*99m ?tc)'
+[[nmh]]
+code = "SCTR1"
+match = '\bdtpa\b|pentetat'
+[[nmh]]
+code = "SCTR2"
+match = '\bdmsa\b|succimer'
+[[nmh]]
+code = "SCTO"
+match = '\bhdp\b|\bhmdp\b|oxidronat|\bmdp\b|medronat|\bosoas|\bbone\b|schelet|trifazic|trei faze'
