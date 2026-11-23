@@ -264,3 +264,20 @@ def test_backfill_queues_history_children_first(session, stub, his):
     assert first.study_id == old_child.id
     his.backfill_hours = f"{(later.hour + 2) % 24}-{(later.hour + 3) % 24}"
     assert enrich.due(session, his, later, 5) == []  # history waits for its hours
+
+
+def test_enqueue_adds_missing_resets_on_request_and_repeats_are_harmless(session):
+    sids = []
+    for i in range(3):
+        s = Study(study_uid=f"enq.{i}", source_kind="test", modality="CT")
+        session.add(s)
+        session.flush()
+        sids.append(s.id)
+    session.add(HisLookup(study_id=sids[0], status="matched", attempts=2))
+    session.flush()
+    assert enrich.enqueue(session, [*sids, sids[1]]) == 2  # the known one is left alone
+    assert session.get(HisLookup, sids[0]).status == "matched"
+    assert session.get(HisLookup, sids[1]).status == "pending"
+    assert enrich.enqueue(session, sids, reset=True) == 3
+    assert session.get(HisLookup, sids[0]).status == "pending"
+    assert session.get(HisLookup, sids[0]).attempts == 0

@@ -68,3 +68,46 @@ def test_head_phantom_for_neuro_procedures():
     assert sd.compute([ev()], 14 * 365, region="head")["psd_mgy"] < \
         sd.compute([ev()], 14 * 365)["psd_mgy"]
     assert sd.HEAD_PATTERN.search("dsa neuro") and not sd.HEAD_PATTERN.search("dsa body")
+
+
+def test_update_psd_queries_do_not_grow_with_studies(session):
+    """The region of every study of a batch comes from one query (no query per study)."""
+    from sqlalchemy import event
+
+    from dosimetrix.db.models import Classification, Code, CodeSystem, Event, Study
+
+    sysm = CodeSystem(key="t-sys", name="t")
+    head = Code(system=sysm, code="A1", meaning="head")
+    session.add_all([sysm, head])
+    session.flush()
+
+    def make(n, off):
+        ids = []
+        for i in range(n):
+            s = Study(study_uid=f"psd.{off + i}", modality="XA", source_kind="test",
+                      age_days=ADULT, study_description="angio")
+            session.add(s)
+            session.flush()
+            session.add(Event(study_id=s.id, event_uid=f"pe{off + i}", event_type="acquisition",
+                              rp_dose=1.0, dap=100.0, dist_source_iso_mm=750.0,
+                              dist_source_rp_mm=600.0, sid_mm=1100.0,
+                              primary_angle=0.0, secondary_angle=0.0))
+            if i % 2:
+                session.add(Classification(study_id=s.id, code_id=head.id, status="auto"))
+            ids.append(s.id)
+        session.flush()
+        return ids
+
+    def count(ids):
+        n = []
+        cb = lambda c, cur, st, *a: n.append(st)  # noqa: E731
+        eng = session.get_bind()
+        event.listen(eng, "before_cursor_execute", cb)
+        sd.update_psd(session, ids)
+        event.remove(eng, "before_cursor_execute", cb)
+        return len(n)
+
+    few, many = make(4, 0), make(24, 100)
+    assert count(many) <= count(few) + 2  # same number of statements for 6x the studies
+    regions = {s.id: s.psd_mgy for s in session.query(Study).filter(Study.id.in_(many))}
+    assert len(set(regions.values())) == 2  # head (odd) and trunk studies differ

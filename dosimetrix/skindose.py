@@ -241,8 +241,10 @@ def compute(events, age_days: int | None = None, weight_kg: float | None = None,
 SKIN_MODALITIES = ("RF", "XA")
 
 
-def region_of(session, study) -> str:
-    """'head' for neuro / cerebral / carotid procedures (text or national code), else trunk."""
+def region_of(session, study, head_coded: set[int] | None = None) -> str:
+    """'head' for neuro / cerebral / carotid procedures (text or national code), else trunk.
+    ``head_coded``: ids of the studies with a head code, when the caller looked them up for
+    a whole batch (saves a query per study)."""
     from sqlalchemy import select
 
     from .db.models import Classification, Code
@@ -251,6 +253,8 @@ def region_of(session, study) -> str:
                                 study.requested_procedure) if x).lower()
     if HEAD_PATTERN.search(text):
         return "head"
+    if head_coded is not None:
+        return "head" if study.id in head_coded else "trunk"
     codes = set(session.scalars(select(Code.code).join(Classification,
                                                        Classification.code_id == Code.id)
                                 .where(Classification.study_id == study.id)))
@@ -276,7 +280,7 @@ def update_psd(session, study_ids=None) -> dict:
 
     from sqlalchemy import select
 
-    from .db.models import Event, Study
+    from .db.models import Classification, Code, Event, Study
 
     q = select(Study).where(Study.modality.in_(SKIN_MODALITIES))
     if study_ids is not None:
@@ -288,8 +292,13 @@ def update_psd(session, study_ids=None) -> dict:
         events = defaultdict(list)
         for e in session.scalars(select(Event).where(Event.study_id.in_([s.id for s in chunk]))):
             events[e.study_id].append(e)
+        head = set(session.scalars(
+            select(Classification.study_id).join(Code, Code.id == Classification.code_id)
+            .where(Classification.study_id.in_([s.id for s in chunk]),
+                   Code.code.in_(HEAD_CODES))))
         for s in chunk:
-            r = compute(events.get(s.id, []), s.age_days, s.weight_kg, region_of(session, s))
+            r = compute(events.get(s.id, []), s.age_days, s.weight_kg,
+                        region_of(session, s, head))
             s.psd_mgy = r["psd_mgy"]
             stats["studies"] += 1
             stats["with_psd"] += s.psd_mgy is not None

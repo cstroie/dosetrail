@@ -316,8 +316,13 @@ def _retry(lookup: HisLookup, study_when: dt.datetime | None, now: dt.datetime,
 def enqueue(session: Session, study_ids, reset: bool = False) -> int:
     """Queue studies for a lookup (existing rows are left alone unless `reset`)."""
     n = 0
-    for sid in study_ids:
-        row = session.get(HisLookup, sid)
+    ids = list(dict.fromkeys(study_ids))
+    have: dict[int, HisLookup] = {}
+    for i in range(0, len(ids), 1000):  # one query per 1000 studies, not one per study
+        have.update({r.study_id: r for r in session.scalars(
+            select(HisLookup).where(HisLookup.study_id.in_(ids[i:i + 1000])))})
+    for sid in ids:
+        row = have.get(sid)
         if row is None:
             session.add(HisLookup(study_id=sid, status="pending", attempts=0))
             n += 1
