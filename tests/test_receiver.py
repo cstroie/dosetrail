@@ -213,3 +213,40 @@ def test_study_created_by_another_session_is_reused(tmp_path):
         s1.commit()
         assert missed["done"] and r.status == "imported"
         assert len(list(s1.scalars(select(Study).filter_by(study_uid="1.2.9.1")))) == 1
+
+
+def test_a_hanging_notification_sender_does_not_block_the_import_loop(tmp_path, monkeypatch):
+    """Notifications are sent from their own thread: a slow mail server must not delay
+    ``dispatch()`` (called by the import loop) and runs do not pile up."""
+    import threading
+    import time
+
+    from dosimetrix import notify
+    from dosimetrix.db.migrate import upgrade
+    from dosimetrix.db.session import make_engine, make_sessionmaker
+    from dosimetrix.net.spool import Spool, SpoolWorker
+
+    url = f"sqlite:///{tmp_path / 'n.sqlite3'}"
+    upgrade(url)
+    maker = make_sessionmaker(make_engine(url))
+    release, entered, calls = threading.Event(), threading.Event(), []
+
+    def hang(session, cfg, *a, **k):
+        calls.append(1)
+        entered.set()
+        release.wait(10)
+        return {}
+
+    monkeypatch.setattr(notify, "dispatch", hang)
+    w = SpoolWorker(Spool(tmp_path / "spool"), maker, b"n" * 32,
+                    notify=notify.NotifySettings.from_dict({}))
+    t0 = time.monotonic()
+    w.dispatch(every=0)
+    assert entered.wait(5) and time.monotonic() - t0 < 2  # returned while the send hangs
+    w.dispatch(every=0)  # a second call while the first is still running: skipped
+    assert len(calls) == 1
+    release.set()
+    w._sender.join(5)
+    w.dispatch(every=0)
+    w._sender.join(5)
+    assert len(calls) == 2

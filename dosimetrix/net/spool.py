@@ -90,6 +90,7 @@ class SpoolWorker(threading.Thread):
         self.keep, self.interval, self.batch = keep, interval, batch
         self.notify = notify  # notify.NotifySettings: send alert notifications when idle
         self._last_dispatch = 0.0
+        self._sender: threading.Thread | None = None  # the notification run in flight
         self.run_device_alerts = device_alerts  # the live receiver: hourly device rules
         self._last_devices = 0.0
         self.stop_event = threading.Event()
@@ -128,12 +129,21 @@ class SpoolWorker(threading.Thread):
             log.exception("device alert evaluation failed")
 
     def dispatch(self, every: float = 30.0) -> None:
-        """Send pending alert notifications, at most every ``every`` seconds."""
+        """Send pending alert notifications, at most every ``every`` seconds. Sending (SMTP,
+        HTTP) can take as long as its timeout: it runs in its own thread, never in the one
+        that imports, and not twice at once."""
         import time
 
         if self.notify is None or time.monotonic() - self._last_dispatch < every:
             return
+        if self._sender is not None and self._sender.is_alive():
+            return  # the previous run is still waiting on a slow server
         self._last_dispatch = time.monotonic()
+        self._sender = threading.Thread(target=self._send_notifications,
+                                        name="dosimetrix-notify", daemon=True)
+        self._sender.start()
+
+    def _send_notifications(self) -> None:
         from ..notify import dispatch
 
         try:
