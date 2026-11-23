@@ -100,6 +100,14 @@ def _date(v) -> dt.date | None:
         return None
 
 
+def _birth_date(v) -> dt.date | None:
+    """PatientBirthDate, unless it is an "unknown" placeholder: systems that cannot store an
+    empty date write 1753-01-01 (SQL Server's minimum) or 1900-01-01, which would make the
+    patient 120-270 years old. Then the DICOM Patient Age is used instead."""
+    d = _date(v)
+    return d if d is not None and d.year >= 1901 else None
+
+
 def _datetime(d, t) -> dt.datetime | None:
     if not d:
         return None
@@ -143,7 +151,7 @@ def _header(ds) -> tuple[dict, dict, dict]:
         "patient_id": _s(ds.get("PatientID"), 64),
         "issuer": _s(ds.get("IssuerOfPatientID"), 64),
         "name": _s(ds.get("PatientName")),
-        "birth_date": _date(ds.get("PatientBirthDate")),
+        "birth_date": _birth_date(ds.get("PatientBirthDate")),
         "sex": (_s(ds.get("PatientSex"), 1) or None),
     }
     device = {

@@ -516,3 +516,16 @@ def test_legacy_ge_ct_without_ctdivol_is_kept_as_technique_only():
     del other.CTDIvol
     other.Manufacturer = "SIEMENS"
     assert parse(other).kind != "ct_header"
+
+
+def test_placeholder_birth_dates_are_not_birth_dates():
+    from dosimetrix.ingest.parse import _birth_date
+    import datetime as dt
+    for v in ("17530101", "19000101", "00000000", "", None, "18580101"):
+        assert _birth_date(v) is None
+    assert _birth_date("20100315") == dt.date(2010, 3, 15)
+    # the header then falls back to the DICOM Patient Age
+    ds = f.ct_series_image()
+    ds.PatientBirthDate, ds.PatientAge = "17530101", "011M"
+    p = parse(ds)
+    assert p.patient["birth_date"] is None and p.study["dicom_age"] == "011M"
