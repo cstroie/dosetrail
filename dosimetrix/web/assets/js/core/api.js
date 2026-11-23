@@ -5,7 +5,7 @@
 //   anything else      → treated as the base URL of the Dosimetrix REST API (planned endpoints
 //                        are noted per function; the response shapes are the same).
 
-import { parse, matchStudy } from './query.js';
+import { parse, matchStudy, active } from './query.js';
 
 const MODE = document.documentElement.dataset.api || 'sample';
 const SAMPLE = new URL('../../../data/sample/', import.meta.url);
@@ -29,7 +29,9 @@ async function getJSON(url) {
 const sample = (name) => getJSON(new URL(name, SAMPLE).href);
 const remote = (path, params = {}) => {
   const u = new URL(path, MODE);
-  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') u.searchParams.set(k, v);
+  // a query is sent without its switched-off ("~") filters; /api/lookup's q is free text
+  const isQuery = (k) => k === 'q' && path !== '/api/lookup';
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') u.searchParams.set(k, isQuery(k) ? active(v) : v);
   return getJSON(u.href);
 };
 
@@ -183,7 +185,7 @@ export async function lookup(text, limit = 6) {
 export async function ctAcquisitions(q = '') {
   if (!isSample) return remote('/api/stats/ct/acquisitions', { q });
   const [rows, devs, n] = await Promise.all([sample('ct-acquisitions.json'), deviceMap(), now()]);
-  const tokens = parse(q).filter((t) => ['date', 'device', 'proto', 'origin', 'weight'].includes(t.key));
+  const tokens = parse(q).filter((t) => !t.off && ['date', 'device', 'proto', 'origin', 'weight'].includes(t.key));
   const ctx = { devices: devs, now: n };
   return rows
     .map((r) => ({ protocol: r.p, device_id: r.d, device: devs.get(r.d)?.display_name, ctdivol: r.c, dlp: r.l, weight: r.w, time: r.t }))
@@ -333,7 +335,7 @@ export function rdsrUrl(id) {
 export function exportUrl({ q = '', level = 'study', format = 'csv', pid = false } = {}) {
   if (isSample) return null;
   const u = new URL('/api/export', MODE);
-  u.searchParams.set('q', q);
+  u.searchParams.set('q', active(q));
   u.searchParams.set('level', level);
   u.searchParams.set('format', format);
   if (pid) u.searchParams.set('pid', '1');
@@ -344,7 +346,7 @@ export function exportUrl({ q = '', level = 'study', format = 'csv', pid = false
 export function drlDownloadUrl(kind, { q = '', set = '', min_n = 20, format = 'xlsx' } = {}) {
   if (isSample) return null;
   const u = new URL(kind === 'dataset' ? '/api/drl/dataset' : '/api/drl/summary', MODE);
-  u.searchParams.set('q', q);
+  u.searchParams.set('q', active(q));
   u.searchParams.set('format', format);
   if (kind !== 'dataset') { u.searchParams.set('set', set); u.searchParams.set('min_n', String(min_n)); }
   return u.href;
@@ -365,7 +367,7 @@ export function gridReport(params) {
 export function gridReportUrl({ year, quarter, q = 'origin:local', estimated = false }) {
   if (isSample) return null;
   const u = new URL('/api/reports/grid', MODE);
-  for (const [k, v] of Object.entries({ year, quarter, q, estimated, format: 'xlsx' })) u.searchParams.set(k, String(v));
+  for (const [k, v] of Object.entries({ year, quarter, q: active(q), estimated, format: 'xlsx' })) u.searchParams.set(k, String(v));
   return u.href;
 }
 
@@ -379,7 +381,7 @@ export function art12Report(params) {
 export function art12Url({ year, q = 'origin:local' }) {
   if (isSample) return null;
   const u = new URL('/api/reports/art12', MODE);
-  for (const [k, v] of Object.entries({ year, q, format: 'zip' })) u.searchParams.set(k, String(v));
+  for (const [k, v] of Object.entries({ year, q: active(q), format: 'zip' })) u.searchParams.set(k, String(v));
   return u.href;
 }
 
@@ -387,7 +389,7 @@ export function art12Url({ year, q = 'origin:local' }) {
 export function inspReportUrl({ year, quarter, q = 'origin:local' }) {
   if (isSample) return null;
   const u = new URL('/api/reports/insp1255', MODE);
-  for (const [k, v] of Object.entries({ year, quarter, q, format: 'xlsx' })) u.searchParams.set(k, String(v));
+  for (const [k, v] of Object.entries({ year, quarter, q: active(q), format: 'xlsx' })) u.searchParams.set(k, String(v));
   return u.href;
 }
 
@@ -395,7 +397,7 @@ export function inspReportUrl({ year, quarter, q = 'origin:local' }) {
 export function surveyUrl({ month, format = 'csv', q = 'origin:local' }) {
   if (isSample) return null;
   const u = new URL('/api/survey/export', MODE);
-  for (const [k, v] of Object.entries({ month, format, q })) u.searchParams.set(k, v);
+  for (const [k, v] of Object.entries({ month, format, q: active(q) })) u.searchParams.set(k, v);
   return u.href;
 }
 

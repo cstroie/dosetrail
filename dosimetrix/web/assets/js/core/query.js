@@ -60,7 +60,20 @@ function splitList(v) {
 
 /** Parse a query string into tokens: {key, value, neg, error?}. */
 export function parse(text) {
-  return lex(text || '').map((raw) => {
+  return lex(text || '').map(parseOne);
+}
+
+// A leading "~" switches a filter off without losing it: "~modality:CT". It stays in the
+// URL and in saved queries; `active()` drops it before the query is applied or sent.
+function parseOne(raw) {
+  const off = raw.startsWith('~') && raw.length > 1;
+  const tok = parseBody(off ? raw.slice(1) : raw);
+  if (off) tok.off = true;
+  return tok;
+}
+
+function parseBody(raw) {
+  {
     let neg = false;
     let body = raw;
     if (body.startsWith('-') && body.length > 1) { neg = true; body = body.slice(1); }
@@ -78,7 +91,7 @@ export function parse(text) {
     else if (KEYS[key].kind === 'number' && !parseNumberCond(value)) tok.error = 'expected a number, >n, <=n or a..b';
     else if (KEYS[key].kind === 'date' && !parseDateCond(value)) tok.error = 'expected YYYY-MM-DD..YYYY-MM-DD or 30d';
     return tok;
-  });
+  }
 }
 
 function quote(v) {
@@ -86,13 +99,17 @@ function quote(v) {
 }
 
 export function tokenToString(t) {
-  const neg = t.neg ? '-' : '';
+  const neg = (t.off ? '~' : '') + (t.neg ? '-' : '');
   if (t.key === 'text') return neg + quote(t.value);
   if (KEYS[t.key]?.kind === 'flag') return neg + t.key;
   const v = KEYS[t.key]?.kind === 'text' ? splitList(t.value).map(quote).join(',') : t.value;
   return `${neg}${t.key}:${v}`;
 }
 
+/** The query as it applies: switched-off ("~") filters left out. Use before sending a query. */
+export function active(q) {
+  return typeof q === 'string' && q.includes('~') ? serialize(parse(q).filter((t) => !t.off)) : q;
+}
 export function serialize(tokens) {
   return tokens.map(tokenToString).join(' ');
 }
@@ -139,6 +156,7 @@ export function parseDateCond(v, now = new Date().toISOString()) {
  * `ctx` = { devices: Map(id → record), now: ISO string }
  */
 export function matchStudy(s, tokens, ctx) {
+  tokens = tokens.filter((t) => !t.off);
   const dev = ctx.devices.get(s.device_id);
   let phantomAllowed = false;
   for (const t of tokens) {

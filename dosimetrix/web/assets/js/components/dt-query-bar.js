@@ -1,6 +1,7 @@
 // <dt-query-bar value="modality:CT date:90d -phantom"></dt-query-bar>
 //
-// Typed filter tokens with autocomplete. Committed tokens render as removable chips;
+// Typed filter tokens with autocomplete. Committed tokens render as removable chips (a click
+// on the name switches one off and on again: "~key:value" in the string);
 // the token being typed gets suggestions (Tab / Enter completes). Fires
 // `query-change` with detail = the full query string whenever the tokens change.
 // Set `.context = { devices: Map, drl: {protocol: value} }` to enrich suggestions.
@@ -33,12 +34,23 @@ class DtQueryBar extends HTMLElement {
       const def = KEYS[tok.key];
       const key = tok.key === 'text' ? 'text' : (tok.neg ? '−' : '') + tok.key;
       const val = def?.kind === 'flag' ? '' : tok.value;
-      this.chips.append(h('span', { class: `qb-tok ${tok.neg ? 'neg' : ''} ${tok.error ? 'bad' : ''}`, title: tok.error || def?.hint || '' },
-        h('b', {}, key), val ? h('span', {}, val.replace(/"/g, '')) : null,
+      const what = tokenToString({ ...tok, off: false });
+      this.chips.append(h('span', { class: `qb-tok ${tok.neg ? 'neg' : ''} ${tok.error ? 'bad' : ''} ${tok.off ? 'off' : ''}`, title: tok.error || def?.hint || '' },
+        h('button', { type: 'button', class: 'qb-key', 'aria-pressed': String(!tok.off),
+          'aria-label': `${what}: ${tok.off ? 'off' : 'on'}`, title: tok.off ? `Off. Click to apply ${what}` : `On. Click to switch off ${what} (it stays here)`,
+          onclick: () => this.toggle(i) }, key), val ? h('span', {}, val.replace(/"/g, '')) : null,
         h('button', { type: 'button', 'aria-label': `Remove ${tokenToString(tok)}`, title: `Remove ${tokenToString(tok)}`, onclick: () => this.remove(i) }, '×')));
     });
-    const bad = this.tokens.find((x) => x.error);
+    const bad = this.tokens.find((x) => x.error && !x.off);
     this.error.textContent = bad ? `${tokenToString(bad)}: ${bad.error}` : '';
+  }
+
+  /** Switch a filter off or on without losing it ("~" in the query string). */
+  toggle(i) {
+    const tok = this.tokens[i];
+    if (tok.off) delete tok.off; else tok.off = true;
+    this.renderChips();
+    this.emit();
   }
 
   remove(i) {

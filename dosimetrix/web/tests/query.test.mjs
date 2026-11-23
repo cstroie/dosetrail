@@ -2,7 +2,7 @@
 //   node --test dosimetrix/web/tests/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse, serialize, matchStudy, parseNumberCond, parseDateCond, suggest } from '../assets/js/core/query.js';
+import { parse, serialize, active, matchStudy, parseNumberCond, parseDateCond, suggest } from '../assets/js/core/query.js';
 import { summary, quantile } from '../assets/js/core/stats.js';
 
 test('parse and serialize round-trip', () => {
@@ -70,4 +70,17 @@ test('summary statistics (type 7 quantiles)', () => {
   assert.equal(s.iqr, 4.5);
   assert.equal(quantile([], 0.5), null);
   assert.deepEqual(summary([null, undefined]), { n: 0 });
+});
+
+test('a switched-off filter ("~") is kept in the string but not applied', () => {
+  const q = 'modality:CT ~date:30d ~-phantom desc:head';
+  const toks = parse(q);
+  assert.deepEqual(toks.map((t) => !!t.off), [false, true, true, false]);
+  assert.equal(serialize(toks), q);  // round-trips, nothing lost
+  assert.equal(active(q), 'modality:CT desc:head');
+  assert.equal(active('modality:CT'), 'modality:CT');
+  const ctx = { devices: new Map([[1, { id: 1, modality: 'CT' }]]) };
+  const s = { device_id: 1, modality: 'CT', date: '2020-01-01T00:00:00', description: 'head' };
+  assert.equal(matchStudy(s, parse('modality:CT date:7d'), ctx), false);  // too old
+  assert.equal(matchStudy(s, parse('modality:CT ~date:7d'), ctx), true);  // date switched off
 });
