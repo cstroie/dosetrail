@@ -24,6 +24,7 @@ from sqlalchemy import (
     Index,
     Integer,
     SmallInteger,
+    Text as LongText,
     UniqueConstraint,
     func,
 )
@@ -261,7 +262,7 @@ class Event(Base):
     event_datetime: Mapped[dt.datetime | None] = mapped_column(DateTime)
     event_type: Mapped[str | None] = mapped_column(AsciiId(32))
     protocol: Mapped[str | None] = mapped_column(Text(255))
-    comment: Mapped[str | None] = mapped_column(Text(255))
+    comment: Mapped[str | None] = mapped_column(LongText)  # free text; some devices write 300+ characters
     plane: Mapped[str | None] = mapped_column(AsciiId(1))  # A / B
     anatomy: Mapped[str | None] = mapped_column(Text(128))
     laterality: Mapped[str | None] = mapped_column(AsciiId(2))
