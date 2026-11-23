@@ -112,6 +112,22 @@ def test_mammography_and_nuclear_medicine(report):
     assert pct1["means"]["activity"]["5-9y"] == 150.0 and pct1["means"]["dlp"]["5-9y"] == 300.0
 
 
+def test_low_patient_count_is_flagged_per_device(report):
+    t1 = _row(report, "radiologie", "T1")
+    assert t1["devices"] == {None: 2} and t1["low_n"] == [None]  # 2 < 30
+    assert _row(report, "radiologie", "C1")["low_n"] == []  # no examinations, nothing weak
+    j = insp1255.as_json(report)
+    assert j["min_patients"] == 30
+    row = next(r for r in j["sheets"][0]["rows"] if r["code"] == "T1")
+    assert row["devices"] == [{"id": None, "name": None, "n": 2}] and row["low_n"] == [None]
+    buf = io.BytesIO()
+    insp1255.write_xlsx(report, buf, {"Generat": "test"})
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as z:
+        assert "Sub 30 pacienti" in z.read("xl/workbook.xml").decode()
+
+
 def test_json_and_xlsx(report):
     j = insp1255.as_json(report)
     assert j["period"] == {"from": "2026-01-01", "to": "2026-03-31"}

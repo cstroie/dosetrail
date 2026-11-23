@@ -185,6 +185,12 @@ function surveyBar() {
     h('span', { class: 'muted small' }, t('rep.survey.hint')));
 }
 
+// Art. 7(3): a mean needs 30 patients per device and examination type.
+function lowTitle(x, r) {
+  const dev = x.devices.filter((d) => x.low_n.includes(d.id)).map((d) => `${d.name || '—'}: ${d.n}`).join(', ');
+  return t('rep.low.title').replace('{n}', r.min_patients).replace('{dev}', dev);
+}
+
 async function load() {
   const host = document.getElementById('rep');
   clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
@@ -213,7 +219,7 @@ async function load() {
       qs.map((q) => s.mean_bands.map((b) => h('th', { class: 'r' }, `${qLabel(q)} ${b.label}`)))));
     const body = h('tbody', {}, rows.map((x) => h('tr', {},
       h('td', { class: 'mono' }, x.code), h('td', {}, [x.exam, x.type].filter(Boolean).join(' — ')),
-      h('td', { class: 'r' }, num(x.total)),
+      h('td', { class: 'r' }, num(x.total), x.low_n.length ? h('span', { class: 'tag warn ml-1', title: lowTitle(x, r) }, t('rep.low')) : null),
       s.count_bands.map((b) => h('td', { class: 'r' }, `${x.counts[b.key].M || '·'} / ${x.counts[b.key].F || '·'}`)),
       qs.map((q) => s.mean_bands.map((b) => h('td', { class: 'r' }, x.means[q.key][b.key] == null ? '' : smart(x.means[q.key][b.key])))))));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 40, class: 'empty' }, t('rep.none'))));
