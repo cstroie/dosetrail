@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import re
 from dataclasses import dataclass, field
 
 from ..dicom.sr import Node, code_in, parse_dt, tree
@@ -278,6 +279,52 @@ def parse_nm(ds) -> ParsedObject:
 # ------------------------------------------------------------------------------- CT RDSR
 
 
+def _phantom_cm(coded: tuple[str, str, str] | None) -> int | None:
+    """The CTDI phantom diameter (16 head, 32 body) from its code: the DICOM IEC phantoms, or,
+    for a vendor's own coding scheme, a meaning that names the size ("... Phantom, 32 cm")
+    or the part ("head" / "body"). None when it says neither."""
+    if not coded:
+        return None
+    if code_in(coded, {"113690"}, {"iec head dosimetry phantom"}):
+        return 16
+    if code_in(coded, {"113691"}, {"iec body dosimetry phantom"}):
+        return 32
+    meaning = (coded[2] or "").lower()
+    m = re.search(r"\b(16|32)\s*cm\b", meaning)
+    if m:
+        return int(m.group(1))
+    if re.search(r"\bhead\b", meaning) and not re.search(r"\bbody\b", meaning):
+        return 16
+    if re.search(r"\bbody\b", meaning) and not re.search(r"\bhead\b", meaning):
+        return 32
+    return None
+
+
+def _scan_type(ds, itype: list[str], pitch: float | None) -> str | None:
+    """localizer / spiral / axial of a CT image's series, from what the vendor sets: the
+    standard Acquisition Type, else Scan Options (HELICAL, HELIX, HELICAL_CT, AXIAL, SCOUT,
+    SURVIEW) or Siemens' fourth Image Type value (CT_SOM5 SPI / SEQ / TOP). The Image Type's
+    "AXIAL" is the image plane, not the scan mode, so it is not read."""
+    acq = str(ds.get("AcquisitionType", "") or "").upper()
+    options = ds.get("ScanOptions")
+    options = [] if options in (None, "") else [str(options)] if isinstance(options, str) \
+        else [str(x) for x in options]
+    options = [x.upper() for x in options]
+    vendor = " ".join(itype[3:])  # e.g. "CT_SOM5 SPI"
+    text = " ".join(options) + " " + vendor
+    if "LOCALIZER" in itype or re.search(r"\b(SCOUT|SURVIEW|TOPO?)\b", text):
+        return "localizer"
+    if acq == "SPIRAL" or (not acq and pitch):
+        return "spiral"
+    if acq == "SEQUENCED":
+        return "axial"
+    if re.search(r"HELIX|HELICAL|SPIRAL|\bSPI\b", text):
+        return "spiral"
+    if re.search(r"\bAXIAL\b|\bSEQ(UENC\w*)?\b", text):
+        return "axial"
+    return None
+
+
 def _ct_type(node: Node) -> str | None:
     c = node.coded("113820")
     for values, meanings, name in CT_TYPES:
@@ -296,8 +343,7 @@ def parse_ct(ds, root: Node) -> ParsedObject:
     for acq in root.find_all("113819"):
         etype = _ct_type(acq)
         phantom = acq.coded("113835")
-        phantom_cm = 16 if code_in(phantom, {"113690"}, {"iec head dosimetry phantom"}) else \
-            32 if code_in(phantom, {"113691"}, {"iec body dosimetry phantom"}) else None
+        phantom_cm = _phantom_cm(phantom)
         # TID 10015: an alert was *raised* only when the report carries the forward estimate
         # or the reason for proceeding; "Alert Value Configured = Yes" alone is a setting.
         alert = acq.find("113900")
@@ -453,11 +499,14 @@ def parse_ct_header(ds) -> ParsedObject | None:
     n = series_instances(ds)
     spacing = _f(ds.get("SpacingBetweenSlices")) or _f(ds.get("SliceThickness"))
     length = n * abs(spacing) if n and spacing else None
-    acq = str(ds.get("AcquisitionType", "") or "").upper()
     pitch = _f(ds.get("SpiralPitchFactor"))
-    etype = "localizer" if "LOCALIZER" in itype else \
-        "spiral" if acq == "SPIRAL" or (not acq and pitch) else \
-        "axial" if acq == "SEQUENCED" else None
+    etype = _scan_type(ds, itype, pitch)
+    seq = ds.get("CTDIPhantomTypeCodeSequence")
+    phantom = None
+    if seq:
+        c = seq[0]
+        phantom = _phantom_cm((str(c.get("CodeValue", "")), str(c.get("CodingSchemeDesignator", "")),
+                               str(c.get("CodeMeaning", ""))))
     when = parse_dt(_s(ds.get("AcquisitionDateTime"))) or \
         _datetime(ds.get("AcquisitionDate"), ds.get("AcquisitionTime")) or study["study_datetime"]
     t = _f(ds.get("ExposureTime"))
@@ -468,7 +517,7 @@ def parse_ct_header(ds) -> ParsedObject | None:
         "anatomy": _s(ds.get("BodyPartExamined"), 128),
         "comment": _s(ds.get("SeriesDescription")),
         "ctdivol": ctdivol, "dlp": ctdivol * length / 10 if length else None,
-        "scan_length_mm": length, "pitch": pitch,
+        "ct_phantom_cm": phantom, "scan_length_mm": length, "pitch": pitch,
         "collimation_mm": _f(ds.get("TotalCollimationWidth")),
         "rotation_time_s": _f(ds.get("RevolutionTime")),
         "exposure_time_s": t / 1000 if t is not None else None,

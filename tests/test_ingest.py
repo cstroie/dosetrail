@@ -422,3 +422,50 @@ def test_failed_derive_is_repaired_once_the_fault_is_gone(session, monkeypatch):
     obj = session.scalar(select(IngestedObject).filter_by(sop_instance_uid="7.8.1"))
     assert "derive failed" not in obj.message and "derived on retry" in obj.message
     assert maintenance.derive_status(session) == {"derive_pending": 0, "derive_gave_up": 0}
+
+
+# ------------------------------------------------------------ vendors that differ from the standard
+
+
+def test_ct_header_phantom_comes_from_the_code_sequence():
+    iec = parse(f.ct_series_image(phantom=("113691", "IEC Body Dosimetry Phantom"))).events[0]
+    assert iec["ct_phantom_cm"] == 32
+    head = parse(f.ct_series_image(phantom=("113690", "IEC Head Dosimetry Phantom"))).events[0]
+    assert head["ct_phantom_cm"] == 16
+    # a vendor's own coding scheme: the meaning names the size
+    own = parse(f.ct_series_image(phantom=("L-007N32", "Vendor PMMA CT dosimetry Phantom, 32 cm",
+                                           "VendorScheme"))).events[0]
+    assert own["ct_phantom_cm"] == 32
+    # nothing said (or nothing recognisable): unknown, never guessed
+    assert parse(f.ct_series_image()).events[0]["ct_phantom_cm"] is None
+    assert parse(f.ct_series_image(phantom=("X1", "Some phantom", "V"))).events[0][
+        "ct_phantom_cm"] is None
+
+
+def test_ct_rdsr_phantom_with_a_vendor_code():
+    own = ("L-007N16", "Vendor PMMA CT dosimetry Phantom, 16 cm", "VendorScheme")
+    ev = parse(f.ct_rdsr(phantom=own)).events
+    assert {e["ct_phantom_cm"] for e in ev} == {16}
+    assert {e["ct_phantom_cm"] for e in parse(f.ct_rdsr()).events} == {16}  # the DICOM code
+
+
+def test_ct_header_scan_type_without_acquisition_type():
+    def kind(**kw):
+        return parse(f.ct_series_image(acquisition=None, pitch=None, **kw)).events[0]["event_type"]
+
+    assert kind(scan_options="HELIX") == "spiral"                      # Philips
+    assert kind(scan_options=["HELICAL_CT", "SAB"]) == "spiral"        # a list of options
+    assert kind(scan_options="HELICAL_CT") == "spiral"                 # Toshiba
+    assert kind(scan_options="AXIAL") == "axial"
+    assert kind(scan_options="SCOUT") == "localizer"
+    assert kind(scan_options="SURVIEW") == "localizer"
+    assert kind(image_type=("ORIGINAL", "PRIMARY", "AXIAL", "CT_SOM5 SPI")) == "spiral"   # Siemens
+    assert kind(image_type=("ORIGINAL", "PRIMARY", "AXIAL", "CT_SOM5 SEQ")) == "axial"
+    assert kind(image_type=("ORIGINAL", "PRIMARY", "AXIAL", "CT_SOM5 TOP")) == "localizer"
+    # the Image Type's "AXIAL" is the image plane: it says nothing about the scan mode
+    assert kind(image_type=("ORIGINAL", "PRIMARY", "AXIAL")) is None
+    assert kind(scan_options="PERFUSION") is None
+    # the standard attributes still win
+    assert parse(f.ct_series_image(acquisition="SEQUENCED", pitch=None)).events[0][
+        "event_type"] == "axial"
+    assert parse(f.ct_series_image(acquisition=None)).events[0]["event_type"] == "spiral"  # pitch

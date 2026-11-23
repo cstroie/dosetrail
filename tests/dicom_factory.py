@@ -67,7 +67,8 @@ def header(ds, *, study_uid, sop_uid, modality, patient_id="P1", birth="20180101
 
 
 def ct_rdsr(study_uid="1.2.3.100", sop_uid="1.2.3.100.1", events=None, sop_class=RDSR,
-            dlp_unit="mGy.cm", alert_raised=False, observer_uid="9.9.9", staff=()):
+            dlp_unit="mGy.cm", alert_raised=False, observer_uid="9.9.9", staff=(),
+            phantom=("113690", "IEC Head Dosimetry Phantom", "DCM")):
     """``staff``: (name, role code) person participants, in the first acquisition."""
     ds = header(Dataset(), study_uid=study_uid, sop_uid=sop_uid,
                 modality="SR" if sop_class == RDSR else "CT")
@@ -88,8 +89,7 @@ def ct_rdsr(study_uid="1.2.3.100", sop_uid="1.2.3.100.1", events=None, sop_class
     for uid, tcode, tmean, proto, ctdi, dlp in events:
         dose_children = [
             item("NUM", ("113830", "Mean CTDIvol"), ctdi, "mGy"),
-            item("CODE", ("113835", "CTDIw Phantom Type"),
-                 ("113690", "IEC Head Dosimetry Phantom")),
+            item("CODE", ("113835", "CTDIw Phantom Type"), phantom[:2]),
             item("NUM", ("113838", "DLP"), dlp, dlp_unit),
         ]
         if alert_raised:
@@ -208,7 +208,8 @@ def ct_image(study_uid="1.2.3.100", sop_uid="1.2.3.100.7", operator="RAD^ANA",
 
 def ct_series_image(study_uid="1.2.3.600", sop_uid="1.2.3.600.1", series_uid="1.2.3.600.9",
                     ctdivol=10.0, count=50, spacing=5.0,
-                    image_type=("ORIGINAL", "PRIMARY", "AXIAL"), acquisition="SPIRAL"):
+                    image_type=("ORIGINAL", "PRIMARY", "AXIAL"), acquisition="SPIRAL",
+                    scan_options=None, phantom=None, pitch=0.9):
     """A CT image whose header carries the series' dose values (no dose report exists)."""
     ds = ct_image(study_uid, sop_uid, operator=None, physician=None)
     ds.SeriesInstanceUID = series_uid
@@ -217,8 +218,14 @@ def ct_series_image(study_uid="1.2.3.600", sop_uid="1.2.3.600.1", series_uid="1.
     ds.KVP = 120
     ds.XRayTubeCurrent = 200
     ds.ExposureTime = 500
-    ds.SpiralPitchFactor = 0.9
-    ds.AcquisitionType = acquisition
+    if pitch is not None:
+        ds.SpiralPitchFactor = pitch
+    if acquisition:
+        ds.AcquisitionType = acquisition
+    if scan_options is not None:
+        ds.ScanOptions = scan_options
+    if phantom:  # (value, meaning[, scheme]): the CT Image's CTDI Phantom Type Code Sequence
+        ds.CTDIPhantomTypeCodeSequence = Sequence([code(*phantom)])
     ds.SliceThickness = spacing
     ds.TotalCollimationWidth = 20.0
     ds.ProtocolName = "HEAD"
