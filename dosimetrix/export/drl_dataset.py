@@ -121,28 +121,21 @@ def write(fmt: str, target: IO, data: Iterator[dict], meta: dict,
 
 # ------------------------------------------------------------------ ICRP 135 summary
 
-SUMMARY_FIELDS = ["unit", "device", "exam", "exam_name", "group", "quantity", "applies_to",
-                  "n", "median", "mean", "sd", "p25", "p75", "min", "max", "drl", "drl_unit",
-                  "median_over_drl", "status", "sample_ok"]
+def _summary_spec():
+    from ..specs import loader
+
+    return loader.parse(loader.BUNDLED / "dosimetrix-icrp135-summary.toml", bundled=True)
+
+
+SUMMARY_FIELDS = list(_summary_spec().body["compare"]["columns"])
 
 
 def summary_rows(session: Session, conds: list, set_key: str, min_n: int = 20) -> list[dict]:
-    from ..drl import compare
+    """The ICRP 135 summary rows (the engine's ``compare`` kind, method drl_summary, see
+    seeds/specs/dosimetrix-icrp135-summary.toml)."""
+    from ..specs.context import Context
+    from ..specs.kinds.compare import summary_rows as rows
 
-    out = []
-    for by_device in (True, False):
-        res = compare(session, conds, set_key, by_device=by_device, min_n=min_n)
-        for r in res["rows"]:
-            for g in r["groups"]:
-                out.append({
-                    "unit": "device" if by_device else "facility",
-                    "device": g.get("device_name") if by_device else "(all rooms)",
-                    "exam": r["exam"], "exam_name": r["exam_meaning"],
-                    "group": r["band_label"] or "all", "quantity": r["quantity"],
-                    "applies_to": r["applies_to"], "n": g["n"],
-                    **{k: _r(g.get(k)) for k in ("median", "mean", "sd", "p25", "p75", "min",
-                                                 "max")},
-                    "drl": r["reference"], "drl_unit": r["unit"],
-                    "median_over_drl": _r(g.get("ratio"), 3), "status": g["status"],
-                    "sample_ok": g["n"] >= min_n})
-    return out
+    ctx = Context(session, _summary_spec(), {"set": set_key, "min_n": min_n}, conds, None, None,
+                  dt.datetime.now())
+    return rows(ctx)

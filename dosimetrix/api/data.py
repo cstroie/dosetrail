@@ -15,8 +15,8 @@ from .query import conditions, parse
 
 YEAR_DAYS = 365.25
 STALE_DAYS = 2
-GROUPS = [("CT", "CT", ["CT"]), ("DX", "DX/CR", ["DX", "CR"]), ("RF", "RF", ["RF"]), ("XA", "XA", ["XA"]),
-          ("MG", "MG", ["MG"]), ("NM", "NM", ["NM"]), ("PT", "PT", ["PT"])]
+GROUPS = [("CT", "CT", ["CT"]), ("DX", "DX/CR", ["DX", "CR"]), ("RF", "RF", ["RF"]),
+          ("XA", "XA", ["XA"]), ("MG", "MG", ["MG"]), ("NM", "NM", ["NM"]), ("PT", "PT", ["PT"])]
 # Fluoroscopy alert thresholds: configuration defaults until the alert engine exists (M5)
 XA_THRESHOLDS = {"dap_gycm2": 250, "kar_gy": 3.0, "kar_notify_gy": 1.0, "cum_kar_gy": 5.0,
                  "cum_dap_gycm2": 500, "cum_weeks": 12, "source": "default"}
@@ -460,9 +460,9 @@ def _previous(session: Session, s: Study, weeks: int = 12) -> list[dict]:
 
 
 def ct_acquisitions(session: Session, q: str, now: dt.datetime, limit: int = 50000) -> list:
-    """Non-localizer CT events of the studies matching q (keys: date device proto origin
+    """Non-localizer CT events of the studies matching q (keys: date device proto desc origin
     weight and the default test-patient exclusion), one row per acquisition."""
-    allowed = {"date", "device", "proto", "origin", "weight", "age", "modality", "phantom"}
+    allowed = {"date", "device", "proto", "desc", "origin", "weight", "age", "modality", "phantom"}
     tokens = [t for t in parse(q) if t.key in allowed]
     conds = conditions(tokens, now, overrides(session))
     phys = _physical_ids(session)

@@ -282,3 +282,58 @@ def test_the_dataset_spec_runs_through_the_engine(session):
     row = dict(zip(data.columns, data.rows[0], strict=True))
     assert row["dataset_version"] == "1.0" and row["facility"].startswith("F-")
     assert row["period"] == "2026-10" and row["modality"] == "CT"
+
+
+# ------------------------------------------------------------------ comparison kinds as specs
+
+
+def test_the_comparison_specs_are_bundled_with_their_rules():
+    cat = loader.discover(None)
+    assert not cat.problems
+    want = {"ro-ms1245-drl-trend": ("series", "quarters", 6),
+            "dosimetrix-operator-doses": ("outliers", "ratio_flag", 1.3),
+            "dosimetrix-icrp135-grid": ("compare", "min_n", 10),
+            "dosimetrix-icrp135-summary": ("compare", "min_n", 20)}
+    for sid, (kind, rule, value) in want.items():
+        s = cat.specs[sid]
+        assert s.kind == kind and s.rules[rule] == value and s.rules_meta[rule]["article"]
+        assert not run.needs_pid(s)
+
+
+@pytest.mark.parametrize("sid,params,sheets", [
+    ("ro-ms1245-drl-trend", {"year": 2026, "quarter": 3}, ["Tendinte"]),
+    ("dosimetrix-operator-doses", {"year": 2026, "quarter": 3}, ["Operatori", "Acoperire"]),
+    ("dosimetrix-icrp135-grid", {"year": 2026, "quarter": 3, "estimated": "true"},
+     ["Cap (varsta)", "Corp (greutate)"]),
+    ("dosimetrix-icrp135-summary", {"from": "2026-07-01", "to": "2026-09-30"},
+     ["ICRP 135 summary"]),
+])
+def test_each_comparison_spec_runs_through_the_engine(session, sid, params, sheets):
+    from dosimetrix.seeds.loader import load_all
+
+    load_all(session)
+    spec = loader.discover(None).specs[sid]
+    ctx = run.build(session, spec, {"q": "", **params}, now=dt.datetime(2026, 11, 1),
+                    username="t")
+    res = run.run(ctx)
+    assert [s.name for s in res.books[0].sheets] == sheets
+    buf = io.BytesIO()
+    run.write(res, "xlsx", buf, ctx)
+    with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as z:
+        info = z.read("xl/worksheets/sheet1.xml").decode()
+    assert sid in info  # every file names the spec and its edition
+    json.dumps(writers.as_json(res, ctx), default=str)
+
+
+def test_a_threshold_comes_from_the_spec_not_the_code(session, tmp_path):
+    from dosimetrix.seeds.loader import load_all
+
+    load_all(session)
+    text = (loader.BUNDLED / "dosimetrix-operator-doses.toml").read_text()
+    text = text.replace('value = 1.3,', 'value = 2.5,').replace('id = "dosimetrix-operator-doses"',
+                                                               'id = "strict-operators"')
+    spec = loader.parse(put(tmp_path, "strict.toml", text))
+    assert spec.rules["ratio_flag"] == 2.5 and spec.body["outliers"]["ratio_flag"] == 2.5
+    ctx = run.build(session, spec, {"year": 2026, "quarter": 3, "q": ""},
+                    now=dt.datetime(2026, 11, 1))
+    assert "2.5" in dict(run.run(ctx).books[0].info)["Semnalare"]

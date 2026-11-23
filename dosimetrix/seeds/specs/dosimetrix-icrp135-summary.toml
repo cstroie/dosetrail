@@ -1,0 +1,30 @@
+# ICRP 135 summary: per room and for the facility (pooled), for each exam x patient group x
+# quantity of a reference set: n, median, mean, SD, P25/P75, min/max, a flag when n is below the
+# minimum sample size, and the median compared with the reference value.
+
+[spec]
+id = "dosimetrix-icrp135-summary"
+kind = "compare"
+version = "1"
+title = { en = "ICRP 135 summary (rooms and facility)", ro = "Sumar ICRP 135 (săli și unitate)" }
+authority = "Dosimetrix"
+country = ""
+legal = "ICRP 135"
+formats = ["xlsx", "csv", "json"]
+access = ["exporter"]
+
+[params]
+period = { type = "range" }
+q = { type = "query", default = "origin:local" }
+set = { type = "str", default = "ro-ms838-2025" }
+min_n = { type = "int", default = 20 }
+
+[rules]
+min_n = { value = 20, article = "ICRP 135: a minimum sample of about 20 patients" }
+
+[compare]
+method = "drl_summary"
+reference_set = "ro-ms838-2025"
+min_n = "${rules.min_n}"
+sheet = "ICRP 135 summary"
+columns = ["unit", "device", "exam", "exam_name", "group", "quantity", "applies_to", "n", "median", "mean", "sd", "p25", "p75", "min", "max", "drl", "drl_unit", "median_over_drl", "status", "sample_ok"]

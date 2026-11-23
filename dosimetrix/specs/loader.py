@@ -215,6 +215,10 @@ def window(spec: Spec, params: dict) -> tuple[dt.datetime | None, dt.datetime | 
     return start, end
 
 
+def _truthy(v) -> bool:
+    return str(v).lower() in ("1", "true", "yes", "on")
+
+
 def check_params(spec: Spec, raw: dict) -> dict:
     """The params a run was given, with defaults and types; raises SpecError."""
     out = dict(raw)
@@ -229,7 +233,8 @@ def check_params(spec: Spec, raw: dict) -> dict:
             continue
         t = p.get("type", "str")
         try:
-            out[name] = {"int": int, "float": float, "str": str, "query": str}[t](out[name])
+            out[name] = {"int": int, "float": float, "str": str, "query": str,
+                         "bool": _truthy}[t](out[name])
         except (KeyError, ValueError) as e:
             raise SpecError(f"parameter {name} is not a valid {t}") from e
         if p.get("choices") and out[name] not in p["choices"]:

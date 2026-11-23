@@ -445,7 +445,7 @@ async function init() {
   const names = wsNames();
   const urlQ = new URL(location.href).searchParams.get('q');
   ws = loadWs(prefs.get('workspace.current') || names[0]);
-  if (urlQ) ws.q = urlQ.split(' ').filter((x) => !/^(modality|age|acc|pid|desc|spiral|axial|loc|dlp|ctdi|flag):/.test(x) && x !== '-phantom').join(' ');
+  if (urlQ) ws.q = urlQ.split(' ').filter((x) => !/^(modality|age|acc|pid|spiral|axial|loc|dlp|ctdi|flag):/.test(x) && x !== '-phantom').join(' ');
 
   const qb = h('dt-query-bar', { value: ws.q });
   qb.context = { devices: new Map(devices.map((d) => [d.id, d])), drl: drlSet.ct_dlp_mgycm };

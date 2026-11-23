@@ -1,0 +1,32 @@
+# Half-yearly analysis of the quarterly mean doses against the DRLs: Order MS 1245/2021 art. 8(2);
+# the INSP example analysis is over 6 quarterly means. The values are those the DRL comparison uses
+# (CT DLP per series, radiography DAP per projection with retakes, fluoroscopy per study); studies
+# with a DRL exclusion reason are left out.
+
+[spec]
+id = "ro-ms1245-drl-trend"
+kind = "series"
+version = "2021"
+title = { en = "DRL trend over the last quarters (Order 1245/2021)", ro = "Analiza semestrială NRD (OMS 1245/2021)" }
+authority = "MS / INSP"
+country = "RO"
+legal = "Ordinul MS nr. 1245/2021, art. 8 alin. 2"
+formats = ["xlsx", "json"]
+access = ["exporter"]
+
+[params]
+period = { type = "quarter" }
+q = { type = "query", default = "origin:local" }
+set = { type = "str", default = "ro-ms838-2025" }
+
+[rules]
+quarters = { value = 6, article = "art. 8 alin. 2 (INSP example: 6 quarterly means)" }
+min_n_per_quarter = { value = 1, article = "every quarter with data counts" }
+
+[series]
+reference_set = "ro-ms838-2025"
+periods = "${rules.quarters}"
+min_n = "${rules.min_n_per_quarter}"
+sheet = "Tendinte"
+title_ro = "Analiza semestrială a dozelor medii trimestriale față de NRD (OMS 1245/2021, art. 8(2))"
+note = "CT: DLP pe secvență; radiografie: DAP al incidenței (cu repetări); radioscopie: DAP al studiului. Media trimestrială este comparată cu NRD; mediana arată dacă media e trasă de câteva valori mari."
