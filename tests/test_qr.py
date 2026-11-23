@@ -339,3 +339,17 @@ def test_ct_without_a_dose_report_falls_back_to_one_image_per_series(env):
             assert not qr.needs_ct_sr(s, "6.9")
     finally:
         pacs.stop()
+
+
+def test_a_day_with_undelivered_objects_is_not_complete():
+    stats = qr.QRStats()
+    stats.tally({"claimed": 3, "delivered": 3, "failed": 0})
+    assert not stats.incomplete
+    stats.tally({"claimed": 3, "delivered": 2, "failed": 0})  # the PACS announced more
+    assert stats.incomplete and stats.counts["not_delivered"] == 1
+    other = qr.QRStats()
+    other.tally({"claimed": 2, "delivered": 2, "failed": 1})  # a failed sub-operation
+    assert other.incomplete and other.counts["failed_suboperations"] == 1
+    third = qr.QRStats()
+    third.add("study_errors")
+    assert third.incomplete

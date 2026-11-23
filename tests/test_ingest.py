@@ -367,3 +367,58 @@ def test_ct_headers_import_then_the_dose_report_replaces_them(session):
     # and a header arriving after the report is superseded
     assert store.store(parse(f.ct_series_image(sop_uid="1.2.3.600.3", series_uid="1.2.3.600.7"))
                        ).status == "superseded"
+
+
+# ------------------------------------------------------ a failed derive step is not silent
+
+
+def test_failed_derive_is_marked_retried_and_given_up_visibly(session, monkeypatch):
+    from dosimetrix import maintenance
+    from dosimetrix.db.models import IngestedObject
+    from dosimetrix.ingest import store as store_mod
+
+    boom = {"on": True}
+    real = store_mod.derive
+
+    def flaky(*a, **k):
+        if boom["on"]:
+            raise RuntimeError("derive broke")
+        return real(*a, **k)
+
+    monkeypatch.setattr(store_mod, "derive", flaky)
+    store = Store(session, SECRET)
+    r = store.store(parse(f.ct_rdsr(study_uid="7.7", sop_uid="7.7.1")))
+    assert r.status == "imported" and store.stats["classify_failed"] == 1
+    obj = session.scalar(select(IngestedObject).filter_by(sop_instance_uid="7.7.1"))
+    assert "derive failed (try 0)" in obj.message
+    assert maintenance.derive_status(session) == {"derive_pending": 1, "derive_gave_up": 0}
+    # still failing: the try count rises, then it is given up on, visibly
+    for n in range(1, 5):
+        out = maintenance.repair_failed_derive(session, tries=5)
+        assert out["failed"] == 1 and f"(try {n})" in obj.message
+    out = maintenance.repair_failed_derive(session, tries=5)
+    assert out["gave_up"] == 1 and "gave up" in obj.message
+    assert maintenance.derive_status(session) == {"derive_pending": 0, "derive_gave_up": 1}
+    assert maintenance.repair_failed_derive(session)["retried"] == 0  # not retried again
+
+
+def test_failed_derive_is_repaired_once_the_fault_is_gone(session, monkeypatch):
+    from dosimetrix import maintenance
+    from dosimetrix.db.models import IngestedObject
+    from dosimetrix.ingest import store as store_mod
+
+    real, state = store_mod.derive, {"fail": True}
+
+    def flaky(*a, **k):
+        if state["fail"]:
+            raise RuntimeError("derive broke")
+        return real(*a, **k)
+
+    monkeypatch.setattr(store_mod, "derive", flaky)
+    store = Store(session, SECRET)
+    store.store(parse(f.ct_rdsr(study_uid="7.8", sop_uid="7.8.1")))
+    state["fail"] = False
+    assert maintenance.repair_failed_derive(session)["repaired"] == 1
+    obj = session.scalar(select(IngestedObject).filter_by(sop_instance_uid="7.8.1"))
+    assert "derive failed" not in obj.message and "derived on retry" in obj.message
+    assert maintenance.derive_status(session) == {"derive_pending": 0, "derive_gave_up": 0}

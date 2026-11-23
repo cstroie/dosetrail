@@ -120,6 +120,19 @@ class QRStats:
         with self._lock:
             self.counts[key] += n
 
+    def tally(self, r: dict) -> None:
+        """What a retrieval did not deliver: counted, and it keeps the day from being done."""
+        if r["claimed"] > r["delivered"]:
+            self.add("not_delivered", r["claimed"] - r["delivered"])
+        if r.get("failed"):
+            self.add("failed_suboperations", r["failed"])
+
+    @property
+    def incomplete(self) -> bool:
+        """A study failed, or the PACS did not deliver everything it announced."""
+        return any(self.counts.get(k) for k in
+                   ("study_errors", "not_delivered", "failed_suboperations"))
+
 
 # --------------------------------------------------------------------------- C-FIND
 
@@ -439,6 +452,7 @@ def fetch_sr(node: Node, study_uid: str, spool: Spool, drain: Callable[[], int],
         return 0
     r = retrieve(node, study_uid, sr, spool)
     stats.add("sr_objects", r["delivered"])
+    stats.tally(r)
     if r["delivered"]:
         drain()
     return r["delivered"]
@@ -465,6 +479,7 @@ def one_per_series(node: Node, study_uid: str, series: list[dict], spool: Spool,
               if with_counts and s["instances"] and s["uid"] in instances}
     r = retrieve(node, study_uid, list(instances), spool, instances, counts or None)
     stats.add(key, r["delivered"])
+    stats.tally(r)
     return r["delivered"]
 
 
@@ -486,8 +501,7 @@ def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], 
     if sr:
         r = retrieve(node, hit.uid, sr, spool)
         stats.add("sr_objects", r["delivered"])
-        if r["claimed"] > r["delivered"]:
-            stats.add("not_delivered", r["claimed"] - r["delivered"])
+        stats.tally(r)
         drain()
     ct_headers = False
     if not sr and not any(s["modality"] in NM_IMAGES for s in series):
@@ -514,8 +528,7 @@ def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], 
     if images:
         r = retrieve(node, hit.uid, [s["uid"] for s in images], spool)
         stats.add("image_objects", r["delivered"])
-        if r["claimed"] > r["delivered"]:
-            stats.add("not_delivered", r["claimed"] - r["delivered"])
+        stats.tally(r)
         drain()
         stats.add("studies_by_headers")
     elif not sr:

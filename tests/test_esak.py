@@ -115,3 +115,25 @@ def test_update_loads_nothing_when_there_is_no_curve_and_no_calculated_value(ses
     assert esak.update(session) == 0
     assert not any("FROM event" in q and "JOIN study" in q and "WHERE" in q
                    and "esak_calc IS NOT NULL" not in q for q in seen)
+
+
+def test_esak_curve_rejects_a_malformed_line_but_allows_header_and_blanks(tmp_path, capsys):
+    from dosimetrix import cli
+    from dosimetrix.db.migrate import upgrade
+    from dosimetrix.db.session import make_engine, make_sessionmaker
+
+    url = f"sqlite:///{tmp_path / 'm.sqlite3'}"
+    upgrade(url)
+    with make_sessionmaker(make_engine(url))() as s:
+        s.add(Device(display_name="Mobile", identity_key="m", is_local=True))
+        s.commit()
+    cfg = tmp_path / "dosimetrix.toml"
+    cfg.write_text(f'[security]\nsecret_file = "{tmp_path / "secret"}"\n')
+    base = ["--config", str(cfg), "esak-curve", "--url", url, "set", "--device", "1", "--file"]
+    ok = tmp_path / "ok.csv"
+    ok.write_text("kvp,mgy_per_mas\n\n60,0.03\n80,0.06\n")
+    assert cli.main([*base, str(ok)]) == 0
+    bad = tmp_path / "bad.csv"
+    bad.write_text("kvp,mgy_per_mas\n60,0.03\n8O,0.06\n100,0.09\n")  # a letter O: a typo
+    assert cli.main([*base, str(bad)]) == 2
+    assert "line 3" in capsys.readouterr().err

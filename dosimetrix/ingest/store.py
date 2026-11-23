@@ -71,6 +71,9 @@ def _source(e) -> str | None:
     return (e.extra_json or {}).get("source")
 
 
+DERIVE_FAILED = "derive failed"  # in IngestedObject.message: see maintenance.repair_failed_derive
+
+
 class Helpers:
     """Classifier, indication matcher and alert evaluator, built once and reused for many
     objects (each loads whole tables); rebuilt after ``ttl`` seconds so that edits to
@@ -232,10 +235,14 @@ class Store:
         update_study_totals(self.session, study)
         if any(ev.get("event_type") == "radiopharmaceutical" for ev in obj.events):
             settle_administrations(self.session, study)
-        self._classify(study.id)
+        derived = self._classify(study.id)
         if device is not None:
             _touch_device(device, study.study_datetime, new_study)
-        self._record(obj, study.id, "imported", f"{added} event(s)", seen)
+        # a failed derive step is marked on the object: maintenance.repair_failed_derive
+        # retries it (and the status shows it), the study is not silently left bare
+        self._record(obj, study.id, "imported",
+                     f"{added} event(s)" + ("" if derived else f"; {DERIVE_FAILED} (try 0)"),
+                     seen)
         self.stats["events_added"] += added
         self.stats["studies_new" if new_study else "studies_updated"] += 1
         return self._count(Result("imported", study.id, added))
@@ -301,8 +308,9 @@ class Store:
                 select(HisServer.id).where(HisServer.enabled.is_(True)).limit(1)) is not None
         return self._his_enabled and (device is None or device.his_policy != "none")
 
-    def _classify(self, study_id: int) -> None:
-        """Exam codes and alerts for the touched study; never blocks an import."""
+    def _classify(self, study_id: int) -> bool:
+        """Exam codes and alerts for the touched study; never blocks an import. False when
+        a step failed (the study then lacks codes, weight estimates, skin dose, alerts)."""
         import logging
 
         from .. import classify
@@ -312,10 +320,12 @@ class Store:
                 h = self._helpers.get()
                 classify.run(self.session, [study_id], classifier=h.classifier)
                 derive(self.session, [study_id], h)
-        except Exception as exc:  # noqa: BLE001 – classification is best effort here
-            logging.getLogger(__name__).warning("classification of study %s failed: %s",
-                                                study_id, exc)
+        except Exception:  # noqa: BLE001 – never blocks an import; marked for a retry
+            logging.getLogger(__name__).exception("classification of study %s failed",
+                                                  study_id)
             self.stats["classify_failed"] += 1
+            return False
+        return True
 
     def _record(self, obj, study_id, status, message, seen) -> None:
         row = seen or IngestedObject(sop_instance_uid=obj.sop_instance_uid[:64],

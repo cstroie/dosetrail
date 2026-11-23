@@ -93,6 +93,7 @@ class SpoolWorker(threading.Thread):
         self._sender: threading.Thread | None = None  # the notification run in flight
         self.run_device_alerts = device_alerts  # the live receiver: hourly device rules
         self._last_devices = 0.0
+        self._last_repair = float("-inf")
         self.stop_event = threading.Event()
         self.stats: dict[str, int] = {}
 
@@ -101,6 +102,7 @@ class SpoolWorker(threading.Thread):
             try:
                 if not self.drain():
                     self.device_alerts()
+                    self.repair_derived()
                     self.dispatch()
                     self.stop_event.wait(self.interval)
             except Exception:  # keep the worker alive; the object stays in incoming/
@@ -127,6 +129,26 @@ class SpoolWorker(threading.Thread):
                 log.info("device alerts: %s", dict(stats))
         except Exception:  # noqa: BLE001 – alerts must never stop the importer
             log.exception("device alert evaluation failed")
+
+    def repair_derived(self, every: float = 300.0) -> None:
+        """Retry the studies whose exam codes / alerts failed at import (at most every
+        ``every`` seconds) and publish how many still wait or were given up on."""
+        import time
+
+        if time.monotonic() - self._last_repair < every:
+            return
+        self._last_repair = time.monotonic()
+        from ..maintenance import derive_status, repair_failed_derive
+
+        try:
+            with self.maker() as session:
+                done = repair_failed_derive(session)
+                session.commit()
+                self.stats.update(derive_status(session))
+            if done["retried"]:
+                log.info("derive retries: %s", done)
+        except Exception:  # noqa: BLE001 – a repair must never stop the importer
+            log.exception("derive repair failed")
 
     def dispatch(self, every: float = 30.0) -> None:
         """Send pending alert notifications, at most every ``every`` seconds. Sending (SMTP,

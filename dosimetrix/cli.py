@@ -266,11 +266,18 @@ def _cmd_esak_curve(args: argparse.Namespace) -> int:
                 print("set needs --file kvp,mgy_per_mas (one point per line)", file=sys.stderr)
                 return 2
             with open(args.file, newline="") as fh:
-                for row in csv.reader(fh):
+                seen = 0
+                for n, row in enumerate(csv.reader(fh), 1):
+                    if not any(c.strip() for c in row):
+                        continue  # a blank line
+                    seen += 1
                     try:
                         points.append((float(row[0]), float(row[1])))
                     except (ValueError, IndexError):
-                        continue  # a header or a blank line
+                        if seen > 1:  # only the first line may be a header
+                            print(f"{args.file}, line {n}: not 'kvp,mgy_per_mas': {row}",
+                                  file=sys.stderr)
+                            return 2
             if len(points) < 2 or any(y <= 0 for _, y in points):
                 print("at least two points, with a positive output", file=sys.stderr)
                 return 2
@@ -311,13 +318,21 @@ def _cmd_effective_dose(args: argparse.Namespace) -> int:
                       file=sys.stderr)
                 return 2
             with open(args.file, newline="", encoding="utf-8") as fh:
-                for r in csv.reader(fh):
+                seen = 0
+                for n, r in enumerate(csv.reader(fh), 1):
+                    if not any(c.strip() for c in r):
+                        continue  # a blank line
+                    seen += 1
                     try:
                         age = float(r[2]) if r[2].strip() else None
                         rows.append(C(nuclide=r[0].strip(), form=r[1].strip(), age_to_years=age,
                                       msv_per_mbq=float(r[3]), source=r[4].strip()))
                     except (ValueError, IndexError):
-                        continue  # a header or a blank line
+                        if seen > 1:  # only the first line may be a header
+                            print(f"{args.file}, line {n}: not "
+                                  f"'nuclide,form,age_to_years,msv_per_mbq,source': {r}",
+                                  file=sys.stderr)
+                            return 2
             if not rows or any(c.msv_per_mbq <= 0 or not c.source for c in rows):
                 print("each row needs a positive coefficient and its source", file=sys.stderr)
                 return 2
@@ -1063,8 +1078,10 @@ def _cmd_qr(args: argparse.Namespace) -> int:
                         "node": f"{node.aet}@{node.host}", "from": str(start), "to": str(end),
                         "message": message, "dry_run": bool(args.dry_run)})
                     session.commit()
-            except Exception:  # noqa: BLE001 – status only
-                pass
+            except Exception as e:  # noqa: BLE001 – status only; the run goes on
+                import logging
+
+                logging.getLogger("dosimetrix.qr").debug("progress not stored: %s", e)
     receiver = None
     if mode == "move" and not args.dry_run and not _listening(s.dicom_port):
         from .net.scp import Receiver
@@ -1100,8 +1117,9 @@ def _cmd_qr(args: argparse.Namespace) -> int:
                        args.pause, progress=report,
                        workers=args.workers)
             report(f"{day}: {dict(stats.counts)}; imported {worker.stats}", force=True)
-            # a day is finished only after a full run (no modality subset) without errors
-            if not args.dry_run and mods is None and not stats.counts.get("study_errors"):
+            # a day is finished only after a full run (no modality subset) in which no study
+            # failed and the PACS delivered everything it announced
+            if not args.dry_run and mods is None and not stats.incomplete:
                 with maker() as session:
                     qr.mark_day_done(session, day)
         day -= dt.timedelta(days=1)

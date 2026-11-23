@@ -174,3 +174,59 @@ def forget_studies(session: Session, study_ids: list[int]) -> dict:
     session.flush()
     recompute_device_stats(session)
     return out
+
+
+DERIVE_TRIES = 5
+
+
+def repair_failed_derive(session: Session, limit: int = 200, tries: int = DERIVE_TRIES) -> dict:
+    """Retry the studies whose exam codes / derived values / alerts failed at import
+    (``derive failed (try N)`` on their object). Success clears the mark; after ``tries``
+    failures it reads ``gave up`` (still counted by ``derive_status``)."""
+    import logging
+    import re
+
+    from . import classify
+    from .ingest.store import DERIVE_FAILED, Helpers, derive
+
+    pat = re.compile(rf"{DERIVE_FAILED} \(try (\d+)\)")
+    rows = session.scalars(select(IngestedObject).where(
+        IngestedObject.message.like(f"%{DERIVE_FAILED} (try %")).limit(limit)).all()
+    by_study: dict[int, list[IngestedObject]] = {}
+    for r in rows:
+        if r.study_id is not None:
+            by_study.setdefault(r.study_id, []).append(r)
+    out = {"retried": 0, "repaired": 0, "failed": 0, "gave_up": 0}
+    helpers = Helpers(session)
+    for sid, objs in by_study.items():
+        out["retried"] += 1
+        try:
+            with session.begin_nested():
+                h = helpers.get()
+                classify.run(session, [sid], classifier=h.classifier)
+                derive(session, [sid], h)
+        except Exception:  # noqa: BLE001 – counted, marked, retried later
+            logging.getLogger(__name__).exception("retry of study %s failed", sid)
+            for o in objs:
+                n = int(pat.search(o.message).group(1)) + 1
+                o.message = pat.sub(f"{DERIVE_FAILED} (gave up)" if n >= tries
+                                    else f"{DERIVE_FAILED} (try {n})", o.message)
+            out["gave_up" if any("gave up" in o.message for o in objs) else "failed"] += 1
+            continue
+        for o in objs:
+            o.message = pat.sub("derived on retry", o.message)
+        out["repaired"] += 1
+    session.flush()
+    return out
+
+
+def derive_status(session: Session) -> dict:
+    """Studies still waiting for a retry, and the ones given up on."""
+    from .ingest.store import DERIVE_FAILED
+
+    def n(pattern: str) -> int:
+        return session.scalar(select(func.count(func.distinct(IngestedObject.study_id)))
+                              .where(IngestedObject.message.like(pattern))) or 0
+
+    return {"derive_pending": n(f"%{DERIVE_FAILED} (try %"),
+            "derive_gave_up": n(f"%{DERIVE_FAILED} (gave up)%")}
