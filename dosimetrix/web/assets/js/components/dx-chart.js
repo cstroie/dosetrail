@@ -1,4 +1,4 @@
-// <dt-chart label="…" height="260"> — host for one Apache ECharts instance.
+// <dx-chart label="…" height="260"> — host for one Apache ECharts instance.
 //
 //   chart.draw((theme) => echartsOption)   // re-run automatically on theme change and resize
 //   chart.csv = [['header', …], [row…]]   // data behind the chart, for the CSV download
@@ -112,4 +112,4 @@ class DtChart extends HTMLElement {
   }
 }
 
-customElements.define('dt-chart', DtChart);
+customElements.define('dx-chart', DtChart);

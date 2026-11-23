@@ -1,4 +1,4 @@
-// <dt-command-palette> — Ctrl K. Finds studies by accession and runs commands
+// <dx-command-palette> — Ctrl K. Finds studies by accession and runs commands
 // (navigation, theme, language, DAP unit). Native <dialog>, so focus is trapped and Esc closes.
 
 import { h, clear } from '../core/dom.js';
@@ -12,7 +12,7 @@ const COMMANDS = [
   { group: 'go', label: 'Charts · workspace', keys: 'G C', run: () => { location.href = 'charts.html'; } },
   { group: 'go', label: 'Admin · devices', keys: 'G A', run: () => { location.href = 'devices.html'; } },
   { group: 'filter', label: 'Studies above DRL, last 30 days', run: () => { location.href = 'studies.html?q=' + encodeURIComponent('flag:drl date:30d -phantom'); } },
-  { group: 'theme', label: 'Toggle light / dark theme', run: async () => (await import('./dt-shell.js')).toggleTheme() },
+  { group: 'theme', label: 'Toggle light / dark theme', run: async () => (await import('./dx-shell.js')).toggleTheme() },
   { group: 'lang', label: 'Limba: română / Language: English', run: () => { prefs.set('lang', lang() === 'en' ? 'ro' : 'en'); location.reload(); } },
   { group: 'unit', label: 'DAP unit: Gy·cm²', run: () => setUnit('Gy·cm²') },
   { group: 'unit', label: 'DAP unit: mGy·cm²', run: () => setUnit('mGy·cm²') },
@@ -103,4 +103,4 @@ class DtCommandPalette extends HTMLElement {
   }
 }
 
-customElements.define('dt-command-palette', DtCommandPalette);
+customElements.define('dx-command-palette', DtCommandPalette);

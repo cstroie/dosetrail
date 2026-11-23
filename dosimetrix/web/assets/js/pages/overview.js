@@ -1,6 +1,6 @@
 // Overview: studies per modality, alert queue, device feed health, exam lookup.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { h, append, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';

@@ -2,7 +2,7 @@
 // radiology and CT sheets. The XLSX keeps the official column order so the numeric block
 // can be pasted into the INSP workbook.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { confirmDialog } from '../core/confirm.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';

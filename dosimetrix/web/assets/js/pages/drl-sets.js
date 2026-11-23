@@ -2,7 +2,7 @@
 // seed files (dosimetrix/seeds/drl/*.csv) and are reloaded by `dosimetrix seed`, so they are
 // shown read-only here. The comparison with local doses is on the "Reference levels" page.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear } from '../core/dom.js';
 import { drlSets, drlSet } from '../core/api.js';

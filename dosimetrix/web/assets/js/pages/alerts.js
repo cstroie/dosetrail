@@ -2,7 +2,7 @@
 // level, modality and study date. Select rows and acknowledge them with a note; the note
 // and who acknowledged are kept on the alert and in the audit log.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { alertList, alertStudies, alertSummary, ackAlerts, studyHref } from '../core/api.js';

@@ -3,7 +3,7 @@
 // role; only users without the admin role can be removed.
 
 import { confirmDialog } from '../core/confirm.js';
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { users, createUser, updateUser, deleteUser } from '../core/api.js';

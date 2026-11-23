@@ -4,10 +4,10 @@
 // per browser for now; the server will store workspaces per user, with read-only sharing.
 
 import { confirmDialog } from '../core/confirm.js';
-import '../components/dt-shell.js';
-import '../components/dt-query-bar.js';
-import '../components/dt-chart.js';
-import { baseOption } from '../components/dt-chart.js';
+import '../components/dx-shell.js';
+import '../components/dx-query-bar.js';
+import '../components/dx-chart.js';
+import { baseOption } from '../components/dx-chart.js';
 import { h, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart } from '../core/format.js';
@@ -358,7 +358,7 @@ function select(label, value, options, onChange) {
 function renderPanel(cfg, index) {
   const server = cfg.type in SERVER_TYPES;
   const built = server ? null : rows.length ? BUILDERS[cfg.type](cfg) : null;
-  const chart = h('dt-chart', { label: built?.title || 'Chart', height: built?.height || (cfg.type === 'sdrl' ? '420' : '320') });
+  const chart = h('dx-chart', { label: built?.title || 'Chart', height: built?.height || (cfg.type === 'sdrl' ? '420' : '320') });
   const update = (patch) => { Object.assign(cfg, patch); saveWs(); renderAll(); };
   const protos = Object.fromEntries(protocolsBy('name', 'ctdivol').map((p) => [p, p]));
   const opts = server ? [select('Type', cfg.type, TYPES, (v) => update({ ...defaultsFor(v), top: undefined, modality: cfg.modality, span: cfg.span, type: v })),
@@ -447,7 +447,7 @@ async function init() {
   ws = loadWs(prefs.get('workspace.current') || names[0]);
   if (urlQ) ws.q = urlQ.split(' ').filter((x) => !/^(modality|age|acc|pid|spiral|axial|loc|dlp|ctdi|flag):/.test(x) && x !== '-phantom').join(' ');
 
-  const qb = h('dt-query-bar', { value: ws.q });
+  const qb = h('dx-query-bar', { value: ws.q });
   qb.context = { devices: new Map(devices.map((d) => [d.id, d])), drl: drlSet.ct_dlp_mgycm };
   qb.addEventListener('query-change', (e) => { ws.q = e.detail; saveWs(); loadRows(); });
   countEl = h('span', { class: 'muted mono' });

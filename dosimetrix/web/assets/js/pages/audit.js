@@ -1,7 +1,7 @@
 // Audit log: logins, identifier reveals, exports, reports and every administrative change.
 // Filter by action, user, text and date; newest first, paged by "Older…".
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { auditLog } from '../core/api.js';

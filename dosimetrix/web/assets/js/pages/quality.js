@@ -2,9 +2,9 @@
 // most recent studies with findings. Rules are explained in dosimetrix/quality.py.
 
 import { confirmDialog } from '../core/confirm.js';
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import '../components/dt-query-bar.js';
+import '../components/dx-query-bar.js';
 import { h, clear, append } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { quality, studyHref, importSizes } from '../core/api.js';
@@ -21,7 +21,7 @@ function pct(x) {
 }
 
 function render() {
-  const qb = h('dt-query-bar', { value: q });
+  const qb = h('dx-query-bar', { value: q });
   qb.addEventListener('query-change', (e) => { q = e.detail; prefs.set('quality.q', q); load(); });
   clear(page).append(
     adminTabs('quality.html'),

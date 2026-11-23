@@ -1,4 +1,4 @@
-// <dt-data-grid label="CT studies"> — dense, server-paged table.
+// <dx-data-grid label="CT studies"> — dense, server-paged table.
 //
 //   grid.columns = [{ key, label, unit?, align?: 'right', render?(row) → Node|string, sortable?: true, hidden?: false }]
 //   grid.fetcher = async ({ sort, dir, page, size }) => ({ total, rows })
@@ -201,4 +201,4 @@ class DtDataGrid extends HTMLElement {
   }
 }
 
-customElements.define('dt-data-grid', DtDataGrid);
+customElements.define('dx-data-grid', DtDataGrid);

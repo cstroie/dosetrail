@@ -69,7 +69,7 @@ both match. Today: below 576 the icon rail moves to the bottom and the dashboard
 Decided 2026-11-23. A long table or list **scrolls inside its panel** instead of stretching the
 page: `.panel-scroll` (max 320 px, sticky header, full length in print). Used for the chart
 panels' summary tables and a repeat alert's list of earlier studies, which is also sorted most
-recent first. Paged grids (`dt-data-grid`) page instead. Chart panels may limit what they draw
+recent first. Paged grids (`dx-data-grid`) page instead. Chart panels may limit what they draw
 with a **Top** option (the busiest N groups); the summary table and the CSV keep everything.
 
 ## Dense data and text size

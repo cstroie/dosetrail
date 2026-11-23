@@ -1,4 +1,4 @@
-// <dt-query-bar value="modality:CT date:90d -phantom"></dt-query-bar>
+// <dx-query-bar value="modality:CT date:90d -phantom"></dx-query-bar>
 //
 // Typed filter tokens with autocomplete. Committed tokens render as removable chips (a click
 // on the name switches one off and on again: "~key:value" in the string);
@@ -131,4 +131,4 @@ class DtQueryBar extends HTMLElement {
   }
 }
 
-customElements.define('dt-query-bar', DtQueryBar);
+customElements.define('dx-query-bar', DtQueryBar);

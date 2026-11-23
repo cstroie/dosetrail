@@ -1,9 +1,9 @@
 // Study list (CT): saved-query tabs, typed query bar, server-paged grid and a preview pane.
 // The query, sort and page live in the URL (?q=&sort=&dir=&page=), so views can be shared.
 
-import '../components/dt-shell.js';
-import '../components/dt-query-bar.js';
-import '../components/dt-data-grid.js';
+import '../components/dx-shell.js';
+import '../components/dx-query-bar.js';
+import '../components/dx-data-grid.js';
 import { h, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dateTime, patientSummary } from '../core/format.js';
@@ -105,11 +105,11 @@ async function init() {
   const physical = new Map([...devs.entries()].filter(([id, d]) => id === d.id));
   let currentQ = initial.q;
 
-  const qb = h('dt-query-bar', { value: currentQ });
+  const qb = h('dx-query-bar', { value: currentQ });
   qb.context = { devices: physical, drl: drlSet.ct_dlp_mgycm };
   const tabsHost = h('div');
   const previewBody = h('div');
-  const grid = h('dt-data-grid', { label: 'CT studies', noun: t('studies.count'), 'storage-key': 'grid.ct' },
+  const grid = h('dx-data-grid', { label: 'CT studies', noun: t('studies.count'), 'storage-key': 'grid.ct' },
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows('csv') }, 'CSV'),
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows('xlsx') }, 'XLSX'),
     h('a', { slot: 'actions', class: 'btn primary', href: '#', onclick: (e) => { e.currentTarget.href = `charts.html?q=${encodeURIComponent(currentQ)}`; } }, t('studies.chart')));

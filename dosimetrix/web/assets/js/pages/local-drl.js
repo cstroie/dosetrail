@@ -3,7 +3,7 @@
 // period (yearly), delete. Server logic: dosimetrix/localdrl.py.
 
 import { confirmDialog } from '../core/confirm.js';
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';

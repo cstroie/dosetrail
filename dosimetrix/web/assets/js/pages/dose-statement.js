@@ -3,7 +3,7 @@
 // patient, so always in Romanian whatever the interface language is. It names the patient: the
 // page asks first, and the server needs the pid role and writes an audit entry.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { h, clear, toast } from '../core/dom.js';
 import { confirmDialog } from '../core/confirm.js';
 import { doseStatement } from '../core/api.js';

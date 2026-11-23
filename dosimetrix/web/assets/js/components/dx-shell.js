@@ -1,4 +1,4 @@
-// <dt-shell page="studies" crumb="Studies" sub="CT">…page content…</dt-shell>
+// <dx-shell page="studies" crumb="Studies" sub="CT">…page content…</dx-shell>
 //
 // Wraps a page in the icon rail and context bar. Children with slot="ctx" are moved into
 // the context bar; everything else goes into the work area. Also owns the global shortcuts
@@ -7,7 +7,7 @@
 import { h, icon, toast } from '../core/dom.js';
 import { t, lang } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
-import './dt-command-palette.js';
+import './dx-command-palette.js';
 import { me, logout, changePassword } from '../core/api.js';
 
 const NAV = [
@@ -40,7 +40,7 @@ class DtShell extends HTMLElement {
     const crumb = h('span', { class: 'crumb' }, this.getAttribute('crumb') || t(`nav.${page}`) || '',
       this.getAttribute('sub') ? h('span', { class: 'muted' }, ` · ${this.getAttribute('sub')}`) : null);
 
-    const palette = h('dt-command-palette');
+    const palette = h('dx-command-palette');
     const ctx = h('header', { class: 'ctx' },
       h('a', { class: 'ctx-logo', href: 'index.html', 'aria-label': `Dosimetrix · ${t('nav.overview')}`, title: t('nav.overview') }, icon('logo', 24, 2)),
       crumb,
@@ -107,7 +107,7 @@ function userMenu() {
       h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: () => { close(); passwordDialog(); } },
         icon('key', 16, 1.8), t('shell.password')),
       u.roles.includes('admin') ? h('a', { class: 'menu-item', role: 'menuitem', href: 'devices.html',
-        'aria-current': document.querySelector('dt-shell')?.getAttribute('page') === 'admin' ? 'page' : false }, icon('admin', 16, 1.8), t('nav.admin')) : null,
+        'aria-current': document.querySelector('dx-shell')?.getAttribute('page') === 'admin' ? 'page' : false }, icon('admin', 16, 1.8), t('nav.admin')) : null,
       ...phoneItems(),
       h('div', { class: 'menu-sep', role: 'separator' }),
       h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: () => logout() }, icon('logout', 16, 1.8), t('shell.signout')));
@@ -211,4 +211,4 @@ function appearanceMenu() {
   return wrap;
 }
 
-customElements.define('dt-shell', DtShell);
+customElements.define('dx-shell', DtShell);

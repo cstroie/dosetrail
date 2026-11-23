@@ -5,7 +5,7 @@
 // password is write-only: the server only says whether one is set.
 
 import { confirmDialog } from '../core/confirm.js';
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num } from '../core/format.js';

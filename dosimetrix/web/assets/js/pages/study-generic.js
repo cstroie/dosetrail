@@ -3,7 +3,7 @@
 // Shows: facts, dose readouts, exam codes, this study's alerts and data-quality findings,
 // and the series / exposures with the DRL that applies to each (exam + age group).
 
-import '../components/dt-data-grid.js';
+import '../components/dx-data-grid.js';
 import { indicationRow } from '../components/indication.js';
 import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
@@ -99,7 +99,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
     readout('Projections', views.length ? views.join(', ') : '—'),
     readout('Highest kV', num(Math.max(0, ...ev.map((e) => e.kvp || 0)), 0), 'kV'),
   ];
-  const grid = h('dt-data-grid', { class: 'study-events', label: ct ? 'CT series' : 'Exposures', noun: ct ? 'series' : 'exposures', 'storage-key': ct ? 'grid.ct-series' : 'grid.rx-exposures' },
+  const grid = h('dx-data-grid', { class: 'study-events', label: ct ? 'CT series' : 'Exposures', noun: ct ? 'series' : 'exposures', 'storage-key': ct ? 'grid.ct-series' : 'grid.rx-exposures' },
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows(s, ct) }, 'CSV'));
   grid.columns = ct ? ctColumns() : rxColumns();
   grid.rowId = (e) => e.no;

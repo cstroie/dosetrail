@@ -5,7 +5,7 @@
 // Any devices can also be selected with the checkboxes and merged by hand (firmware update,
 // renamed station…), and the selection can be marked local or external in one step.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';

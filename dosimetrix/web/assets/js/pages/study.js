@@ -3,11 +3,11 @@
 // Clicking an event bar selects the row in the table, and selecting a row highlights the bar.
 
 import { confirmDialog } from '../core/confirm.js';
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { indicationRow } from '../components/indication.js';
-import '../components/dt-data-grid.js';
-import '../components/dt-chart.js';
-import { baseOption } from '../components/dt-chart.js';
+import '../components/dx-data-grid.js';
+import '../components/dx-chart.js';
+import { baseOption } from '../components/dx-chart.js';
 import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
@@ -177,8 +177,8 @@ async function render() {
 
   const readoutBox = h('div');
   const cumHost = h('div');
-  const chart = h('dt-chart', { label: 'Cumulative Ka,r over the procedure, with irradiation events as bars (DAP)', height: '320' });
-  const grid = h('dt-data-grid', { class: 'study-events', label: 'Irradiation events', noun: 'events', 'storage-key': 'grid.events' },
+  const chart = h('dx-chart', { label: 'Cumulative Ka,r over the procedure, with irradiation events as bars (DAP)', height: '320' });
+  const grid = h('dx-data-grid', { class: 'study-events', label: 'Irradiation events', noun: 'events', 'storage-key': 'grid.events' },
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportEvents(s) }, 'CSV'));
   const selInfo = h('span', { class: 'muted mono' });
 
@@ -259,7 +259,7 @@ function skinPanel(s) {
   if (isSample) { host.replaceChildren(h('p', { class: 'muted' }, 'The skin dose map needs the server.')); return panel; }
   skinDose(s.id).then((r) => {
     if (r.psd_mgy == null) { host.replaceChildren(h('p', { class: 'muted' }, 'No event has a reference-point air kerma (Ka,r): no estimate.')); return; }
-    const chart = h('dt-chart', { label: 'Skin dose map, mGy', height: '330' });
+    const chart = h('dx-chart', { label: 'Skin dose map, mGy', height: '330' });
     const SIDES = ['anterior', 'anterior-left', 'left', 'posterior-left', 'posterior', 'posterior-right', 'right', 'anterior-right'];
     const side = (th) => SIDES[Math.round(th / 45) % 8];
     const data = [];

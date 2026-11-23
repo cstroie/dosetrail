@@ -3,7 +3,7 @@
 // GET /api/stats (type-7 quantiles, the same numbers as exports and reports); the
 // "vs DRL" panel uses GET /api/drl/compare.
 
-import { baseOption } from '../components/dt-chart.js';
+import { baseOption } from '../components/dx-chart.js';
 import { h } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { stats, drlCompare } from '../core/api.js';

@@ -2,7 +2,7 @@
 // suggested), most frequent first, with the best matches. One decision codes every study
 // with the same text (now and later). Server: dosimetrix/indications.py.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { num } from '../core/format.js';

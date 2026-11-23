@@ -2,8 +2,8 @@
 // One row per exam × patient group × quantity, per facility or per device (ICRP 135 room
 // medians). Status: below / above (≤ 1.5×) / well above (> 1.5×) / n below the minimum.
 
-import '../components/dt-shell.js';
-import '../components/dt-query-bar.js';
+import '../components/dx-shell.js';
+import '../components/dx-query-bar.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { drlSets, drlCompare, drlDownloadUrl } from '../core/api.js';
@@ -65,7 +65,7 @@ async function render() {
   const minN = h('input', { type: 'number', min: 1, max: 500, value: state.minN, class: 'input num-input', 'aria-label': 'Minimum n',
     onchange: (e) => { state.minN = Math.max(1, Number(e.target.value) || 20); prefs.set('drl.minN', state.minN); load(); } });
   const empty = h('label', { class: 'chk' }, h('input', { type: 'checkbox', onchange: (e) => { state.showEmpty = e.target.checked; draw(); } }), ' show groups without data');
-  const qb = h('dt-query-bar', { value: state.q });
+  const qb = h('dx-query-bar', { value: state.q });
   qb.addEventListener('query-change', (e) => { state.q = e.detail; prefs.set('drl.q', state.q); load(); });
 
   const download = (kind) => () => {

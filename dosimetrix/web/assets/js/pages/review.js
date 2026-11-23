@@ -2,7 +2,7 @@
 // code, and the decisions people have recorded. A decision maps one text to a nomenclator code;
 // every study with that text is reclassified at once. Saving needs the admin role.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { num } from '../core/format.js';

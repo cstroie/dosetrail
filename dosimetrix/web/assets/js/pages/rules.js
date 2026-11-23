@@ -1,7 +1,7 @@
 // Alert rules: enable, threshold, severity and notification per rule (admin role; every
 // change is audit-logged). Seeding never overwrites a rule edited here.
 
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { alertRules, updateAlertRule } from '../core/api.js';

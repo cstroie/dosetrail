@@ -4,7 +4,7 @@
 // Server: dosimetrix/aggregate.py.
 
 import { confirmDialog } from '../core/confirm.js';
-import '../components/dt-shell.js';
+import '../components/dx-shell.js';
 import { h, clear, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { uploadSurvey, surveyUploads, deleteSurveyUpload, nameInstitution, surveyNational, surveyNationalUrl } from '../core/api.js';

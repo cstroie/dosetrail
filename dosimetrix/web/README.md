@@ -30,7 +30,7 @@ Pages run on the synthetic data in `data/sample/` until the REST API exists.
 | `assets/css/components.css` | Styles for the components and page patterns |
 | `assets/js/boot.js` | Sets theme and language before first paint (classic script) |
 | `assets/js/core/` | `api` (data access), `query` (query language), `stats`, `format` (units), `i18n` (EN/RO), `prefs`, `dom` |
-| `assets/js/components/` | `dt-shell`, `dt-command-palette`, `dt-query-bar`, `dt-data-grid`, `dt-chart` |
+| `assets/js/components/` | `dx-shell`, `dx-command-palette`, `dx-query-bar`, `dx-data-grid`, `dx-chart` |
 | `assets/js/pages/` | One module per page |
 | `data/sample/` | Synthetic data from `tools/make_ui_sample.py` (deterministic) |
 | `tests/` | `node --test dosimetrix/web/tests/*.test.mjs` |
