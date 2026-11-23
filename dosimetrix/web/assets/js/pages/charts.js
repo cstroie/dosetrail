@@ -93,6 +93,17 @@ function protocolsBy(sort, metric) {
   return list.map((x) => x.p);
 }
 
+const TOPS = { all: 'All', 5: '5', 10: '10', 12: '12', 20: '20', 30: '30', 50: '50' };
+/** The protocols a panel charts: the first `top` of the list in the chosen order (sorted by name,
+ *  the busiest `top` protocols, listed alphabetically). The summary table keeps every protocol. */
+function limitTop(cfg, list, dflt) {
+  const top = cfg.top === 'all' ? Infinity : Number(cfg.top) || dflt;
+  if (list.length <= top) return list;
+  if ((cfg.sort || 'n') !== 'name') return list.slice(0, top);
+  const busiest = new Set(protocolsBy('n', cfg.metric).filter((p) => list.includes(p)).slice(0, top));
+  return list.filter((p) => busiest.has(p));
+}
+
 function summaryRows(metric, protocolFilter) {
   const out = [];
   const g = groupBy(rows.filter((r) => !protocolFilter || r.protocol === protocolFilter), (r) => r.protocol, (r) => r.device_id);
@@ -126,9 +137,8 @@ function period(iso, per) {
 function buildDots(cfg) {
   const metric = METRICS[cfg.metric];
   const withRef = rows.filter((r) => refOf(r, cfg.metric));
-  const TOP = 12;  // more rows than this do not fit the panel; the summary table has them all
   const allProtos = protocolsBy(cfg.sort || 'n', cfg.metric).filter((p) => withRef.some((r) => r.protocol === p));
-  const protos = allProtos.slice(0, TOP);
+  const protos = limitTop(cfg, allProtos, 12);  // the summary table has every protocol
   const devIds = [...new Set(rows.map((r) => r.device_id))].sort((a, b) => a - b);
   const csv = [['protocol', 'device', `${metric.label} ${metric.unit}`, 'percent_of_DRL']];
   const option = (th) => {
@@ -171,7 +181,7 @@ function buildDots(cfg) {
   };
   withRef.forEach((r) => { const ref = refOf(r, cfg.metric); csv.push([r.protocol, r.device, r[metric.field], num((r[metric.field] / ref) * 100, 1)]); });
   const missing = rows.length - withRef.length;
-  const note = (allProtos.length > TOP ? ` · top ${TOP} of ${allProtos.length} protocols` : '')
+  const note = (allProtos.length > protos.length ? ` · top ${protos.length} of ${allProtos.length} protocols` : '')
     + (missing ? ` · ${num(missing)} of ${num(rows.length)} without an applicable DRL (no exam DRL, or body exam without weight)` : '');
   return { option, csv, title: `${metric.label} vs applicable DRL, per protocol and device${note}`, summary: summaryRows(cfg.metric),
     height: String(Math.max(320, 44 * protos.length + 110)) };
@@ -182,7 +192,8 @@ const labelWidth = () => (matchMedia('(max-width: 700px)').matches ? 110 : 220);
 
 function buildBoxOrBar(cfg) {
   const metric = METRICS[cfg.metric];
-  const protos = protocolsBy(cfg.sort || 'n', cfg.metric);
+  const allProtos = protocolsBy(cfg.sort || 'n', cfg.metric);
+  const protos = limitTop(cfg, allProtos, Infinity);
   const devIds = [...new Set(rows.map((r) => r.device_id))].sort((a, b) => a - b);
   const sums = summaryRows(cfg.metric);
   const get = (p, d) => sums.find((s) => s.protocol === p && s.device_id === d);
@@ -212,7 +223,7 @@ function buildBoxOrBar(cfg) {
   };
   const csv = [['protocol', 'device', 'n', 'min', 'q1', 'median', 'mean', 'q3', 'max', 'drl']]
     .concat(sums.map((s) => [s.protocol, s.device, s.n, s.min, s.q1, s.median, s.mean, s.q3, s.max, s.drl ?? '']));
-  return { option, csv, title: `${metric.label} per protocol and device${isBox ? '' : ` · ${stat}`}`, summary: sums,
+  return { option, csv, title: `${metric.label} per protocol and device${isBox ? '' : ` · ${stat}`}${allProtos.length > protos.length ? ` · top ${protos.length} of ${allProtos.length} protocols` : ''}`, summary: sums,
     height: String(Math.max(320, 30 * protos.length + 110)) };
 }
 
@@ -358,6 +369,7 @@ function renderPanel(cfg, index) {
     ['bar', 'trend'].includes(cfg.type) ? select('Stat', cfg.stat || 'median', { median: 'Median', mean: 'Mean' }, (v) => update({ stat: v })) : null,
     cfg.type === 'trend' ? select('Period', cfg.period || 'month', PERIODS, (v) => update({ period: v })) : null,
     ['dots', 'box', 'bar'].includes(cfg.type) ? select('Sort', cfg.sort || 'n', { n: 'n', name: 'Name', value: 'Value / DRL' }, (v) => update({ sort: v })) : null,
+    ['dots', 'box', 'bar'].includes(cfg.type) ? select('Top', String(cfg.top || (cfg.type === 'dots' ? 12 : 'all')), TOPS, (v) => update({ top: v })) : null,
     h('span', { class: 'spacer' }),
     h('span', { class: 'seg', role: 'group', 'aria-label': 'Panel width' }, Object.keys(SPANS).map((s) => h('button', { type: 'button', 'aria-pressed': String(cfg.span === s), onclick: () => update({ span: s }) }, s))),
   ];
