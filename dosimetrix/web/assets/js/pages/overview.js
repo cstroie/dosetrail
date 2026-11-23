@@ -154,9 +154,10 @@ async function render() {
     page.replaceChildren(
       h('div', { class: 'row', style: { 'align-items': 'baseline', gap: '12px' } }, h('h1', {}, t('overview.title')),
         h('span', { class: 'muted mono' }, dateTime(data.generated))),
-      deadlinePanel(data.deadlines, render),
-      kpis(data.modalities),
-      h('div', { class: 'cols mt-3' }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), lookupPanel()));
+      // replaceChildren() would print a null as the text "null" (no deadline left to show)
+      ...[deadlinePanel(data.deadlines, render),
+        kpis(data.modalities),
+        h('div', { class: 'cols mt-3' }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), lookupPanel())].filter(Boolean));
   } catch (err) {
     page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'),
       h('span', { class: 'muted mono' }, err.message), h('button', { class: 'btn', type: 'button', onclick: render }, t('state.retry'))));
