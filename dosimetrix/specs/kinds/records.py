@@ -14,6 +14,19 @@ For cohorts, extracts and the forms an authority asks for as "N patients per exa
     field  = "study.date"
     transform = "datetime"      # optional, "name" or "name:arg"
 
+**Extractor** (``level = "extract"``): the rows come from a registered extractor (a row shape no
+column list can express: a CT series per row, exposures grouped per projection) and the spec lists
+the columns by ``value`` key with their ``unit`` and ``doc``; ``[dictionary] sheet = "..."`` adds
+the data dictionary as a sheet.
+
+    [unit]
+    level = "extract"
+    extractor = "survey_rows"
+    [dictionary]
+    sheet = "Dictionary"
+    [[column]]
+    header = "dlp"  value = "dlp"  unit = "mGy.cm"  doc = "DLP of the series"
+
 **Examinations** (``level = "exam"``): families of workbooks; a family is a code system whose codes
 are sorted onto sheets. One workbook per family and physical device, and per sheet the first
 ``select.first`` studies of the window in time order (deterministic, so a rerun gives the same
@@ -91,8 +104,20 @@ class Records:
                     continue
                 _check_columns(cols, errs, f"sheet {sh['name']}:")
             return errs
+        if level == "extract":
+            name = (spec.body.get("unit") or {}).get("extractor")
+            if name not in registry.EXTRACTORS:
+                errs.append(f"unknown extractor {name!r}; one of {', '.join(registry.EXTRACTORS)}")
+            cols = spec.body.get("column")
+            if not isinstance(cols, list) or not cols:
+                return [*errs, "an extractor spec needs [[column]] entries"]
+            for c in cols:
+                if not c.get("header") or not (c.get("value") or c.get("field")):
+                    errs.append(f"column {c.get('header')!r} needs a header and a value")
+            _check_columns([c for c in cols if c.get("field")], errs, "")
+            return errs
         if level != "exam":
-            return ["unit.level is study or exam"]
+            return ["unit.level is study, exam or extract"]
         fams = spec.body.get("family")
         if not isinstance(fams, list) or not fams:
             return ["level = exam needs at least one [[family]]"]
@@ -124,7 +149,7 @@ class Records:
     @staticmethod
     def run(ctx: Context) -> Result:
         level = (ctx.spec.body.get("unit") or {}).get("level", "study")
-        return _run_exam(ctx) if level == "exam" else _run_study(ctx)
+        return {"exam": _run_exam, "extract": _run_extract}.get(level, _run_study)(ctx)
 
 
 def _period(ctx: Context) -> str:
@@ -146,6 +171,29 @@ def _run_study(ctx: Context) -> Result:
     title = ctx.spec.label()
     info = [("Raport", title), ("Perioada", _period(ctx)),
             ("Selecție", ctx.params.get("q") or "(toate)"),
+            ("Generat", ctx.now.isoformat(sep=" ", timespec="seconds")), ("De", ctx.username)]
+    return Result([Book(f"{ctx.spec.id}.xlsx", sheets, title, info)])
+
+
+def _run_extract(ctx: Context) -> Result:
+    body = ctx.spec.body
+    cols = body["column"]
+    limit = (body.get("unit") or {}).get("limit")
+    rows = []
+    for n, row in enumerate(registry.EXTRACTORS[body["unit"]["extractor"]](ctx)):
+        if limit and n >= limit:
+            break
+        rows.append([_cell(c, row) for c in cols])
+    sheets = [Sheet(body["unit"].get("sheet", "Data"), [c["header"] for c in cols], rows,
+                    [max(8, min(len(c["header"]) + 2, 22)) for c in cols])]
+    dic = body.get("dictionary")
+    if dic:
+        sheets.append(Sheet(dic.get("sheet", "Dictionary"), ["Field", "Unit", "Description"],
+                            [[c["header"], c.get("unit", ""), c.get("doc", "")] for c in cols],
+                            [22, 10, 80]))
+    title = ctx.spec.label()
+    info = [("Raport", title), ("Perioada", _period(ctx)),
+            ("Selecție", ctx.params.get("q") or "(toate)"), ("Rânduri", len(rows)),
             ("Generat", ctx.now.isoformat(sep=" ", timespec="seconds")), ("De", ctx.username)]
     return Result([Book(f"{ctx.spec.id}.xlsx", sheets, title, info)])
 

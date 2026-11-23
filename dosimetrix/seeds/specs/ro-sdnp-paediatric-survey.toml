@@ -1,0 +1,315 @@
+# Anonymised export for the national paediatric dose survey (draft plan MS-CNCAN-SDNP-2026-001,
+# v1.0, March 2026). Rows: CT one per scan series (localisers excluded); radiography one per
+# projection of a study (retakes summed); fluoroscopy one per study. Paediatric only. No name,
+# national ID or birth date; the month only; age in days below 1 year, months up to 24 months,
+# years after; keyed pseudonymous codes (HMAC with the site secret). The row shapes and the checks
+# (check_dlp, check_phantom) are the extractor "survey_rows"; the layout is this file.
+
+[spec]
+id = "ro-sdnp-paediatric-survey"
+kind = "records"
+version = "2026.1"
+title = { en = "National paediatric dose survey (anonymised)", ro = "Studiul național de dozimetrie pediatrică (anonimizat)" }
+authority = "CNCAN / MS (draft plan)"
+country = "RO"
+legal = "Plan MS-CNCAN-SDNP-2026-001 v1.0"
+formats = ["csv", "xlsx", "json"]
+access = ["exporter"]
+
+[params]
+period = { type = "month" }
+q = { type = "query", default = "origin:local" }
+institution = { type = "str", default = "DEFAULT" }
+
+[rules]
+max_age_years = { value = 18, article = "plan: paediatric patients only" }
+ct_dlp_tolerance = { value = 0.1, article = "plan: CTDIvol x length vs DLP within 10 %" }
+
+[unit]
+level = "extract"
+extractor = "survey_rows"
+
+[dictionary]
+sheet = "Dictionary"
+
+[[column]]
+header = "survey_version"
+value = "survey_version"
+unit = ""
+doc = "Layout version of this export"
+
+[[column]]
+header = "institution"
+value = "institution"
+unit = ""
+doc = "Institution code (keyed pseudonym)"
+
+[[column]]
+header = "device"
+value = "device"
+unit = ""
+doc = "Device code (keyed pseudonym)"
+
+[[column]]
+header = "manufacturer"
+value = "manufacturer"
+unit = ""
+doc = "Device manufacturer"
+
+[[column]]
+header = "model"
+value = "model"
+unit = ""
+doc = "Device model"
+
+[[column]]
+header = "modality"
+value = "modality"
+unit = ""
+doc = "CT / DX / CR / RF / XA"
+
+[[column]]
+header = "period"
+value = "period"
+unit = ""
+doc = "Month of the examination, YYYY-MM"
+
+[[column]]
+header = "patient"
+value = "patient"
+unit = ""
+doc = "Patient code (keyed pseudonym; equal codes = same patient)"
+
+[[column]]
+header = "sex"
+value = "sex"
+unit = ""
+doc = "M / F / O"
+
+[[column]]
+header = "age_days"
+value = "age_days"
+unit = "d"
+doc = "Age in completed days, below 1 year only"
+
+[[column]]
+header = "age_months"
+value = "age_months"
+unit = "mo"
+doc = "Age in completed months, below 24 months only"
+
+[[column]]
+header = "age_years"
+value = "age_years"
+unit = "a"
+doc = "Age in completed years"
+
+[[column]]
+header = "head_age_group"
+value = "head_age_group"
+unit = ""
+doc = "RP 185 head group: 0-3mo, 3mo-1y, 1-6y, 6y+ (= 6-<18 y)"
+
+[[column]]
+header = "weight_kg"
+value = "weight_kg"
+unit = "kg"
+doc = "Patient weight"
+
+[[column]]
+header = "weight_source"
+value = "weight_source"
+unit = ""
+doc = "measured / chart_same_day / chart_72h (HIS request form) / his_chart_undated (HIS record, date unknown) / dicom_unknown / imported / estimated_reference (median for age and sex)"
+
+[[column]]
+header = "weight_reported_kg"
+value = "weight_reported_kg"
+unit = "kg"
+doc = "Reported weight replaced by the estimate (outside P1-P99)"
+
+[[column]]
+header = "weight_group"
+value = "weight_group"
+unit = ""
+doc = "RP 185 body group (with 80-110kg, 110kg+)"
+
+[[column]]
+header = "weight_percentile"
+value = "weight_percentile"
+unit = "%"
+doc = "Weight-for-age percentile (WHO to 10 y, CDC 2000 to 20 y)"
+
+[[column]]
+header = "drl_exclusion"
+value = "drl_exclusion"
+unit = ""
+doc = "Reason to leave the study out of DRL statistics (e.g. weight < P5)"
+
+[[column]]
+header = "height_m"
+value = "height_m"
+unit = "m"
+doc = "Patient height"
+
+[[column]]
+header = "indication"
+value = "indication"
+unit = ""
+doc = "Clinical indication code (ro-nom-indications)"
+
+[[column]]
+header = "indication_text"
+value = "indication_text"
+unit = ""
+doc = "Indication as written on the request (free text: review before sending)"
+
+[[column]]
+header = "exam_code"
+value = "exam_code"
+unit = ""
+doc = "Local nomenclator code"
+
+[[column]]
+header = "edrl_exam"
+value = "edrl_exam"
+unit = ""
+doc = "RP 185 exam code"
+
+[[column]]
+header = "ndrl_exam"
+value = "ndrl_exam"
+unit = ""
+doc = "National DRL exam code (OMS 838/2025)"
+
+[[column]]
+header = "projection"
+value = "projection"
+unit = ""
+doc = "Radiography projection"
+
+[[column]]
+header = "contrast"
+value = "contrast"
+unit = ""
+doc = "CT contrast: N, C, NC, MF"
+
+[[column]]
+header = "series"
+value = "series"
+unit = "1"
+doc = "Series number within the study (CT)"
+
+[[column]]
+header = "protocol"
+value = "protocol"
+unit = ""
+doc = "Acquisition protocol"
+
+[[column]]
+header = "ctdivol"
+value = "ctdivol"
+unit = "mGy"
+doc = "CTDIvol of the series"
+
+[[column]]
+header = "phantom"
+value = "phantom"
+unit = "cm"
+doc = "CTDI phantom: 16 or 32"
+
+[[column]]
+header = "dlp"
+value = "dlp"
+unit = "mGy.cm"
+doc = "DLP of the series"
+
+[[column]]
+header = "scan_length"
+value = "scan_length"
+unit = "mm"
+doc = "Scan length"
+
+[[column]]
+header = "kvp"
+value = "kvp"
+unit = "kV"
+doc = "Tube voltage"
+
+[[column]]
+header = "mas"
+value = "mas"
+unit = "mA.s"
+doc = "Tube current-time product"
+
+[[column]]
+header = "effective_mas"
+value = "effective_mas"
+unit = "mA.s"
+doc = "mAs / pitch (CT)"
+
+[[column]]
+header = "pitch"
+value = "pitch"
+unit = "1"
+doc = "Pitch factor"
+
+[[column]]
+header = "tcm"
+value = "tcm"
+unit = ""
+doc = "Tube current modulation"
+
+[[column]]
+header = "reconstruction"
+value = "reconstruction"
+unit = ""
+doc = "FBP / IR / DLIR (not collected yet)"
+
+[[column]]
+header = "ssde"
+value = "ssde"
+unit = "mGy"
+doc = "Size-specific dose estimate: reported by the device, else calculated from its water-equivalent diameter (AAPM 204 / 293)"
+
+[[column]]
+header = "pka"
+value = "pka"
+unit = "mGy.cm2"
+doc = "Kerma-area product (DAP)"
+
+[[column]]
+header = "fluoro_time"
+value = "fluoro_time"
+unit = "s"
+doc = "Fluoroscopy time"
+
+[[column]]
+header = "kae"
+value = "kae"
+unit = "mGy"
+doc = "Entrance air kerma (not collected yet)"
+
+[[column]]
+header = "exposures"
+value = "exposures"
+unit = "1"
+doc = "Exposures summed in this row"
+
+[[column]]
+header = "check_dlp"
+value = "check_dlp"
+unit = ""
+doc = "ok / fail / n.a.: CTDIvol x length vs DLP within 10 %"
+
+[[column]]
+header = "check_phantom"
+value = "check_phantom"
+unit = ""
+doc = "ok / warn (32 cm phantom on a head exam) / n.a."
+
+[[column]]
+header = "weight_missing"
+value = "weight_missing"
+unit = ""
+doc = "true when no weight is recorded"

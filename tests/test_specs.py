@@ -215,3 +215,70 @@ def test_the_query_narrows_the_selection(populated, tmp_path):
     spec = loader.parse(put(tmp_path, "t.toml", text))
     assert run.run(_ctx(populated, spec)).books[0].sheets[0].rows == []
     assert len(run.run(_ctx(populated, spec, q="modality:CT")).books[0].sheets[0].rows) == 5
+
+
+# ------------------------------------------------------------------ the national exports as specs
+
+
+def _paediatric(session):
+    from dosimetrix import classify
+    from dosimetrix.db.models import Event
+    from dosimetrix.seeds.loader import load_all
+
+    load_all(session)
+    kid = Patient(pseudo_id="P-K", sex="F")
+    session.add(kid)
+    session.flush()
+    t = dt.datetime(2026, 10, 5, 9)
+    head = Study(study_uid="v.1", modality="CT", study_datetime=t, patient_id=kid.id,
+                 age_days=300, weight_kg=10.0, source_kind="test",
+                 study_description="Head^CEREBRAL_SPIRAL_NATIV (Child)")
+    head.events = [Event(protocol="Head", ctdivol=20.0, scan_length_mm=100.0, dlp=200.0,
+                         ct_phantom_cm=16, mas=150.0, pitch=0.6)]
+    session.add(head)
+    session.flush()
+    classify.run(session)
+
+
+def test_the_bundled_national_exports_are_specs_with_their_dictionary():
+    cat = loader.discover(None)
+    assert not cat.problems
+    survey, dataset = cat.specs["ro-sdnp-paediatric-survey"], cat.specs["dosimetrix-drl-dataset"]
+    assert survey.version == "2026.1" and survey.rules["max_age_years"] == 18
+    assert len(survey.body["column"]) == 47 and len(dataset.body["column"]) == 33
+    assert survey.rules_meta["max_age_years"]["article"]  # the number says where it comes from
+    assert not run.needs_pid(survey) and not run.needs_pid(dataset)  # pseudonymised, no PID
+
+
+def test_the_survey_spec_runs_to_the_same_rows_as_the_old_function(session):
+    from dosimetrix.export import survey as old
+
+    _paediatric(session)
+    spec = loader.discover(None).specs["ro-sdnp-paediatric-survey"]
+    ctx = run.build(session, spec, {"month": "2026-10", "q": ""}, secret=b"s" * 32,
+                    now=dt.datetime(2026, 11, 1), username="t")
+    res = run.run(ctx)
+    data, dictionary = res.books[0].sheets
+    assert data.name == "Data" and dictionary.name == "Dictionary"
+    assert [r[0] for r in dictionary.rows] == old.FIELDS and dictionary.rows[3][2]  # described
+    want = [list(r.values()) for r in old.rows(session, [Study.study_datetime >= dt.datetime(
+        2026, 10, 1), Study.study_datetime < dt.datetime(2026, 11, 1)], b"s" * 32)]
+    assert data.rows == want and len(want) == 1
+    assert dict(zip(data.columns, data.rows[0], strict=True))["check_dlp"] == "ok"
+    out = io.BytesIO()
+    run.write(res, "csv", out, ctx)
+    assert out.getvalue().decode("utf-8-sig").splitlines()[0].startswith("survey_version,")
+    assert "check_dlp" in out.getvalue().decode("utf-8-sig").splitlines()[0]  # the data sheet
+    assert len(out.getvalue().decode("utf-8-sig").splitlines()) == 2  # header and one row
+
+
+def test_the_dataset_spec_runs_through_the_engine(session):
+    _paediatric(session)
+    spec = loader.discover(None).specs["dosimetrix-drl-dataset"]
+    ctx = run.build(session, spec, {"from": "2026-10-01", "to": "2026-10-31", "q": "",
+                                    "facility": "HOSP"}, secret=b"s" * 32,
+                    now=dt.datetime(2026, 11, 1), username="t")
+    data = run.run(ctx).books[0].sheets[0]
+    row = dict(zip(data.columns, data.rows[0], strict=True))
+    assert row["dataset_version"] == "1.0" and row["facility"].startswith("F-")
+    assert row["period"] == "2026-10" and row["modality"] == "CT"

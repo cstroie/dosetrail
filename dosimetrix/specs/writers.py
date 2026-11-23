@@ -66,14 +66,21 @@ def _csv_bytes(columns: list[str], rows: list[list]) -> bytes:
 
 @writer("csv")
 def to_csv(result: Result, target: IO[bytes], ctx: Context) -> None:
-    sheets = [(b, s) for b in result.books for s in b.sheets]
-    if len(sheets) == 1:
-        target.write(_csv_bytes(sheets[0][1].columns, sheets[0][1].rows))
+    """The first sheet of a workbook (or the one named by the ``sheet`` parameter): the data, not
+    the dictionary. Several workbooks give a zip of one csv each."""
+    want = ctx.params.get("sheet")
+
+    def pick(book: Book):
+        return next((s for s in book.sheets if s.name == want), book.sheets[0])
+
+    if len(result.books) == 1:
+        s = pick(result.books[0])
+        target.write(_csv_bytes(s.columns, s.rows))
         return
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
-        for b, s in sheets:
-            stem = b.filename.rsplit(".", 1)[0]
-            z.writestr(f"{stem}-{s.name}.csv", _csv_bytes(s.columns, s.rows))
+        for b in result.books:
+            s = pick(b)
+            z.writestr(b.filename.rsplit(".", 1)[0] + ".csv", _csv_bytes(s.columns, s.rows))
 
 
 def as_json(result: Result, ctx: Context) -> dict:

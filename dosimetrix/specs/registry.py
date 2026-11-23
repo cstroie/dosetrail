@@ -36,6 +36,7 @@ TRANSFORMS: dict[str, Callable] = {}
 FILTERS: dict[str, Callable] = {}
 KINDS: dict[str, object] = {}  # name -> module/object with validate(spec) and run(ctx)
 WRITERS: dict[str, Callable] = {}
+EXTRACTORS: dict[str, Callable] = {}  # name -> fn(ctx) -> Iterator[Row] (rows carry .values)
 
 
 def field(name: str, *, unit: str = "", identifying: bool = False):
@@ -67,6 +68,16 @@ def kind(name: str):
     def deco(obj):
         KINDS[name] = obj
         return obj
+    return deco
+
+
+def extractor(name: str):
+    """``fn(ctx) -> Iterator[Row]``: a row shape the declarative extractors cannot express (a CT
+    series per row, exposures grouped per projection, …). The rows carry their numbers in
+    ``row.values``; a spec names it with ``[unit] extractor = "name"`` and lists its columns."""
+    def deco(fn):
+        EXTRACTORS[name] = fn
+        return fn
     return deco
 
 
