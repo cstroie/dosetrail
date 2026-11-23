@@ -12,7 +12,8 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import select
 
-from ..db.models import Device, Event, Patient, Study
+from ..db.models import Classification, Code, CodeSystem, Device, Event, Patient, Study
+from . import registry
 from .context import Context
 
 BATCH = 2000
@@ -53,3 +54,83 @@ def parse_when(value: str | dt.datetime | None) -> dt.datetime | None:
     if isinstance(value, dt.datetime) or value is None:
         return value
     return dt.datetime.fromisoformat(value)
+
+
+# ----------------------------------------------------------------------------- examinations
+
+
+def _first(fields: list[str], row: Row):
+    for name in fields:
+        v = registry.FIELDS[name].fn(row)
+        if v is not None:
+            return v
+    return None
+
+
+def exam_units(ctx: Context, system: str, values: dict, exclude: list[str] | tuple = ()) -> dict:
+    """One examination = a study x a national code of ``system``.
+
+    Returns ``{(study_id, code_id): {"age", "sex", "device", <value keys>}}``. ``values`` says how
+    each number is found (a table of ``key = {event = [fields], study = field, scale = k}``):
+    * a code given to **events** (radiography projections, mammography views): the value is the
+      sum, over the exam's events, of the first present field of ``event``;
+    * a code given to the **study**: the ``study`` field, times ``scale``.
+    An exam with event-level codes is never overwritten by the study-level one.
+    """
+    base = (select(Classification.study_id, Classification.code_id, Classification.event_id,
+                   Study, Patient, Event)
+            .join(Code, Code.id == Classification.code_id)
+            .join(CodeSystem, CodeSystem.id == Code.system_id)
+            .join(Study, Study.id == Classification.study_id)
+            .outerjoin(Patient, Patient.id == Study.patient_id)
+            .outerjoin(Event, Event.id == Classification.event_id)
+            .where(CodeSystem.key == system, *window_conds(ctx)))
+    units: dict[tuple, dict] = {}
+    study_level = []
+    for sid, cid, eid, s, p, e in ctx.session.execute(base):
+        if eid is None:
+            study_level.append((sid, cid, s, p))
+            continue
+        u = units.setdefault((sid, cid), {"age": s.age_days, "sex": p.sex if p else None,
+                                          "device": s.device_id, **{k: None for k in values}})
+        row = Row(ctx, s, p, e=e)
+        for k, v in values.items():
+            if v.get("event"):
+                val = _first(v["event"], row)
+                if val is not None:
+                    u[k] = (u[k] or 0.0) + val * v.get("scale", 1)
+    for sid, cid, s, p in study_level:
+        if (sid, cid) in units:
+            continue
+        row = Row(ctx, s, p)
+        u = {"age": s.age_days, "sex": p.sex if p else None, "device": s.device_id}
+        for k, v in values.items():
+            val = registry.FIELDS[v["study"]].fn(row) if v.get("study") else None
+            u[k] = val * v.get("scale", 1) if val is not None else None
+        units[(sid, cid)] = u
+    for name in exclude:
+        units = registry.call(name, (ctx, units), registry.FILTERS)
+    return units
+
+
+@registry.filter_("shared_administration")
+def _drop_shared_administration(ctx_units, *_):
+    """An injection split over two studies (early and delayed PET) is one examination: the later
+    study, whose every administration is counted on an earlier one, is left out."""
+    ctx, units = ctx_units
+    shared = shared_administration(ctx.session, {sid for sid, _ in units})
+    return {k: u for k, u in units.items() if k[0] not in shared}
+
+
+def shared_administration(session, study_ids: set[int]) -> set[int]:
+    """Studies whose every administration is counted on an earlier study."""
+    own: dict[int, bool] = {}
+    ids = sorted(study_ids)
+    for i in range(0, len(ids), 1000):
+        for sid, extra in session.execute(
+                select(Event.study_id, Event.extra_json)
+                .where(Event.study_id.in_(ids[i:i + 1000]),
+                       Event.event_type == "radiopharmaceutical")):
+            shared = bool((extra or {}).get("same_administration_as"))
+            own[sid] = own.get(sid, False) or not shared
+    return {sid for sid, has_own in own.items() if not has_own}

@@ -49,6 +49,7 @@ field = "age.display"
 [[sheet.column]]
 header = "Weight [kg]"
 field = "study.weight_kg"
+transform = "round:1"
 [[sheet.column]]
 header = "Description"
 field = "study.description"
@@ -58,6 +59,8 @@ field = "device.name"
 [[sheet.column]]
 header = "DLP [mGy.cm]"
 field = "study.total_dlp"
+transform = "round:1"
 [[sheet.column]]
 header = "DAP [Gy.cm2]"
 field = "study.total_dap"
+transform = "round:4"

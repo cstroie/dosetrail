@@ -1,0 +1,180 @@
+# Quarterly centralised report of the exposure of the population to ionising radiation,
+# Order MS 1255/2016 (annex 4, "Formular de raportare centralizată"), as the INSP workbook has it.
+# The constants below are the order's; change them here when it is amended.
+
+[spec]
+id = "ro-insp-1255-quarterly"
+kind = "table"
+version = "2016-11-07"
+title = { en = "Quarterly centralised report (Order 1255/2016)", ro = "Raportare trimestrială centralizată (OMS 1255/2016)" }
+authority = "INSP / LIR-DSP"
+country = "RO"
+legal = "Ordinul MS nr. 1255/2016, art. 6-8 si anexa 4"
+formats = ["xlsx", "json"]
+access = ["exporter"]
+
+[params]
+period = { type = "quarter" }
+q = { type = "query", default = "origin:local" }
+
+[rules]
+min_patients = { value = 30, article = "art. 7 alin. 3" }
+report_due_day = { value = 20, article = "art. 8 alin. 3" }
+
+[deadline]
+id = "insp"
+months_after_period = 1
+day = "${rules.report_due_day}"
+
+[table]
+exclude = ["shared_administration"]
+unclassified_modalities = ["DX", "CR", "RF", "XA", "CT", "MG", "NM", "PT"]
+not_collected = "Medicină nucleară — tratament, radioterapie; kerma în aer (dentar)"
+note = "O examinare = un studiu × un cod de procedură. Radiografie: DAP al incidenței, inclusiv repetările. Radioscopie, intervențional, dentar: DAP și Ka,r ale studiului. CT: DLP total al studiului. Mamografie: MGD al incidenței. Medicină nucleară: activitatea administrată a studiului; o administrare împărțită în două studii contează o dată."
+
+# How one examination's numbers are found (extract.exam_units): a code given to events sums the
+# first present event field; a code given to the study takes the study field, times scale.
+[table.values]
+dap = { event = ["event.dap"], study = "study.total_dap" }
+mgd = { event = ["event.agd", "event.esd", "event.esak_calc"] }
+dlp = { study = "study.total_dlp" }
+kar = { study = "study.total_rp_dose", scale = 1000 }
+activity = { study = "study.activity_mbq" }
+
+[[sheet]]
+key = "radiologie"
+title = "Radiologie"
+system = "ro-insp-1255-rx"
+count_scheme = "ro-1255-count-age"
+mean_scheme = "ro-1255-mean-age"
+has_type = true
+[[sheet.quantity]]
+key = "dap"
+label = "DAP mediu"
+unit = "Gy·cm²"
+digits = 4
+[[sheet.quantity]]
+key = "mgd"
+label = "ESAK sau MGD"
+unit = "mGy"
+digits = 3
+
+[[sheet]]
+key = "ct"
+title = "CT"
+system = "ro-insp-1255-ct"
+count_scheme = "ro-1255-count-age"
+mean_scheme = "ro-1255-mean-age"
+has_type = false
+[[sheet.quantity]]
+key = "dlp"
+label = "DLP mediu"
+unit = "mGy·cm"
+digits = 1
+
+[[sheet]]
+key = "interventionala_rx"
+title = "Interventionala RX"
+system = "ro-insp-1255-xa"
+count_scheme = "ro-1255-int-count-age"
+mean_scheme = "ro-1255-int-mean-age"
+has_type = false
+[[sheet.quantity]]
+key = "dap"
+label = "DAP mediu"
+unit = "Gy·cm²"
+digits = 4
+[[sheet.quantity]]
+key = "kar"
+label = "Doza medie în punctul de referință"
+unit = "mGy"
+digits = 1
+
+[[sheet]]
+key = "interventionala_ct"
+title = "Interventionala CT"
+system = "ro-insp-1255-ct-int"
+count_scheme = "ro-1255-int-count-age"
+mean_scheme = "ro-1255-int-mean-age"
+has_type = false
+[[sheet.quantity]]
+key = "dlp"
+label = "DLP mediu"
+unit = "mGy·cm"
+digits = 1
+
+[[sheet]]
+key = "dentare"
+title = "Dentare"
+system = "ro-insp-1255-dental"
+count_scheme = "ro-1255-int-count-age"
+mean_scheme = "ro-1255-int-mean-age"
+has_type = false
+[[sheet.quantity]]
+label = "Kerma în aer"
+unit = "mGy"
+digits = 4
+[[sheet.quantity]]
+key = "dap"
+label = "DAP"
+unit = "Gy·cm²"
+digits = 4
+
+[[sheet]]
+key = "mn_diagnostic"
+title = "MN diagnostic"
+system = "ro-insp-1255-nm"
+count_scheme = "ro-1255-int-count-age"
+mean_scheme = "ro-1255-int-mean-age"
+has_type = false
+[[sheet.quantity]]
+key = "activity_min"
+label = "Activitate minimă"
+unit = "MBq"
+digits = 1
+value = "activity"
+stat = "min"
+[[sheet.quantity]]
+key = "activity_max"
+label = "Activitate maximă"
+unit = "MBq"
+digits = 1
+value = "activity"
+stat = "max"
+[[sheet.quantity]]
+key = "activity"
+label = "Activitate medie"
+unit = "MBq"
+digits = 1
+
+[[sheet]]
+key = "mn_hibride"
+title = "MN Hibride"
+system = "ro-insp-1255-nm-hybrid"
+count_scheme = "ro-1255-int-count-age"
+mean_scheme = "ro-1255-int-mean-age"
+has_type = false
+[[sheet.quantity]]
+key = "activity_min"
+label = "Activitate minimă"
+unit = "MBq"
+digits = 1
+value = "activity"
+stat = "min"
+[[sheet.quantity]]
+key = "activity_max"
+label = "Activitate maximă"
+unit = "MBq"
+digits = 1
+value = "activity"
+stat = "max"
+[[sheet.quantity]]
+key = "activity"
+label = "Activitate medie"
+unit = "MBq"
+digits = 1
+[[sheet.quantity]]
+key = "dlp"
+label = "DLP CT"
+unit = "mGy·cm"
+digits = 1

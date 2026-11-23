@@ -16,15 +16,14 @@ from .registry import field, transform
 # ----------------------------------------------------------------------------- study
 
 
-def _study(name: str, attr: str, unit: str = "", doc: str = "", nd: int | None = None):
+def _study(name: str, attr: str, unit: str = "", doc: str = ""):
     def fn(r):
-        v = getattr(r.s, attr)
-        return round(v, nd) if nd is not None and isinstance(v, float) else v
+        return getattr(r.s, attr)  # as stored: round with a transform, never in a field
     fn.__doc__ = doc or f"study.{attr}"
     field(name, unit=unit)(fn)
 
 
-for _n, _a, _u, _d, _nd in [
+for _n, _a, _u, _d, _nd in [  # the last column is unused (kept for readability)
     ("study.id", "id", "", "Dosimetrix's own study number", None),
     ("study.date", "study_datetime", "", "Date and time of the study", None),
     ("study.modality", "modality", "", "DICOM modality (PT is stored for PET/CT, NM for SPECT/CT)", None),
@@ -46,7 +45,7 @@ for _n, _a, _u, _d, _nd in [
     ("study.agd_right", "agd_right", "mGy", "Mean glandular dose, right breast", 3),
     ("study.n_events", "n_events", "", "Irradiation events in the study", None),
 ]:
-    _study(_n, _a, _u, _d, _nd)
+    _study(_n, _a, _u, _d)
 
 
 @field("study.height_cm", unit="cm")
@@ -59,6 +58,32 @@ def height_cm(r):
 def accession(r):
     "The accession number: links the row to a request, so it is identifying."
     return None if r.s.accession_is_hashed else r.s.accession
+
+
+# ----------------------------------------------------------------------------- event
+
+
+def _event(name: str, attr: str, unit: str, doc: str):
+    def fn(r):
+        return getattr(r.e, attr) if r.e is not None else None
+    fn.__doc__ = doc
+    field(name, unit=unit)(fn)
+
+
+for _n, _a, _u, _d in [
+    ("event.dap", "dap", "Gy.cm2", "Dose-area product of the irradiation event"),
+    ("event.agd", "agd", "mGy", "Mean glandular dose of the view (mammography)"),
+    ("event.esd", "esd", "mGy", "Entrance dose as the device itself reports it"),
+    ("event.esak_calc", "esak_calc", "mGy", "ESAK calculated by the Order 1255/2016 annex 2 method"),
+    ("event.dlp", "dlp", "mGy.cm", "DLP of the CT series"),
+    ("event.ctdivol", "ctdivol", "mGy", "CTDIvol of the CT series"),
+    ("event.rp_dose", "rp_dose", "Gy", "Air kerma at the reference point of the event"),
+    ("event.kvp", "kvp", "kV", "Tube voltage"),
+    ("event.mas", "mas", "mAs", "Tube current-time product"),
+    ("event.view", "view", "", "Projection or view as the device names it"),
+    ("event.laterality", "laterality", "", "R / L for paired organs"),
+]:
+    _event(_n, _a, _u, _d)
 
 
 # ----------------------------------------------------------------------------- patient, age
