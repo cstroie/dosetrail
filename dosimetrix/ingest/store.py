@@ -176,7 +176,8 @@ class Store:
         # an object ignored before may be usable now (a parser learnt it, e.g. the OCR of a
         # dose page): only a second "ignored" verdict is a duplicate
         improved = obj.kind == "ct_header" and any(
-            (e.get("extra_json") or {}).get("dlp_method") == "z_extent" for e in obj.events)
+            (e.get("extra_json") or {}).get("dlp_method") in ("z_extent", "legacy_ge_nctdiw")
+            for e in obj.events)
         if seen is not None and not (seen.status == "imported" and improved) and (
                 seen.status in ("imported", "superseded")
                 or (seen.status == "ignored" and obj.kind == "ignored")):
@@ -225,13 +226,15 @@ class Store:
         by_uid = {e.event_uid: e for e in existing if e.event_uid}
         for ev in obj.events:
             old = by_uid.get(ev.get("event_uid"))
-            if obj.kind == "ct_header" and old is not None and _source(old) == "header" \
-                    and (old.extra_json or {}).get("dlp_method", "count_x_thickness") \
-                    == "count_x_thickness" \
-                    and (ev.get("extra_json") or {}).get("dlp_method") == "z_extent":
-                for k in ("dlp", "scan_length_mm", "extra_json"):
-                    setattr(old, k, ev[k])
-                self.stats["header_estimates_improved"] += 1
+            if obj.kind == "ct_header" and old is not None and _source(old) == "header":
+                new_m = (ev.get("extra_json") or {}).get("dlp_method")
+                old_m = (old.extra_json or {}).get("dlp_method", "count_x_thickness")
+                if (new_m == "z_extent" and old_m == "count_x_thickness") or (
+                        new_m == "legacy_ge_nctdiw" and old_m != "legacy_ge_nctdiw"):
+                    for k in ("ctdivol", "dlp", "scan_length_mm", "ct_phantom_cm", "extra_json"):
+                        if k in ev:
+                            setattr(old, k, ev[k])
+                    self.stats["header_estimates_improved"] += 1
         uids = {e.event_uid for e in existing if e.event_uid}
         sigs = {_sig(e) for e in existing} if projection else set()
         added = 0

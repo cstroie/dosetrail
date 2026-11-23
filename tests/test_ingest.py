@@ -508,7 +508,7 @@ def test_legacy_ge_ct_without_ctdivol_is_kept_as_technique_only():
     from dosimetrix.ingest.parse import mark_series_instances
     mark_series_instances(ds, 17)  # 17 images = 17 rotations of 100 mA x 2 s
     assert parse(ds).events[0]["mas"] == pytest.approx(3400.0)
-    assert e["extra_json"]["dose_missing"] and "ctdivol" not in e and "dlp" not in e
+    assert e["extra_json"]["dose_missing"] and "ctdivol" not in e and "dlp" not in e  # no image count
     loc = f.ct_series_image(ctdivol=None, count=None, acquisition=None, scan_options="LOCALIZER MODE",
                             pitch=None, image_type=("ORIGINAL", "PRIMARY", "LOCALIZER"))
     loc.Manufacturer = "GE MEDICAL SYSTEMS"
@@ -532,3 +532,38 @@ def test_placeholder_birth_dates_are_not_birth_dates():
     ds.PatientBirthDate, ds.PatientAge = "17530101", "011M"
     p = parse(ds)
     assert p.patient["birth_date"] is None and p.study["dicom_age"] == "011M"
+
+
+def test_console_counter_ids_of_the_old_ge_scanner_do_not_collide():
+    ds = f.ct_series_image()
+    ds.InstitutionName, ds.PatientID = "CTSynergy", "111"
+    assert parse(ds).patient["patient_id"] == "CTSynergy-111"
+    ds.PatientID = "2990101999999"  # a real ID is left alone
+    assert parse(ds).patient["patient_id"] == "2990101999999"
+    ds.InstitutionName, ds.PatientID = "SOME HOSPITAL", "111"
+    assert parse(ds).patient["patient_id"] == "111"
+
+
+def test_legacy_ge_dose_is_estimated_from_the_published_nctdiw():
+    """17 sequential 3 mm images 5 mm apart, 80 mA x 2 s = 160 mAs, 120 kV: CTDIw = 5.2 x 1.6
+    = 8.32 mGy, CTDIvol = CTDIw x 3/5, DLP = CTDIw x 17 x 3 mm = 42.4 mGy.cm (any increment)."""
+    from dosimetrix.ingest.parse import mark_series_instances, mark_series_last_z
+    ds = f.ct_series_image(ctdivol=None, count=None, spacing=3.0, acquisition=None,
+                           scan_options="DYNAMIC MODE", pitch=None)
+    ds.Manufacturer = "GE MEDICAL SYSTEMS"
+    ds.KVP, ds.XRayTubeCurrent, ds.ExposureTime = 120, 80, 2000
+    del ds.CTDIvol
+    ds.ImagePositionPatient = [0, 0, 12.0]
+    mark_series_instances(ds, 17)
+    mark_series_last_z(ds, 12.0 - 16 * 5.0)
+    e = parse(ds).events[0]
+    assert e["ctdivol"] == pytest.approx(8.32 * 3 / 5) and e["scan_length_mm"] == pytest.approx(85.0)
+    assert e["dlp"] == pytest.approx(42.43, abs=0.02) and e["ct_phantom_cm"] == 32
+    x = e["extra_json"]
+    assert x["dose_estimated"] and x["dlp_method"] == "legacy_ge_nctdiw" and not x["dose_missing"]
+    # the DLP does not depend on the table increment: contiguous slices give the same value
+    mark_series_last_z(ds, 12.0 - 16 * 3.0)
+    assert parse(ds).events[0]["dlp"] == pytest.approx(e["dlp"])
+    # a voltage with no calibration, or a scout, gets no dose
+    ds.KVP = 110
+    assert "dlp" not in parse(ds).events[0]

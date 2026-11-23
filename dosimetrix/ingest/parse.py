@@ -100,6 +100,17 @@ def _date(v) -> dt.date | None:
         return None
 
 
+def _patient_id(ds) -> str | None:
+    """The Patient ID. The decommissioned GE scanner "CTSynergy" numbered its patients 1, 2,
+    3... (a console counter, not a hospital ID): those numbers collide with other short IDs,
+    so they are kept apart by a prefix."""
+    pid = _s(ds.get("PatientID"), 64)
+    if pid and pid.isdigit() and len(pid) <= 5 \
+            and str(ds.get("InstitutionName", "")).strip() == "CTSynergy":
+        return f"CTSynergy-{pid}"
+    return pid
+
+
 def _birth_date(v) -> dt.date | None:
     """PatientBirthDate, unless it is an "unknown" placeholder: systems that cannot store an
     empty date write 1753-01-01 (SQL Server's minimum) or 1900-01-01, which would make the
@@ -148,7 +159,7 @@ def _header(ds) -> tuple[dict, dict, dict]:
     }
     study["indication_source"] = "dicom" if study["indication_text"] else None
     patient = {
-        "patient_id": _s(ds.get("PatientID"), 64),
+        "patient_id": _patient_id(ds),
         "issuer": _s(ds.get("IssuerOfPatientID"), 64),
         "name": _s(ds.get("PatientName")),
         "birth_date": _birth_date(ds.get("PatientBirthDate")),
@@ -622,6 +633,15 @@ def parse_ct_header(ds) -> ParsedObject | None:
                         study=study, patient=patient, device=device, events=[event])
 
 
+# Normalised CTDIw (mGy per 100 mAs, 32 cm body phantom, widest beam) of a legacy single-row GE
+# scanner by tube voltage: the GE HiSpeed CT/i from the ImPACT dosimetry calculator, as listed in
+# Huda et al., Med Phys 2010;37(2):842 (Table 1). The old "Synergy" has no measurement of its
+# own, so this is an extrapolation from the same GE family and generation: expect +-30 % or
+# worse, and narrow slices (<= 3 mm) add penumbra on top. Marked as an estimate on every event.
+LEGACY_GE_NCTDIW = {80: 1.6, 100: 3.6, 120: 5.2, 140: 7.6}
+LEGACY_GE_BASIS = "GE HiSpeed CT/i nCTDIw (ImPACT; Huda 2010), 32 cm body phantom"
+
+
 def _parse_ct_technique(ds, itype: list[str]) -> ParsedObject | None:
     """An original image of a legacy GE CT (ScanOptions "DYNAMIC MODE", "LOCALIZER MODE",
     ...): the header has no CTDIvol, DLP, pitch or collimation, only the technique. One event
@@ -654,6 +674,21 @@ def _parse_ct_technique(ds, itype: list[str]) -> ParsedObject | None:
                        "slice_thickness_mm": _f(ds.get("SliceThickness")),
                        "scan_options": options},
     }
+    thickness = _f(ds.get("SliceThickness"))
+    ncdtiw = LEGACY_GE_NCTDIW.get(int(round(kvp)))
+    if etype == "axial" and per_image and n and thickness and ncdtiw:
+        # sequential scanning, one slice per rotation: CTDIw = nCTDIw x mAs; with a table
+        # increment dz the volume dose is CTDIw x T / dz over a length N x dz, so the DLP is
+        # CTDIw x N x T whatever the increment is
+        z0, z1 = _image_z(ds), series_last_z(ds)
+        dz = abs(z1 - z0) / (n - 1) if z0 is not None and z1 is not None and n > 1 else thickness
+        dz = dz if dz > 0 else thickness
+        ctdiw = ncdtiw * per_image / 100
+        event.update({"ctdivol": ctdiw * thickness / dz, "dlp": ctdiw * thickness * n / 10,
+                      "scan_length_mm": n * dz, "ct_phantom_cm": 32})
+        event["extra_json"].update({"dose_missing": False, "dose_estimated": True,
+                                    "dlp_method": "legacy_ge_nctdiw", "dose_basis": LEGACY_GE_BASIS,
+                                    "table_increment_mm": dz, "ctdiw_mgy": ctdiw})
     return ParsedObject("ct_header", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
                         study=study, patient=patient, device=device, events=[event])
 
