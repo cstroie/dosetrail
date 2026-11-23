@@ -54,7 +54,7 @@ from pynetdicom.sop_class import (
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..db.models import AppSetting, Study
+from ..db.models import AppSetting, Event, Study
 from .spool import Spool
 
 log = logging.getLogger("dosimetrix.qr")
@@ -382,9 +382,12 @@ def has_dose_report(session: Session, study_uid: str) -> bool:
 
 
 def needs_activity(session: Session, study_uid: str) -> bool:
-    """A known study (e.g. the CT part of a PET/CT) without its administered activity."""
-    return session.scalar(select(Study.id).where(
-        Study.study_uid == study_uid, Study.admin_activity_mbq.is_(None))) is not None
+    """A known study (e.g. the CT part of a PET/CT) with no radiopharmaceutical
+    administration yet. One whose header gives no activity, or whose administration
+    counts on another study, is not fetched again."""
+    sid = session.scalar(select(Study.id).where(Study.study_uid == study_uid))
+    return sid is not None and session.scalar(select(Event.id).where(
+        Event.study_id == sid, Event.event_type == "radiopharmaceutical").limit(1)) is None
 
 
 def needs_staff(session: Session, study_uid: str) -> bool:

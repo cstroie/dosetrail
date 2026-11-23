@@ -1,5 +1,5 @@
-// Study detail for CT, radiography (DX/CR) and mammography. Fluoroscopy and interventional
-// studies keep the dedicated view in study.js (running Ka,r curve, thresholds).
+// Study detail for CT, radiography (DX/CR), mammography, nuclear medicine and PET/CT.
+// Fluoroscopy and interventional studies keep the dedicated view in study.js (Ka,r curve).
 // Shows: facts, dose readouts, exam codes, this study's alerts and data-quality findings,
 // and the series / exposures with the DRL that applies to each (exam + age group).
 
@@ -9,10 +9,12 @@ import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, clock } from '../core/format.js';
+import { studyHref } from '../core/api.js';
 
 const SYSTEMS = { 'ro-nom-ct': 'Nomenclator CT', 'ro-nom-rx': 'Nomenclator radiologie', 'ro-drl-ms838-2025': 'NRD OMS 838/2025',
   'ec-rp185': 'EU RP 185', 'ro-insp-1255-ct': 'INSP 1255 CT', 'ro-insp-1255-rx': 'INSP 1255 radiologie',
-  'ro-insp-1255-xa': 'INSP 1255 intervențional', 'ro-insp-1255-dental': 'INSP 1255 dentar' };
+  'ro-insp-1255-xa': 'INSP 1255 intervențional', 'ro-insp-1255-dental': 'INSP 1255 dentar',
+  'ro-insp-1255-nm': 'INSP 1255 MN diagnostic', 'ro-insp-1255-nm-hybrid': 'INSP 1255 MN hibride' };
 
 function ratioTag(value, ref) {
   if (value == null || !ref) return '';
@@ -81,7 +83,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
     readout('Highest CTDIvol', num(T.ctdivol_max, 2), 'mGy', [...new Set(series.map((e) => e.phantom_cm).filter(Boolean))].map((x) => `${x} cm phantom`).join(' · ')),
     readout('Contrast', { N: 'native', C: 'contrast', NC: 'native + contrast', MF: 'multiphase' }[s.contrast] || '—'),
   ] : ['PT', 'NM'].includes(s.modality) ? [
-    readout('Administered activity', T.activity_mbq != null ? num(T.activity_mbq, 0) : '—', 'MBq', `${ev.length} administration${ev.length === 1 ? '' : 's'}`),
+    readout('Administered activity', T.activity_mbq != null ? num(T.activity_mbq, 0) : '—', 'MBq', T.activity_counted_on ? h('a', { href: studyHref({ id: T.activity_counted_on }) }, 'same administration: counted on the earlier study') : `${ev.length} administration${ev.length === 1 ? '' : 's'}`),
   ] : [
     readout('Total DAP', dap(T.dap_gycm2, 3), dapUnit(), `${ev.length} exposures`),
     readout('Projections', views.length ? views.join(', ') : '—'),

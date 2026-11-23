@@ -280,3 +280,33 @@ def test_recompute_relabels_pet_ct_filed_as_ct(session):
     session.expire_all()
     assert session.get(Study, s.id).modality == "PT"
     assert relabel_hybrid(session) == 0
+
+
+def test_one_administration_in_two_studies_counts_once(session):
+    """An early and a delayed PET sent as two studies: the injection counts on the first."""
+    store = Store(session, SECRET)
+    late = f.pet_image(study_uid="1.2.3.530", sop_uid="1.2.3.530.1", mbq=126.06)
+    late.StudyTime = "120000"
+    early = f.pet_image(study_uid="1.2.3.531", sop_uid="1.2.3.531.1", mbq=126.06)
+    early.StudyTime = "102200"
+    store.store(parse(late))  # the later study arrives first
+    store.store(parse(early))
+    a = session.scalar(select(Study).filter_by(study_uid="1.2.3.531"))
+    b = session.scalar(select(Study).filter_by(study_uid="1.2.3.530"))
+    assert a.admin_activity_mbq == pytest.approx(126.06)
+    assert b.admin_activity_mbq is None
+    (ev,) = b.events
+    assert ev.extra_json["same_administration_as"] == a.id
+    assert "same_administration_as" not in (a.events[0].extra_json or {})
+
+    # another injection (stress after rest): its own administration
+    other = f.pet_image(study_uid="1.2.3.532", sop_uid="1.2.3.532.1", mbq=400.0)
+    store.store(parse(other))
+    c = session.scalar(select(Study).filter_by(study_uid="1.2.3.532"))
+    assert c.admin_activity_mbq == pytest.approx(400.0)
+
+    from dosimetrix.maintenance import settle_administrations
+    from dosimetrix.net.qr import needs_activity
+
+    assert settle_administrations(session) == 0  # stable
+    assert not needs_activity(session, "1.2.3.530")  # not fetched again

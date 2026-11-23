@@ -305,6 +305,9 @@ def study(session: Session, study_id: int) -> dict | None:
             "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": _r(s.psd_mgy, 1),
             "dlp_mgycm": _r(s.total_dlp, 1), "ctdivol_max": _r(s.ctdivol_max, 2),
             "n_events": s.n_events, "activity_mbq": _r(s.admin_activity_mbq, 1),
+            # the administration this study shares, counted on that earlier study
+            "activity_counted_on": next((x for e in events if (x := (e.extra_json or {})
+                                         .get("same_administration_as"))), None),
         },
         "thresholds": XA_THRESHOLDS if s.modality in ("RF", "XA") else None,
         "alerts": _alerts(session, s.id),

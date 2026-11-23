@@ -10,6 +10,10 @@ Rules
   added twice – e.g. the 'for processing' and 'for presentation' copies of one radiograph
   or mammogram.
 * Study totals and derived columns are recomputed for the touched study.
+* One radiopharmaceutical administration seen in two studies of the same patient (an
+  early and a delayed PET, sent as two studies) counts once: on the earliest study. The
+  other study's copy is marked ``same_administration_as`` and adds no activity
+  (settle_administrations).
 """
 
 from __future__ import annotations
@@ -192,6 +196,8 @@ class Store:
             added += 1
         self.session.flush()
         update_study_totals(self.session, study)
+        if any(ev.get("event_type") == "radiopharmaceutical" for ev in obj.events):
+            settle_administrations(self.session, study)
         self._classify(study.id)
         if device is not None:
             _touch_device(device, study.study_datetime, new_study)
@@ -354,7 +360,78 @@ def update_study_totals(session: Session, study: Study) -> None:
     cts = [e.ctdivol for e in events if e.ctdivol is not None and not e.is_localizer]
     study.ctdivol_max = max(cts) if cts else None
     mbq = [(e.extra_json or {}).get("activity_mbq") for e in events
-           if e.event_type == "radiopharmaceutical"]
+           if e.event_type == "radiopharmaceutical"
+           and not (e.extra_json or {}).get("same_administration_as")]
     mbq = [v for v in mbq if v]
     study.admin_activity_mbq = sum(mbq) if mbq else None
     session.flush()
+
+
+SAME_ADMIN_WINDOW = dt.timedelta(seconds=59)  # start times are recorded to the minute
+SAME_ADMIN_ACTIVITY = 0.01  # relative difference
+
+
+def _same_administration(a: Event, b: Event) -> bool:
+    """Same agent, start time to the minute, same activity (both unknown, or within 1 %).
+    A rest / stress pair or a second tracer differ in time, agent or activity."""
+    from ..classify import normalise
+
+    if a.event_datetime is None or b.event_datetime is None:
+        return False
+    if abs(a.event_datetime - b.event_datetime) > SAME_ADMIN_WINDOW:
+        return False
+    if normalise(a.protocol) != normalise(b.protocol) or \
+            normalise(a.comment) != normalise(b.comment):
+        return False
+    x, y = ((e.extra_json or {}).get("activity_mbq") for e in (a, b))
+    if x is None or y is None:
+        return x is None and y is None
+    return abs(x - y) <= SAME_ADMIN_ACTIVITY * max(x, y)
+
+
+def settle_administrations(session: Session, study: Study) -> list[int]:
+    """Mark administrations of ``study`` that another study of the same patient also
+    holds: the earliest study (then the lowest id) keeps them, the others' copies get
+    ``same_administration_as`` = its id. Returns the ids of the studies changed."""
+    if study.patient_id is None:
+        return []
+    own = list(session.scalars(select(Event).where(
+        Event.study_id == study.id, Event.event_type == "radiopharmaceutical",
+        Event.event_datetime.is_not(None))))
+    if not own:
+        return []
+    lo = min(e.event_datetime for e in own) - SAME_ADMIN_WINDOW
+    hi = max(e.event_datetime for e in own) + SAME_ADMIN_WINDOW
+    rows = session.execute(
+        select(Event, Study).join(Study, Study.id == Event.study_id)
+        .where(Study.patient_id == study.patient_id, Study.id != study.id,
+               Event.event_type == "radiopharmaceutical",
+               Event.event_datetime.between(lo, hi))).all()
+    changed: set[int] = set()
+
+    def order(s: Study) -> tuple:
+        return (s.study_datetime or dt.datetime.max, s.id)
+
+    def mark(e: Event, owner: int | None) -> None:
+        x = dict(e.extra_json or {})
+        if x.get("same_administration_as") == owner:
+            return
+        if owner is None:
+            x.pop("same_administration_as", None)
+        else:
+            x["same_administration_as"] = owner
+        e.extra_json = x
+        changed.add(e.study_id)
+
+    for e in own:
+        copies = [(o, s) for o, s in rows if _same_administration(e, o)]
+        if not copies:
+            mark(e, None)
+            continue
+        first = min([study, *(s for _o, s in copies)], key=order)
+        for ev, s in [(e, study), *copies]:
+            mark(ev, None if s.id == first.id else first.id)
+    session.flush()
+    for sid in changed:
+        update_study_totals(session, session.get(Study, sid))
+    return sorted(changed)

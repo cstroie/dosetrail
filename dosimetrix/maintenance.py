@@ -66,6 +66,22 @@ def relabel_hybrid(session: Session) -> int:
     return len(ids)
 
 
+def settle_administrations(session: Session) -> int:
+    """One administration seen in two studies of a patient counts once (ingest/store.py)."""
+    from .ingest.store import settle_administrations as settle
+
+    rp = select(Event.study_id).where(Event.event_type == "radiopharmaceutical")
+    patients = session.scalars(
+        select(Study.patient_id).where(Study.id.in_(rp), Study.patient_id.is_not(None))
+        .group_by(Study.patient_id).having(func.count() > 1))
+    changed: set[int] = set()
+    for pid in list(patients):
+        for s in session.scalars(select(Study).where(Study.patient_id == pid,
+                                                     Study.id.in_(rp))):
+            changed.update(settle(session, s))
+    return len(changed)
+
+
 def recompute_device_stats(session: Session) -> int:
     st = Study.__table__
     stmt = update(Device).values(
@@ -114,6 +130,8 @@ def recompute_all(session: Session, secret: bytes | None = None) -> list[str]:
     out = [f"studies with zero doses set to missing: {zero_doses_as_missing(session)}",
            f"PET/CT and SPECT/CT studies filed as CT, relabelled: {relabel_hybrid(session)}",
            f"CT studies updated: {recompute_ct_columns(session)}",
+           f"studies sharing an administration with another: "
+           f"{settle_administrations(session)}",
            f"devices updated: {recompute_device_stats(session)}"]
     from . import ssde
 
