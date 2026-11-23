@@ -90,6 +90,7 @@ kbd { font: var(--fs-xs) var(--font-mono); border: 1px solid var(--line-2); bord
 /* ---------- primitives ---------- */
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); min-width: 0; }
 .panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); }
+.count-line { display: inline-flex; align-items: baseline; gap: var(--sp-2); }  /* mono number and sans label share a baseline */
 .panel-body { padding: var(--sp-3); }
 
 .btn {

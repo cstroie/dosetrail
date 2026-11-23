@@ -54,7 +54,7 @@ class DtDataGrid extends HTMLElement {
     this.pageNo = h('span', { class: 'mono' });
 
     this.append(
-      h('div', { class: 'panel-head' }, this.countEl, h('span', { class: 'muted' }, this.getAttribute('noun') || ''),
+      h('div', { class: 'panel-head' }, h('span', { class: 'count-line' }, this.countEl, h('span', { class: 'muted' }, this.getAttribute('noun') || '')),
         h('span', { class: 'spacer' }), h('span', { class: 'menu-wrap' }, colBtn, this.colMenu), this.densitySeg, actions),
       h('div', { class: 'grid-scroll' }, this.table, this.status),
       h('div', { class: 'grid-foot' }, this.pageInfo, h('span', { class: 'spacer' }), h('span', { class: 'muted' }, t('studies.keys')),
