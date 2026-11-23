@@ -30,8 +30,8 @@ const DRL_SETS = { 'ro-ms838-2025': 'National OMS 838/2025', 'ec-rp185-2018': 'E
 const TOPS = { all: 'All', 5: '5', 8: '8', 10: '10', 16: '16', 20: '20', 30: '30', 50: '50' };
 /** How many groups a panel charts: its Top option, else the panel's default. */
 const topOf = (cfg, dflt) => (cfg.top === 'all' ? Infinity : Number(cfg.top) || dflt);
-const DEFAULT_TOP = { sbox: 16, sbar: 16, strend: 8, sdrl: Infinity };
-const topSelect = (cfg, select, update) => select('Top', String(cfg.top || (DEFAULT_TOP[cfg.type] === Infinity ? 'all' : DEFAULT_TOP[cfg.type])), TOPS, (v) => update({ top: v }));
+const DEFAULT_TOP = 10;  // every Top-N panel starts with 10, never with all
+const topSelect = (cfg, select, update) => select('Top', String(cfg.top || DEFAULT_TOP), TOPS, (v) => update({ top: v }));
 
 export function defaultsFor(type) {
   return { type, modality: 'CT', metric: 'dlp_total', by: type === 'strend' ? 'month' : 'exam', series: type === 'strend' ? 'exam' : '',
@@ -96,7 +96,7 @@ export async function buildServer(cfg, q, devColor) {
   const isTime = ['month', 'quarter', 'year'].includes(d1);
   let shown = isTime ? cats : cats.filter((c) => catN.get(c) >= (cfg.min_n ?? 5));
   const banded = ['age_band', 'weight_band', 'ref_group'].includes(d1);
-  const limit = topOf(cfg, banded ? Infinity : 16);  // a time axis is not cut; bands keep their own order
+  const limit = topOf(cfg, banded ? Infinity : DEFAULT_TOP);  // a time axis is not cut; bands keep their own order
   if (cfg.type !== 'strend' && cfg.type !== 'shist' && shown.length > limit) {
     if (banded) { const keep = new Set([...shown].sort((a, b) => catN.get(b) - catN.get(a)).slice(0, limit)); shown = shown.filter((c) => keep.has(c)); }
     else shown = [...shown].sort((a, b) => catN.get(b) - catN.get(a)).slice(0, limit);
@@ -107,7 +107,7 @@ export async function buildServer(cfg, q, devColor) {
   const pick = (c, s) => res.groups.find((g) => lab(g, d1) === c && (!d2 || lab(g, d2) === s));
   const color = (th, i) => th.devices[i % th.devices.length];
   const nSeries = d2 ? new Set(res.groups.map((g) => lab(g, d2))).size : 0;
-  const truncated = cfg.type === 'strend' ? (nSeries > topOf(cfg, 8) ? ` · top ${topOf(cfg, 8)} of ${nSeries} series` : '')
+  const truncated = cfg.type === 'strend' ? (nSeries > topOf(cfg, DEFAULT_TOP) ? ` · top ${topOf(cfg, DEFAULT_TOP)} of ${nSeries} series` : '')
     : shown.length < cats.length ? ` · top ${shown.length} of ${cats.length}` : '';
 
   const option = (th) => {
@@ -123,7 +123,7 @@ export async function buildServer(cfg, q, devColor) {
     }
     if (cfg.type === 'strend') {
       const top = [...new Set(res.groups.map((g) => lab(g, d2)))].map((s) => [s, res.groups.filter((g) => lab(g, d2) === s).reduce((a, g) => a + g.n, 0)])
-        .sort((a, b) => b[1] - a[1]).slice(0, topOf(cfg, 8)).map(([s]) => s);
+        .sort((a, b) => b[1] - a[1]).slice(0, topOf(cfg, DEFAULT_TOP)).map(([s]) => s);
       return { ...base, legend: { ...base.legend, data: top }, grid: { left: 8, right: 16, top: 40, bottom: 30, containLabel: true },
         tooltip: { ...base.tooltip, trigger: 'axis' },
         xAxis: { type: 'category', data: cats, ...base._axis }, yAxis: { type: 'value', name: unit, ...base._axis },
@@ -150,7 +150,7 @@ export async function buildServer(cfg, q, devColor) {
 async function buildDrl(cfg, q) {
   const res = await drlCompare({ q: query(cfg, q), set: cfg.set || 'ro-ms838-2025', min_n: 1 });
   const all = res.rows.filter((r) => r.groups.length && r.groups[0].ratio != null);
-  const lim = topOf(cfg, Infinity);  // the highest median / DRL ratios, kept in the server's order
+  const lim = topOf(cfg, DEFAULT_TOP);  // the highest median / DRL ratios, kept in the server's order
   const keep = all.length > lim ? new Set([...all].sort((a, b) => b.groups[0].ratio - a.groups[0].ratio).slice(0, lim)) : null;
   const rows = keep ? all.filter((r) => keep.has(r)) : all;
   const labels = rows.map((r) => `${r.exam_meaning} · ${r.band_label || 'all'} · ${r.quantity}`);
