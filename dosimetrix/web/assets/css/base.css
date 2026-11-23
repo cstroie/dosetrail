@@ -65,6 +65,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   cursor: pointer; text-align: left;
 }
 kbd { font: var(--fs-xs) var(--font-mono); border: 1px solid var(--line-2); border-radius: 3px; padding: 0 4px; color: var(--muted); }
+.cmdk-label { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cmdk-trigger kbd { margin-left: auto; }
 .work { padding: var(--sp-3) var(--sp-4) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); }
 

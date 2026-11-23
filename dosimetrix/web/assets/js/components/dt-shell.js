@@ -42,7 +42,7 @@ class DtShell extends HTMLElement {
     const ctx = h('header', { class: 'ctx' },
       crumb,
       h('button', { class: 'cmdk-trigger', type: 'button', onclick: () => palette.open() },
-        icon('search', 14, 2), h('span', {}, t('shell.search')), h('kbd', {}, 'Ctrl K')),
+        icon('search', 14, 2), h('span', { class: 'cmdk-label' }, t('shell.search')), h('kbd', {}, 'Ctrl K')),
       ctxExtras.map((n) => { n.removeAttribute('slot'); return n; }),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('shell.lang'), title: t('shell.lang'),
         onclick: () => { prefs.set('lang', lang() === 'en' ? 'ro' : 'en'); location.reload(); } }, lang().toUpperCase()),

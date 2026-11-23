@@ -7,7 +7,7 @@ const STRINGS = {
   en: {
     'nav.overview': 'Overview', 'nav.studies': 'Studies', 'nav.charts': 'Charts', 'nav.drl': 'Reference levels', 'nav.reports': 'Reports', 'nav.alerts': 'Alerts', 'nav.admin': 'Admin',
     'nav.overview.short': 'Overview', 'nav.studies.short': 'Studies', 'nav.charts.short': 'Charts', 'nav.drl.short': 'DRL', 'nav.reports.short': 'Reports', 'nav.alerts.short': 'Alerts', 'nav.admin.short': 'Admin',
-    'shell.search': 'Search accession, patient ID, device, or type a command…',
+    'shell.search': 'Search or type a command…',
     'shell.modality': 'Modality', 'shell.origin': 'Origin', 'shell.all': 'All',
     'shell.local': 'Local', 'shell.external': 'External', 'shell.both': 'Local + external',
     'shell.theme.dark': 'Switch to light theme', 'shell.theme.light': 'Switch to dark theme',
@@ -124,7 +124,7 @@ const STRINGS = {
   ro: {
     'nav.overview': 'Sinteză', 'nav.studies': 'Studii', 'nav.charts': 'Grafice', 'nav.drl': 'Niveluri de referință', 'nav.reports': 'Rapoarte', 'nav.alerts': 'Alerte', 'nav.admin': 'Administrare',
     'nav.overview.short': 'Sinteză', 'nav.studies.short': 'Studii', 'nav.charts.short': 'Grafice', 'nav.drl.short': 'NRD', 'nav.reports.short': 'Rapoarte', 'nav.alerts.short': 'Alerte', 'nav.admin.short': 'Admin.',
-    'shell.search': 'Caută accesie, ID pacient, aparat sau scrie o comandă…',
+    'shell.search': 'Caută sau scrie o comandă…',
     'shell.modality': 'Modalitate', 'shell.origin': 'Proveniență', 'shell.all': 'Toate',
     'shell.local': 'Local', 'shell.external': 'Extern', 'shell.both': 'Local + extern',
     'shell.theme.dark': 'Comută pe tema luminoasă', 'shell.theme.light': 'Comută pe tema întunecată',
