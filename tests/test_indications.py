@@ -105,3 +105,27 @@ def test_stats_dimension_and_query(session, m):
     assert got == {"RSP-PNM": 2, "PED-APD": 1}
     sel = conditions(parse("ind:RSP-*"), dt.datetime(2026, 1, 1))
     assert len(session.scalars(Study.__table__.select().where(*sel)).all()) == 2
+
+
+TEXTS = ["pneumonie", "apendicita acuta", "dureri toracice suspiciune pneumonie", "tuse cronica",
+         "traumatism cranio cerebral", "infectie urinara", "control", "xyzzy nimic", "tce"]
+
+
+def test_best_is_remembered_and_unchanged(m):
+    from dosimetrix.classify import normalise
+
+    for raw in TEXTS:
+        for child in (True, False, None):
+            text = normalise(raw)
+            fresh = m._best_uncached(text, child)
+            assert m.best(text, child) == fresh  # first call computes and stores
+            assert m.best(text, child) is m._best[(text, child)]  # then the stored answer
+    assert m.best("", True) == (None, 0.0)
+    # the memo is bounded: a flood of distinct texts empties it rather than growing it
+    old, indications.BEST_MEMO_MAX = indications.BEST_MEMO_MAX, 5
+    try:
+        for i in range(20):
+            m.best(f" text{i} ", None)
+        assert len(m._best) <= 5
+    finally:
+        indications.BEST_MEMO_MAX = old

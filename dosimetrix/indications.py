@@ -80,6 +80,9 @@ class Match:
     text: str
 
 
+BEST_MEMO_MAX = 20000  # distinct (text, child) pairs kept per Matcher
+
+
 class Matcher:
     def __init__(self, session: Session):
         system = session.scalar(select(CodeSystem).filter_by(key=SYSTEM))
@@ -94,12 +97,16 @@ class Matcher:
         self.human = {m.match_value: m.code_id for m in session.scalars(
             select(CodeMapping).filter_by(modality=FAMILY, match_field=FIELD))}
         self.code_of = {e.code_id: e.code for e in self.entries}
+        self._best: dict[tuple[str, bool | None], tuple[Entry | None, float]] = {}
 
     def score(self, text: str, entry: Entry) -> float:
         """0–1. Needs shared words: trigram likeness alone ("infectie respiratorie" vs
         "infectie urinara") is not enough."""
-        grams = _trigrams(text)
-        stems = _stems(text)
+        return self._score(_trigrams(text), _stems(text), entry)
+
+    @staticmethod
+    def _score(grams: set, stems: set, entry: Entry) -> float:
+        """``score`` with the text's trigrams and stems already computed (once per text)."""
         # words of the meaning (first 5 letters) found in the text: "cranio-encefalic" and
         # "cranioencefalic" share "crani"
         cover = len(stems & entry.stems) / len(entry.stems) if entry.stems else 0
@@ -110,9 +117,21 @@ class Matcher:
         return round(max(dice, 0.5 * cover + 0.5 * contain) * min(1.0, 0.4 + cover), 3)
 
     def best(self, text: str, child: bool | None) -> tuple[Entry | None, float]:
+        """The best entry for a normalised text; remembered per (text, child), as the
+        same indications come back study after study."""
         if not text:
             return None, 0.0
-        scored = sorted(((self.score(text, e), e) for e in self.entries),
+        key = (text, child)
+        hit = self._best.get(key)
+        if hit is None:
+            if len(self._best) >= BEST_MEMO_MAX:
+                self._best.clear()
+            hit = self._best[key] = self._best_uncached(text, child)
+        return hit
+
+    def _best_uncached(self, text: str, child: bool | None) -> tuple[Entry | None, float]:
+        grams, stems = _trigrams(text), _stems(text)
+        scored = sorted(((self._score(grams, stems, e), e) for e in self.entries),
                         key=lambda x: -x[0])[:8]
         if not scored or scored[0][0] == 0:
             return None, 0.0
@@ -132,7 +151,7 @@ class Matcher:
                     continue
                 shared = len(e.stems & lead.stems)
                 if (redirect and shared >= 2) or shared / len(e.stems | lead.stems) >= 0.5:
-                    pref.append((self.score(text, e), e))
+                    pref.append((self._score(grams, stems, e), e))
             if pref:
                 s, e = max(pref, key=lambda x: x[0])
                 return e, max(s, min(top, AUTO))
