@@ -8,7 +8,7 @@ import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
-import { exportList, exportRun, exportUrl, actionList, addAction, editAction, deleteAction, art12Report, art12Url, inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
+import { exportList, exportRun, specUrl, actionList, addAction, editAction, deleteAction, art12Report, art12Url, inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
@@ -139,7 +139,7 @@ async function loadSpecs() {
   }
   const run = (format) => () => {
     if (format === 'json') { preview(); return; }
-    const href = exportUrl(spec.id, p, format);
+    const href = specUrl(spec.id, p, format);
     if (!href) { toast(t('rep.needserver')); return; }
     h('a', { href, download: '' }).click();
     toast(t('rep.started'));

@@ -219,7 +219,7 @@ export function drlSets() {
  *  GET /api/exports/{id}?format=&<params> runs one (json for the preview, or a file). */
 export const exportList = () => (isSample ? serverOnly('Reports') : remote('/api/exports'));
 export const exportRun = (id, params) => (isSample ? serverOnly('Reports') : remote(`/api/exports/${encodeURIComponent(id)}`, params));
-export function exportUrl(id, params, format) {
+export function specUrl(id, params, format) {
   if (isSample) return null;
   const u = new URL(`/api/exports/${encodeURIComponent(id)}`, MODE);
   for (const [k, v] of Object.entries({ ...params, format })) if (v !== '' && v != null) u.searchParams.set(k, String(v));
