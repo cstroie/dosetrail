@@ -12,11 +12,9 @@ import { prefs } from '../core/prefs.js';
 
 const DEFAULT_Q = 'modality:CT date:90d age:>=18 origin:local -phantom';
 const SAVED_KEY = 'savedQueries.ct';
-const BUILTIN = [
-  { name: 'Adult CT, last 90 days', q: DEFAULT_Q },
-  { name: 'Above DRL, last 30 days', q: 'modality:CT date:30d flag:drl -phantom' },
-  { name: 'Head CT, emergency', q: 'modality:CT desc:head device:"CT 1 – Emergency" -phantom' },
-];
+// One starter query, copied into the user's own saved queries the first time (nothing stored
+// yet); from then on it is theirs: deleting it keeps it deleted.
+const STARTER = { name: 'Adult CT, last 90 days', q: DEFAULT_Q };
 
 const page = document.getElementById('page');
 const url = new URL(location.href);
@@ -54,18 +52,19 @@ const COLUMNS = [
 ];
 
 function savedQueries() {
-  return prefs.get(SAVED_KEY) || [];
+  const saved = prefs.get(SAVED_KEY);
+  if (saved) return saved;
+  prefs.set(SAVED_KEY, [{ ...STARTER }]);
+  return prefs.get(SAVED_KEY);
 }
 
 function tabs(currentQ, onPick) {
   const saved = savedQueries();
-  const all = [...BUILTIN, ...saved];
   const nav = h('nav', { class: 'tabs', 'aria-label': 'Saved queries' });
-  const match = all.find((s) => s.q === currentQ);
-  for (const s of all) {
+  const match = saved.find((s) => s.q === currentQ);
+  for (const s of saved) {
     const tab = h('button', { type: 'button', 'aria-current': s === match ? 'page' : false, title: s.q, onclick: () => onPick(s.q) }, s.name);
-    if (!saved.includes(s)) { nav.append(tab); continue; }
-    // a saved query (this browser only) can be deleted again; the built-in ones cannot
+    // every tab is the user's own (this browser only) and can be deleted
     nav.append(h('span', { class: 'tab-saved' }, tab,
       h('button', { type: 'button', class: 'tab-x', 'aria-label': `Delete “${s.name}”`, title: 'Delete this saved query', onclick: () => {
         if (!confirm(`Delete the saved query “${s.name}”?`)) return;
