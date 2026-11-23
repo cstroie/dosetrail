@@ -12,12 +12,13 @@
     form { width: min(22rem, 90vw); display: grid; gap: var(--space-3, 0.75rem);
            padding: var(--space-5, 1.5rem); border: 1px solid var(--border, #333);
            border-radius: var(--radius-2, 6px); background: var(--surface-1, transparent); }
-    h1 { font-size: 1.1rem; margin: 0 0 0.5rem; }
-    label { display: grid; gap: 0.25rem; font-size: 0.85rem; }
-    input { padding: 0.5rem; font: inherit; }
-    .err { color: var(--danger, #e5484d); min-height: 1.2em; font-size: 0.85rem; }
-    .brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 650; letter-spacing: -0.01em; }
+    .brand { display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+             font-size: 1.1rem; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 0.5rem; }
     .brand .mark, .brand .x { color: var(--accent, #9CB8D6); }
+    label { display: grid; gap: 0.25rem; font-size: 0.85rem; }
+    input, button { box-sizing: border-box; width: 100%; padding: 0.5rem; font: inherit; }
+    button { display: flex; align-items: center; justify-content: center; text-align: center; }
+    .err { color: var(--danger, #e5484d); min-height: 1.2em; margin: 0; font-size: 0.85rem; text-align: center; }
   </style>
   <script src="/assets/js/boot.js"></script>
 </head>
