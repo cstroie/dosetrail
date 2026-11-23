@@ -130,7 +130,8 @@ class Checker:
                     .join(Code, Code.id == ReferenceValue.exam_code_id)
                     .outerjoin(GroupBand, GroupBand.id == ReferenceValue.band_id)
                     .where(ReferenceValue.set_id == rs.id)):
-                if rv.quantity in ("dlp", "dap") and rv.unit in ("mGy.cm", "Gy.cm2"):
+                if (rv.quantity, rv.unit) in (("dlp", "mGy.cm"), ("dap", "Gy.cm2"),
+                                              ("mgd", "mGy"), ("activity", "MBq")):
                     self.drl[(code, band, rv.quantity)] = rv.value
 
     def study(self, s: Study, p: Patient | None, events: list[Event],

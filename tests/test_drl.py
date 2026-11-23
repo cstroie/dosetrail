@@ -54,8 +54,41 @@ def test_national_set_per_series_and_per_study(session, data):
     ap = _row(out, "RX-CAP-AP", "1-4y", "dap")  # "study": the retake is included
     assert ap["groups"][0]["n"] == 1 and ap["groups"][0]["median"] == pytest.approx(0.15)
     assert _row(out, "CT-TORACE", "1-4y", "dlp")["status"] == "no_data"
-    nm = _row(out, "NM-RENAL-DMSA", "1-4y", "activity")
-    assert nm["status"] == "unavailable" and "activity" in nm["reason"]
+    assert _row(out, "NM-RENAL-DMSA", "1-4y", "activity")["status"] == "no_data"
+
+
+def test_activity_per_study_and_mammography_per_breast(session, data):
+    adult = int(40 * 365.25)
+    pets = []
+    for i, mbq in enumerate([300.0, 420.0]):
+        s = Study(study_uid=f"pt.{i}", modality="PT", study_datetime=T, age_days=adult,
+                  study_description="PET-CT", source_kind="test", admin_activity_mbq=mbq)
+        s.events = [Event(event_type="radiopharmaceutical", protocol="FDG",
+                          extra_json={"activity_mbq": mbq}),
+                    Event(event_type="spiral", dlp=600.0 + i * 100)]
+        pets.append(s)
+    # the delayed scan of the second injection: its activity counts on pt.1 only
+    late = Study(study_uid="pt.9", modality="PT", study_datetime=T, age_days=adult,
+                 study_description="PET-CT", source_kind="test")
+    late.events = [Event(event_type="radiopharmaceutical", protocol="FDG",
+                         extra_json={"activity_mbq": 420.0, "same_administration_as": 1})]
+    mg = Study(study_uid="mg.1", modality="MG", study_datetime=T, age_days=adult,
+               source_kind="test")
+    mg.events = [Event(view="CC", laterality="R", agd=1.0), Event(view="MLO", laterality="R",
+                                                                  agd=1.5),
+                 Event(view="CC", laterality="L", agd=1.2), Event(view="MLO", laterality="L",
+                                                                  agd=1.4)]
+    session.add_all([*pets, late, mg])
+    session.flush()
+    classify.run(session)
+    out = drl.compare(session, [], "ro-ms838-2025", min_n=1)
+    (g,) = _row(out, "PETCT-FDG", "15y+", "activity")["groups"]
+    assert g["n"] == 2 and g["median"] == pytest.approx(360.0)
+    (g,) = _row(out, "PETCT-FDG", "15y+", "dlp")["groups"]
+    assert g["n"] == 2
+    (g,) = [r for r in out["rows"] if r["exam"] == "MG-UNILATERAL"][0]["groups"]
+    assert g["n"] == 2 and sorted([g["min"], g["max"]]) == [pytest.approx(2.5),
+                                                             pytest.approx(2.6)]
 
 
 def test_european_set_units_bands_and_devices(session, data):

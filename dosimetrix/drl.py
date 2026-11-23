@@ -20,6 +20,11 @@ Local quantities by ``applies_to``:
 * ``exposure``: one value per irradiation event;
 * ``study``: the sum over the study's events that carry the exam code. For radiography
   that is the dose of one projection including retakes; for fluoroscopy, the study total.
+  Two exceptions:
+  * mammography 2D (MG-UNILATERAL): the mean glandular dose of each breast, i.e. the sum
+    over that breast's views (a bilateral study gives two values);
+  * administered activity (NM, PET): the study's activity, an administration shared with
+    an earlier study counted only there.
 """
 
 from __future__ import annotations
@@ -50,9 +55,10 @@ QUANTITY = {
     "ctdivol": (Event.ctdivol, {"mGy": 1.0}),
     "dap": (Event.dap, {"Gy.cm2": 1.0, "mGy.cm2": 1000.0, "cGy.cm2": 100.0, "Gy.m2": 1e-4}),
     "mgd": (Event.agd, {"mGy": 1.0}),
+    "activity": (Study.admin_activity_mbq, {"MBq": 1.0}),
 }
-UNAVAILABLE = {"kae": "entrance air kerma is not collected yet",
-               "activity": "administered activity (NM) is not collected yet"}
+UNAVAILABLE = {"kae": "entrance air kerma is not collected yet"}
+PER_BREAST = {"MG-UNILATERAL"}  # one value per breast, not per study
 
 
 class DRLError(ValueError):
@@ -184,29 +190,40 @@ def collect(session: Session, conds: list, items: list[Item], *, by_device: bool
     for it in items:
         if it.quantity in QUANTITY and QUANTITY[it.quantity][1].get(it.unit) is not None:
             by_q[it.quantity].append(it)
+    per_breast = set(session.scalars(select(Code.id).where(Code.code.in_(PER_BREAST))))
     for quantity, its in by_q.items():
         col, units_map = QUANTITY[quantity]
         code_ids = {it.exam_code_id for it in its}
         schemes = {it.scheme for it in its if it.scheme}
         c = aliased(Classification)
-        link = and_(c.study_id == Study.id, c.code_id.in_(code_ids),
-                    or_(c.event_id == Event.id,
-                        and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM),
-                             ~own_codes(Event.id))))
         weight = Study.weight_kg if estimated_weights else case(
             (Study.weight_source == SizeSource.estimated_reference, None),
             else_=Study.weight_kg)
-        q = (select(col, Event.id, Study.id, Study.device_id, Study.age_days, weight,
-                    c.code_id)
-             .select_from(Event).join(Study, Study.id == Event.study_id).join(c, link)
-             .where(col.is_not(None), Event.is_localizer.is_not(True), *conds,
-                    *([] if include_excluded else [Study.drl_exclusion.is_(None)])))
+        where = [col.is_not(None), *conds,
+                 *([] if include_excluded else [Study.drl_exclusion.is_(None)])]
+        if col.table is Study.__table__:  # one value per study (administered activity)
+            q = (select(col, Study.id, Study.id, Study.device_id, Study.age_days, weight,
+                        c.code_id, None)
+                 .select_from(Study)
+                 .join(c, and_(c.study_id == Study.id, c.code_id.in_(code_ids),
+                               c.event_id.is_(None)))
+                 .where(*where))
+        else:
+            link = and_(c.study_id == Study.id, c.code_id.in_(code_ids),
+                        or_(c.event_id == Event.id,
+                            and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM),
+                                 ~own_codes(Event.id))))
+            q = (select(col, Event.id, Study.id, Study.device_id, Study.age_days, weight,
+                        c.code_id, Event.laterality)
+                 .select_from(Event).join(Study, Study.id == Event.study_id).join(c, link)
+                 .where(Event.is_localizer.is_not(True), *where))
         # (code, scheme|None, band|None, per-study?) -> (unit id, device) -> sum
         buckets: dict[tuple, dict[tuple, float]] = defaultdict(lambda: defaultdict(float))
         wanted = {(it.exam_code_id, it.scheme, it.band, it.applies_to == "study")
                   for it in its}
         modes = {it.applies_to == "study" for it in its}
-        for value, eid, sid, did, age, weight, cid in session.execute(q):
+        for value, eid, sid, did, age, weight, cid, side in session.execute(q):
+            unit = (sid, side) if cid in per_breast else sid
             dev = (physical.get(did, did) if did is not None else None) if by_device else None
             keys = [(cid, None, None)]
             for sk in schemes:
@@ -215,7 +232,7 @@ def collect(session: Session, conds: list, items: list[Item], *, by_device: bool
             for k in keys:
                 for per_study in modes:
                     if (*k, per_study) in wanted:
-                        buckets[(*k, per_study)][(sid if per_study else eid, dev)] += value
+                        buckets[(*k, per_study)][(unit if per_study else eid, dev)] += value
         for it in its:
             factor = units_map[it.unit]
             per_dev: dict[int | None, list[float]] = defaultdict(list)

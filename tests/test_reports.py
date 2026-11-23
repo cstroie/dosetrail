@@ -56,6 +56,25 @@ def report(session):
                age_days=Y7, source_kind="test", total_dlp=400.0,
                study_description="Head^CAP_SPIRAL_CONTRAST (Child)")
     session.add(ct)
+    # girl, 7 y: bilateral mammography is unlikely, but the codes do not care
+    mg = Study(study_uid="r.7", modality="MG", study_datetime=t, patient_id=girl.id,
+               age_days=Y7, source_kind="test")
+    mg.events = [Ev(view="CC", laterality="R", agd=1.0), Ev(view="CC", laterality="L", agd=1.2),
+                 Ev(view="MLO", laterality="R", agd=1.5)]
+    # boy, 2 y: renal DMSA; girl, 7 y: an FDG PET/CT sent as two studies (early, delayed)
+    dmsa = Study(study_uid="r.8", modality="NM", study_datetime=t, patient_id=boy.id,
+                 age_days=Y2, source_kind="test", study_description="Scintigrafie renala",
+                 admin_activity_mbq=40.0)
+    dmsa.events = [Ev(event_type="radiopharmaceutical", protocol="DMSA",
+                      extra_json={"activity_mbq": 40.0})]
+    session.add_all([mg, dmsa])
+    for i, (mbq, extra) in enumerate([(150.0, {}), (None, {"same_administration_as": 1})]):
+        pet = Study(study_uid=f"r.9{i}", modality="PT", study_datetime=t, patient_id=girl.id,
+                    age_days=Y7, source_kind="test", study_description="PET-CT",
+                    admin_activity_mbq=mbq, total_dlp=300.0 if i == 0 else None)
+        pet.events = [Ev(event_type="radiopharmaceutical", protocol="FDG",
+                         extra_json={"activity_mbq": 150.0, **extra})]
+        session.add(pet)
     session.flush()
     classify.run(session)
     start, end = insp1255.quarter_range(2026, 1)
@@ -80,13 +99,27 @@ def test_counts_bands_and_means(report):
     assert _row(report, "ct", "C")["total"] == 0
 
 
+def test_mammography_and_nuclear_medicine(report):
+    smb1 = _row(report, "radiologie", "SMB1")  # both CC views, one examination
+    assert smb1["total"] == 1 and smb1["means"]["mgd"]["5-9y"] == pytest.approx(2.2)
+    assert _row(report, "radiologie", "SMB2")["means"]["mgd"]["5-9y"] == pytest.approx(1.5)
+    sr4 = _row(report, "mn_diagnostic", "SR4")
+    assert sr4["total"] == 1 and sr4["counts"]["0-4y"] == {"M": 1, "F": 0}
+    assert sr4["means"]["activity"]["0-4y"] == 40.0
+    assert sr4["means"]["activity_min"]["0-4y"] == sr4["means"]["activity_max"]["0-4y"] == 40.0
+    pct1 = _row(report, "mn_hibride", "PCT1")
+    assert pct1["total"] == 1  # the delayed scan of the same injection is not counted
+    assert pct1["means"]["activity"]["5-9y"] == 150.0 and pct1["means"]["dlp"]["5-9y"] == 300.0
+
+
 def test_json_and_xlsx(report):
     j = insp1255.as_json(report)
     assert j["period"] == {"from": "2026-01-01", "to": "2026-03-31"}
     rx = j["sheets"][0]
     assert rx["count_bands"][0]["label"].startswith("0") and len(rx["mean_bands"]) == 5
     assert [s["key"] for s in j["sheets"]] == ["radiologie", "ct", "interventionala_rx",
-                                               "interventionala_ct", "dentare"]
+                                               "interventionala_ct", "dentare",
+                                               "mn_diagnostic", "mn_hibride"]
     buf = io.BytesIO()
     insp1255.write_xlsx(report, buf, {"Generat": "test"})
     import zipfile

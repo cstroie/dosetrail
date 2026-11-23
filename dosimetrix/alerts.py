@@ -39,7 +39,8 @@ from .stats import METRICS
 STUDY_METRICS = {k: m.column for k, m in METRICS.items() if m.level == "study"}
 # per-series / per-exposure metrics: a threshold rule takes the study's highest value
 EVENT_VALUE = {"ssde": lambda e: e.ssde if e.ssde is not None else e.ssde_calc}
-UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "s": "s"}
+UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "s": "s",
+         "MBq": "MBq"}
 BATCH = 1000
 DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained")
 RETIRED_DAYS = 90  # a device silent for longer is retired, not broken (it alerted at day 4)
@@ -98,26 +99,41 @@ class Evaluator:
             return None
         band = self.checker.band(s.age_days)
         best = None
+        drl = self.checker.drl
+
+        def consider(value, code, quantity, unit):
+            nonlocal best
+            ref = drl.get((code, band, quantity))
+            if ref is None and quantity == "mgd":  # mammography DRLs have no age band
+                ref = drl.get((code, None, quantity))
+            if ref and value:
+                cand = (value / ref, value, ref, unit, code)
+                best = max(best, cand) if best else cand
+
         sums: dict[str, float] = defaultdict(float)
+        mgd: dict[tuple, float] = defaultdict(float)  # (code, breast or None) -> MGD
         for e in events:
             if e.is_localizer:
                 continue
-            if s.modality == "CT":
-                code = national.get(e.id) or national.get(None)
-                ref = self.checker.drl.get((code, band, "dlp"))
-                if ref and e.dlp:
-                    cand = (e.dlp / ref, e.dlp, ref, "mGy.cm", code)
-                    best = max(best, cand) if best else cand
+            if s.modality == "CT" or (e.dlp and s.modality in hybrid.NM_MODALITIES):
+                consider(e.dlp, national.get(e.id) or national.get(None), "dlp", "mGy.cm")
+            elif s.modality == "MG":
+                code = national.get(e.id)
+                if code and e.agd:
+                    from .drl import PER_BREAST
+
+                    mgd[(code, e.laterality if code in PER_BREAST else None)] += e.agd
             elif e.dap:
                 code = national.get(e.id) if s.modality in ("DX", "CR", "MG") \
                     else national.get(None)
                 if code:
                     sums[code] += e.dap
         for code, dap in sums.items():
-            ref = self.checker.drl.get((code, band, "dap"))
-            if ref:
-                cand = (dap / ref, dap, ref, "Gy.cm2", code)
-                best = max(best, cand) if best else cand
+            consider(dap, code, "dap", "Gy.cm2")
+        for (code, _side), v in mgd.items():
+            consider(v, code, "mgd", "mGy")
+        if s.modality in hybrid.NM_MODALITIES:
+            consider(s.admin_activity_mbq, national.get(None), "activity", "MBq")
         return best
 
     def _window(self, rule: AlertRule, s: Study) -> tuple[float, int]:

@@ -342,3 +342,24 @@ def test_pet_ct_counts_as_ct_exposure(session, world):
     assert got["ct-repeat-48h"].value == 2
     assert {r["id"] for r in alerts.window_studies(session, got["ct-repeat-48h"].id)} \
         == {pet.id, ct.id}
+
+
+def test_drl_ratio_for_activity_and_mammography(session, world):
+    dev, kid = world
+    pet = _study(session, dev, kid, "pt.20", NOW, modality="PT", age_days=7 * 365,
+                 admin_activity_mbq=400.0, study_description="PET-CT")
+    pet.events = [Event(event_type="radiopharmaceutical", protocol="FDG")]
+    adult = Patient(pseudo_id="P-AL2", sex="F")
+    session.add(adult)
+    session.flush()
+    mg = _study(session, dev, adult, "mg.20", NOW, modality="MG", age_days=50 * 365)
+    mg.events = [Event(view="CC", laterality="L", agd=3.0), Event(view="MLO", laterality="L",
+                                                                  agd=3.0),
+                 Event(view="CC", laterality="R", agd=1.0)]
+    session.flush()
+    classify.run(session, [pet.id, mg.id])
+    alerts.evaluate(session, [pet.id, mg.id])
+    a = _alerts(session, pet)["drl-2x"]  # 400 MBq in a 7-year-old: DRL 150 MBq
+    assert a.value == pytest.approx(400.0) and a.message.startswith("PETCT-FDG: 400 MBq")
+    b = _alerts(session, mg)["drl-2x"]  # left breast 6 mGy vs 2.65 mGy per breast
+    assert b.value == pytest.approx(6.0) and b.message.startswith("MG-UNILATERAL: 6 mGy")
