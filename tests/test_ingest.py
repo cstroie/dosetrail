@@ -504,7 +504,10 @@ def test_legacy_ge_ct_without_ctdivol_is_kept_as_technique_only():
     assert p.kind == "ct_header"
     (e,) = p.events
     assert e["event_type"] == "axial" and e["kvp"] == 120 and e["ma"] == 100
-    assert e["mas"] == pytest.approx(200.0)
+    assert e["mas"] == pytest.approx(200.0) and e["extra_json"]["mas_per_image"] == 200.0
+    from dosimetrix.ingest.parse import mark_series_instances
+    mark_series_instances(ds, 17)  # 17 images = 17 rotations of 100 mA x 2 s
+    assert parse(ds).events[0]["mas"] == pytest.approx(3400.0)
     assert e["extra_json"]["dose_missing"] and "ctdivol" not in e and "dlp" not in e
     loc = f.ct_series_image(ctdivol=None, count=None, acquisition=None, scan_options="LOCALIZER MODE",
                             pitch=None, image_type=("ORIGINAL", "PRIMARY", "LOCALIZER"))

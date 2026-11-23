@@ -637,15 +637,20 @@ def _parse_ct_technique(ds, itype: list[str]) -> ParsedObject | None:
     study, patient, device = _header(ds)
     study["modality"] = "CT"
     etype = _scan_type(ds, itype, None)
+    # sequential scanning of a single-row scanner: one rotation (mA x time) per image, so the
+    # series' tube loading is mAs per image x the number of images (a scout has no rotation)
+    per_image = ma * t / 1000 if ma and t else None
+    n = series_instances(ds)
     when = _datetime(ds.get("AcquisitionDate"), ds.get("AcquisitionTime")) or study["study_datetime"]
     event = {
         "event_uid": _s(ds.get("SeriesInstanceUID"), 64), "event_datetime": when,
         "event_type": etype, "protocol": _s(ds.get("ProtocolName")) or _s(ds.get("SeriesDescription")),
         "anatomy": _s(ds.get("BodyPartExamined"), 128), "comment": _s(ds.get("SeriesDescription")),
         "kvp": kvp, "ma": ma, "exposure_time_s": t / 1000 if t else None,
-        "mas": ma * t / 1000 if ma and t else None, "is_localizer": etype == "localizer",
+        "mas": per_image * n if per_image and n and etype != "localizer" else per_image,
+        "is_localizer": etype == "localizer",
         "extra_json": {"source": "header", "dose_missing": True, "legacy_technique": True,
-                       "series_instances": series_instances(ds),
+                       "series_instances": n, "mas_per_image": per_image,
                        "slice_thickness_mm": _f(ds.get("SliceThickness")),
                        "scan_options": options},
     }
