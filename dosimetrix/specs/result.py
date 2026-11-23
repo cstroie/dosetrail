@@ -12,6 +12,7 @@ class Sheet:
     rows: list[list]
     widths: list[float] | None = None
     flags: list[dict | None] | None = None  # per row, e.g. {"low_n": ["Room 2"]}: the UI badges it
+    meta: dict = field(default_factory=dict)  # kind-specific facts (patients, codes, …)
 
 
 @dataclass
@@ -22,6 +23,7 @@ class Book:
     sheets: list[Sheet]
     title: str = ""
     info: list[tuple[str, object]] = field(default_factory=list)  # the first sheet's rows
+    meta: dict = field(default_factory=dict)  # e.g. family, device
 
 
 @dataclass

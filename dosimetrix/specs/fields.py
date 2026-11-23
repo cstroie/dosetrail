@@ -219,6 +219,66 @@ def date_only(r):
     return r.s.study_datetime.date() if r.s.study_datetime else None
 
 
+# ----------------------------------------------------------------------------- the examination
+
+
+def _tail(meaning: str) -> str:
+    return meaning.partition(" — ")[2]
+
+
+@field("exam.code")
+def exam_code(r):
+    "The national procedure code of the examination."
+    return r.code.code if r.code else None
+
+
+@field("exam.meaning")
+def exam_meaning(r):
+    "The text of the national code."
+    return r.code.meaning if r.code else None
+
+
+@field("exam.projection")
+def exam_projection(r):
+    "The projection the code names (after the dash), else the event's own view."
+    tail = _tail(r.code.meaning) if r.code else ""
+    return tail or (r.e.view if r.e is not None else None)
+
+
+@field("exam.contrast")
+def exam_contrast(r):
+    """"contrast" for a code with the SC suffix or listed in the spec's rule ``contrast_codes``,
+    else "nativ"."""
+    code = r.code.code if r.code else ""
+    extra = r.ctx.spec.rules.get("contrast_codes", [])
+    return "contrast" if code.endswith("SC") or code in extra else "nativ"
+
+
+@field("exam.nuclide")
+def exam_nuclide(r):
+    "Radionuclide of a nuclear-medicine code ('Tc-99m / DMSA')."
+    return _tail(r.code.meaning).partition(" / ")[0].strip() if r.code else None
+
+
+@field("exam.form")
+def exam_form(r):
+    "Chemical form of a nuclear-medicine code ('Tc-99m / DMSA')."
+    return _tail(r.code.meaning).partition(" / ")[2].strip() if r.code else None
+
+
+@field("exam.effective_dose", unit="mSv")
+def exam_effective_dose(r):
+    """Administered activity x the coefficient entered for this radiopharmaceutical and age
+    (``dosimetrix effective-dose``); empty where none was entered: no coefficient ships."""
+    from ..effdose import load
+
+    coef = r.ctx.state.get("effdose")
+    if coef is None:
+        coef = r.ctx.state["effdose"] = load(r.ctx.session)
+    c = coef(exam_nuclide(r) or "", exam_form(r) or "", r.s.age_days)
+    return r.s.admin_activity_mbq * c if c is not None and r.s.admin_activity_mbq is not None else None
+
+
 # ----------------------------------------------------------------------------- pseudonyms
 
 
@@ -277,3 +337,10 @@ def date_(v):
 def datetime_(v):
     "A datetime as YYYY-MM-DD HH:MM."
     return f"{v:%Y-%m-%d %H:%M}" if isinstance(v, dt.datetime) else v
+
+
+@transform("map")
+def map_(v, *pairs):
+    """map:R=drept:L=stang: replace by the first letter (upper case); unmatched stays."""
+    table = dict(p.split("=", 1) for p in pairs)
+    return table.get(str(v or "")[:1].upper(), v if v is not None else "")

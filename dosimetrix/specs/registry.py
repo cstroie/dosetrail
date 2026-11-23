@@ -54,8 +54,8 @@ def transform(name: str):
 
 
 def filter_(name: str):
-    """``fn(ctx, units, *args) -> units``: drops examinations from the dict of units a kind
-    gathered (spec: ``exclude = ["name:arg"]``)."""
+    """``fn((ctx, units), *args) -> units``: drops examinations from the dict a kind gathered
+    (spec: ``exclude = ["name:arg"]``)."""
     def deco(fn):
         FILTERS[name] = fn
         return fn

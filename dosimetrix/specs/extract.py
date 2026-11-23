@@ -134,3 +134,41 @@ def shared_administration(session, study_ids: set[int]) -> set[int]:
             shared = bool((extra or {}).get("same_administration_as"))
             own[sid] = own.get(sid, False) or not shared
     return {sid for sid, has_own in own.items() if not has_own}
+
+
+def exam_rows(ctx: Context, system: str, modalities: list[str], values: dict,
+              per_event: bool = False, exclude: list[str] | tuple = ()) -> dict:
+    """The examinations of ``system`` as rows (study, patient, device, code, first event) with the
+    sums of ``values`` in ``row.values``. ``per_event``: one row per event (a mammography view)
+    instead of per study x code. Returns ``{key: Row}`` in time order."""
+    q = (select(Classification.study_id, Classification.code_id, Classification.event_id,
+                Code, Study, Patient, Device, Event)
+         .join(Code, Code.id == Classification.code_id)
+         .join(CodeSystem, CodeSystem.id == Code.system_id)
+         .join(Study, Study.id == Classification.study_id)
+         .outerjoin(Patient, Patient.id == Study.patient_id)
+         .outerjoin(Device, Device.id == Study.device_id)
+         .outerjoin(Event, Event.id == Classification.event_id)
+         .where(CodeSystem.key == system, Study.modality.in_(modalities), *window_conds(ctx))
+         .order_by(Study.study_datetime, Study.id, Code.sort_order, Classification.event_id))
+    rows: dict[tuple, Row] = {}
+    for sid, cid, eid, code, s, p, d, ev in ctx.session.execute(q):
+        key = (sid, cid, eid) if per_event else (sid, cid)
+        row = rows.get(key)
+        if row is None:
+            row = rows[key] = Row(ctx, s, p, d, ev, code, values={k: None for k in values})
+        if ev is not None and not per_event:
+            probe = Row(ctx, s, p, d, ev, code)
+            for k, v in values.items():
+                if v.get("event"):
+                    val = _first(v["event"], probe)
+                    if val is not None:
+                        row.values[k] = (row.values[k] or 0.0) + val * v.get("scale", 1)
+        elif ev is None:
+            for k, v in values.items():
+                if v.get("study"):
+                    got = registry.FIELDS[v["study"]].fn(row)
+                    row.values[k] = got * v.get("scale", 1) if got is not None else None
+    for name in exclude:
+        rows = registry.call(name, (ctx, rows), registry.FILTERS)
+    return rows
