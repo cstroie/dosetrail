@@ -160,7 +160,7 @@ export function serverSummary(list, unit) {
   if (!list || !list.length) return null;
   return h('details', { class: 'panel-summary' },
     h('summary', { class: 'muted', style: { cursor: 'pointer', 'font-size': '12px' } }, `Summary table (${list.length} rows)`),
-    h('div', { style: { 'overflow-x': 'auto' } }, h('table', { class: 'stats' },
+    h('div', { class: 'panel-scroll' }, h('table', { class: 'stats' },
       h('thead', {}, h('tr', {}, h('th', { class: 'l' }, 'Group'), ['n', 'Median', 'P75', 'Mean', ...(list[0].drl !== undefined ? ['DRL'] : [])].map((x) => h('th', {}, x)))),
       h('tbody', {}, list.map((s) => h('tr', {}, h('td', { class: 'l' }, s.label), h('td', {}, num(s.n)), h('td', {}, smart(s.median)),
         h('td', {}, smart(s.p75)), h('td', {}, smart(s.mean)), s.drl !== undefined ? h('td', {}, smart(s.drl)) : null))))),

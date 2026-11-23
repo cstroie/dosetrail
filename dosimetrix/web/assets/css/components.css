@@ -176,6 +176,9 @@ dt-chart { display: block; min-width: 0; }
 .stats td { padding: 3px 8px; border-bottom: 1px solid var(--line); text-align: right; font-family: var(--font-mono); }
 .stats .l { text-align: left; font-family: var(--font-sans); }
 .stats .over { color: var(--alert); font-weight: 700; }
+.panel-scroll { max-height: 320px; overflow: auto; }  /* a long summary table scrolls inside its panel */
+.panel-scroll .stats th { position: sticky; top: 0; background: var(--panel); }
+@media print { .panel-scroll { max-height: none; overflow: visible; } }
 @media (max-width: 900px) { .ws-panel { grid-column: span 12; } }
 
 /* ---------- admin: devices ---------- */

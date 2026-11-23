@@ -330,7 +330,7 @@ function summaryTable(list) {
   if (!list || !list.length) return null;
   return h('details', { class: 'panel-summary' },
     h('summary', { class: 'muted', style: { cursor: 'pointer', 'font-size': '12px' } }, `Summary table (${list.length} rows)`),
-    h('div', { style: { 'overflow-x': 'auto' } }, h('table', { class: 'stats' },
+    h('div', { class: 'panel-scroll' }, h('table', { class: 'stats' },
       h('thead', {}, h('tr', {}, h('th', { class: 'l' }, 'Protocol · device'), ['n', 'Median', 'P75', 'IQR', 'DRL', 'P75/DRL'].map((x) => h('th', {}, x)))),
       h('tbody', {}, list.map((s) => h('tr', {},
         h('td', { class: 'l' }, h('span', { class: 'swatch', style: { background: `var(--d${(deviceIndex(s.device_id) % 8) + 1})` } }), `${s.protocol} · ${s.device}`),
