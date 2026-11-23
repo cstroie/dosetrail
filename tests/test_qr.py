@@ -199,9 +199,10 @@ def test_partial_modality_run_does_not_finish_the_day(tmp_path, monkeypatch):
     monkeypatch.setattr(qr, "run_day", lambda *a, **k: calls.append(a[6]))  # mods
     url = f"sqlite:///{tmp_path / 'p.sqlite3'}"
     upgrade(url)
-    monkeypatch.setenv("DOSIMETRIX_SECRET_FILE", str(tmp_path / "secret"))
-    monkeypatch.setenv("DOSIMETRIX_CONFIG", str(tmp_path / "none.toml"))
-    base = ["qr", "--url", url, "--host", "h", "--aec", "P", "--from", "2025-11-06",
+    cfg = tmp_path / "dosimetrix.toml"
+    cfg.write_text(f'[security]\nsecret_file = "{tmp_path / "secret"}"\n')
+    base = ["--config", str(cfg), "qr", "--url", url, "--host", "h", "--aec", "P",
+            "--from", "2025-11-06",
             "--to", "2025-11-06"]
     assert cli.main(base + ["--modalities", "CT"]) == 0
     assert cli.main(base) == 0  # still runs: the CT-only run did not finish the day

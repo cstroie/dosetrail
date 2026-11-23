@@ -7,7 +7,7 @@ import contextlib
 import sys
 
 from . import __version__
-from .config import load_settings
+from .config import load_settings, set_config_path
 
 
 def _cmd_migrate(args: argparse.Namespace) -> int:
@@ -952,6 +952,9 @@ def _redact(url: str) -> str:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="dosimetrix", description=__doc__)
     p.add_argument("--version", action="version", version=__version__)
+    p.add_argument("--config", metavar="PATH", help="the configuration file (default: "
+                   "./dosimetrix.toml, ~/.config/dosimetrix/dosimetrix.toml, "
+                   "/etc/dosimetrix/dosimetrix.toml)")
     sub = p.add_subparsers(dest="command", required=True)
 
     m = sub.add_parser("migrate", help="create/upgrade the database schema")
@@ -1175,6 +1178,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        set_config_path(args.config)
+    except FileNotFoundError as e:
+        print(f"dosimetrix: {e}", file=sys.stderr)
+        return 2
     return args.func(args)
 
 

@@ -3,8 +3,7 @@
 # data and the site secret: /var/lib/dosimetrix (a volume: back it up).
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
-    DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 
 RUN useradd --system --home-dir /var/lib/dosimetrix --create-home --uid 10001 dosimetrix
 

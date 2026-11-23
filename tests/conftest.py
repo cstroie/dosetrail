@@ -1,9 +1,8 @@
-"""Fixtures: every DB test runs on SQLite and, when DOSIMETRIX_TEST_DATABASE_URL points to
-a MariaDB test database, on MariaDB too (schema is dropped and recreated per session)."""
+"""Fixtures: every DB test runs on SQLite and, when [database] test_url in the config file
+points to a MariaDB test database, on MariaDB too (the schema is dropped and recreated per
+session)."""
 
 from __future__ import annotations
-
-import os
 
 import pytest
 from sqlalchemy import text
@@ -14,7 +13,7 @@ from dosimetrix.db.models import Base
 from dosimetrix.db.session import make_engine, make_sessionmaker
 
 BACKENDS = ["sqlite"]
-TEST_URL = os.environ.get("DOSIMETRIX_TEST_DATABASE_URL") or load_settings().test_database_url
+TEST_URL = load_settings().test_database_url
 if TEST_URL:
     BACKENDS.append("mariadb")
 
@@ -53,3 +52,12 @@ def session(engine):
     sess.close()
     trans.rollback()
     conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _no_explicit_config():
+    """`dosimetrix --config` sets a process-wide path: never let one test's leak into the next."""
+    yield
+    from dosimetrix import config
+
+    config.set_config_path(None)

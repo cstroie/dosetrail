@@ -27,9 +27,9 @@ is the difference between 25 ms and 10 s per page of results.
 python3.12 -m venv /opt/dosimetrix/.venv
 /opt/dosimetrix/.venv/bin/pip install dosimetrix        # or: pip install -e <checkout>
 cp deploy/dosimetrix.toml.example /etc/dosimetrix/dosimetrix.toml   # edit it
-sudo -u dosimetrix DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml dosimetrix migrate
-sudo -u dosimetrix DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml dosimetrix seed
-sudo -u dosimetrix DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml dosimetrix user set admin --roles viewer,exporter,pid,importer,admin
+sudo -u dosimetrix dosimetrix --config /etc/dosimetrix/dosimetrix.toml migrate
+sudo -u dosimetrix dosimetrix --config /etc/dosimetrix/dosimetrix.toml seed
+sudo -u dosimetrix dosimetrix --config /etc/dosimetrix/dosimetrix.toml user set admin --roles viewer,exporter,pid,importer,admin
 ```
 The site secret (`secret_file`) is created on first use. Back it up: pseudonyms and
 sessions depend on it.

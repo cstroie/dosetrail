@@ -8,8 +8,6 @@ Type=simple
 User=dosimetrix
 Group=dosimetrix
 WorkingDirectory=/opt/dosimetrix
-Environment=DOSIMETRIX_CONFIG=/etc/dosimetrix/dosimetrix.toml
-EnvironmentFile=-/etc/dosimetrix/dosimetrix.env
 ExecStart=/opt/dosimetrix/.venv/bin/dosimetrix serve
 Restart=on-failure
 RestartSec=5

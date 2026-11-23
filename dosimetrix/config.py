@@ -1,14 +1,14 @@
-"""Configuration: TOML file plus environment overrides (stdlib only).
+"""Configuration: one TOML file, nothing else (stdlib only).
 
-Lookup order for the config file: $DOSIMETRIX_CONFIG, ./dosimetrix.toml,
-~/.config/dosimetrix/dosimetrix.toml. Environment variables override file values:
-DOSIMETRIX_DATABASE_URL, DOSIMETRIX_SECRET_FILE. The database URL (and, for the tests,
-[database] test_url) belongs in that one file, next to [web], [dicom] and [pacs].
+Lookup order: the path given with `dosimetrix --config PATH`, ./dosimetrix.toml,
+~/.config/dosimetrix/dosimetrix.toml, /etc/dosimetrix/dosimetrix.toml. The first that exists
+is the only one read. It holds the database URL ([database] url, and test_url for the test
+suite), the site secret's location, the web, DICOM and PACS settings: no environment
+variable changes anything.
 """
 
 from __future__ import annotations
 
-import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,9 +49,15 @@ class Settings:
     notify: dict = field(default_factory=dict)  # [notify] table, see dosimetrix/notify.py
 
 
-def _env(name: str) -> str | None:
-    """DOSIMETRIX_<name>."""
-    return os.environ.get(f"DOSIMETRIX_{name}")
+_explicit: Path | None = None  # set by --config
+
+
+def set_config_path(path: str | Path | None) -> None:
+    """Use this file (it must exist) instead of searching the usual places."""
+    global _explicit
+    if path and not Path(path).expanduser().is_file():
+        raise FileNotFoundError(f"config file not found: {path}")
+    _explicit = Path(path).expanduser() if path else None
 
 
 def _config_dir() -> Path:
@@ -59,11 +65,10 @@ def _config_dir() -> Path:
 
 
 def _candidate_files() -> list[Path]:
-    env = _env("CONFIG")
-    if env:
-        return [Path(env)]
-    d = _config_dir()
-    return [Path("dosimetrix.toml"), d / "dosimetrix.toml"]
+    if _explicit is not None:
+        return [_explicit]
+    return [Path("dosimetrix.toml"), _config_dir() / "dosimetrix.toml",
+            Path("/etc/dosimetrix/dosimetrix.toml")]
 
 
 def load_settings() -> Settings:
@@ -106,7 +111,4 @@ def load_settings() -> Settings:
             s.notify = dict(raw.get("notify", {}))
             s.source = path
             break
-    s.database_url = _env("DATABASE_URL") or s.database_url
-    if _env("SECRET_FILE"):
-        s.secret_file = Path(_env("SECRET_FILE"))
     return s
