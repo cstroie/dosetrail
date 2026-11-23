@@ -114,7 +114,7 @@ kbd { font: var(--fs-xs) var(--font-mono); border: 1px solid var(--line-2); bord
 .pill select option { background: var(--panel); }
 
 .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
-.seg button { border: 0; border-right: 1px solid var(--line-2); background: none; color: var(--muted); padding: 0 8px; height: 24px; font-size: var(--fs-xs); cursor: pointer; }
+.seg button { border: 0; border-right: 1px solid var(--line-2); background: none; color: var(--muted); padding: 0 8px; height: 26px; font-size: var(--fs-xs); cursor: pointer; }
 .seg button:last-child { border-right: 0; }
 .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); font-weight: 700; }
 
