@@ -19,6 +19,8 @@ const NAV = [
   ['alerts', 'alerts.html', 'alerts'],
 ];  // Admin lives in the account menu, for admins only
 
+function switchLang() { prefs.set('lang', lang() === 'en' ? 'ro' : 'en'); location.reload(); }
+
 class DtShell extends HTMLElement {
   connectedCallback() {
     if (this._built) return;
@@ -40,12 +42,13 @@ class DtShell extends HTMLElement {
 
     const palette = h('dt-command-palette');
     const ctx = h('header', { class: 'ctx' },
+      h('span', { class: 'ctx-logo', role: 'img', 'aria-label': 'Dosimetrix' }, icon('logo', 24, 2)),
       crumb,
       h('button', { class: 'cmdk-trigger', type: 'button', onclick: () => palette.open() },
         icon('search', 14, 2), h('span', { class: 'cmdk-label' }, t('shell.search')), h('kbd', {}, 'Ctrl K')),
       ctxExtras.map((n) => { n.removeAttribute('slot'); return n; }),
-      h('button', { class: 'icon-btn', type: 'button', 'aria-label': t('shell.lang'), title: t('shell.lang'),
-        onclick: () => { prefs.set('lang', lang() === 'en' ? 'ro' : 'en'); location.reload(); } }, lang().toUpperCase()),
+      h('button', { class: 'icon-btn ctx-wide', type: 'button', 'aria-label': t('shell.lang'), title: t('shell.lang'),
+        onclick: switchLang }, lang().toUpperCase()),
       appearanceMenu(),
       userMenu());
 
@@ -73,11 +76,22 @@ function userMenu() {
   });
   document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) close(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  // On a phone the language and appearance buttons leave the bar and live here instead.
+  const phoneItems = () => [
+    h('div', { class: 'menu-sep ctx-narrow', role: 'separator' }),
+    h('button', { class: 'menu-item ctx-narrow', type: 'button', role: 'menuitem', onclick: switchLang },
+      icon('globe', 16, 1.8), `${t('shell.language')}: ${lang().toUpperCase()}`),
+    h('button', { class: 'menu-item ctx-narrow', type: 'button', role: 'menuitem', onclick: (e) => {
+      e.stopPropagation();
+      const home = [...menu.childNodes];
+      drawAppearance(menu, () => menu.replaceChildren(...home));
+    } }, icon('palette', 16, 1.8), t('shell.appearance.short'))];
+  menu.addEventListener('click', (e) => { if (e.target.closest('.appearance-view')) e.stopPropagation(); });
   me().then((u) => {
     if (!u) {
       btn.textContent = '?';
       btn.title = t('shell.sample');
-      menu.append(h('div', { class: 'menu-item muted' }, t('shell.sample')));
+      menu.append(h('div', { class: 'menu-item muted' }, t('shell.sample')), ...phoneItems());
       return;
     }
     const label = u.name || u.username;
@@ -94,6 +108,7 @@ function userMenu() {
         icon('key', 16, 1.8), t('shell.password')),
       u.roles.includes('admin') ? h('a', { class: 'menu-item', role: 'menuitem', href: 'devices.html',
         'aria-current': document.querySelector('dt-shell')?.getAttribute('page') === 'admin' ? 'page' : false }, icon('admin', 16, 1.8), t('nav.admin')) : null,
+      ...phoneItems(),
       h('div', { class: 'menu-sep', role: 'separator' }),
       h('button', { class: 'menu-item', type: 'button', role: 'menuitem', onclick: () => logout() }, icon('logout', 16, 1.8), t('shell.signout')));
   }).catch(() => { btn.textContent = '?'; });
@@ -155,29 +170,35 @@ export function toggleTheme() {
   setTheme(prefs.get('theme') === 'dark' ? 'light' : 'dark');
 }
 
+// The appearance choices drawn into a menu element; `back` (phone: inside the account menu)
+// adds a first entry that returns to what the menu showed before.
+function drawAppearance(menu, back) {
+  const redraw = () => drawAppearance(menu, back);
+  const mode = prefs.get('theme');
+  const current = prefs.get('palette') || 'film';
+  menu.replaceChildren(
+    back ? h('button', { class: 'menu-item appearance-view', type: 'button', onclick: back }, icon('back', 16, 1.8), t('shell.back')) : null,
+    h('div', { class: 'seg appearance-mode appearance-view', role: 'group', 'aria-label': t('shell.appearance') },
+      ['dark', 'light'].map((m) => h('button', { type: 'button', 'aria-pressed': String(m === mode),
+        onclick: () => { setTheme(m); redraw(); } }, icon(m === 'dark' ? 'moon' : 'sun', 13, 2), ' ', t(`shell.mode.${m}`)))),
+    h('div', { class: 'menu-sep', role: 'separator' }),
+    h('div', { class: 'menu-label muted small' }, t('shell.palette')),
+    ...PALETTES.map(([key, name, bg, accent]) => h('button', { class: 'menu-item appearance-view', type: 'button', role: 'menuitemradio',
+      'aria-checked': String(key === current), onclick: () => { setPalette(key); redraw(); } },
+      h('span', { class: 'swatch', 'aria-hidden': 'true', style: { background: `linear-gradient(135deg, ${bg} 0 50%, ${accent} 50% 100%)` } }),
+      h('span', { class: 'menu-text' }, h('span', {}, name), h('span', { class: 'muted small' }, t(`palette.${key}`))),
+      key === current ? h('span', { class: 'menu-end' }, icon('check', 14, 2.2)) : null)));
+}
+
 // Appearance (as in Reporion): dark / light, then the palettes with a swatch; a choice
 // applies at once and the menu stays open, so another can be tried.
 function appearanceMenu() {
   const btn = h('button', { id: 'dt-theme-btn', class: 'icon-btn', type: 'button', 'aria-label': t('shell.appearance'),
     title: t('shell.appearance'), 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, icon('palette', 16, 1.8));
   const menu = h('div', { class: 'menu appearance', role: 'menu', hidden: true });
-  const wrap = h('span', { class: 'menu-wrap' }, btn, menu);
+  const wrap = h('span', { class: 'menu-wrap ctx-wide' }, btn, menu);
   const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
-  const draw = () => {
-    const mode = prefs.get('theme');
-    const current = prefs.get('palette') || 'film';
-    menu.replaceChildren(
-      h('div', { class: 'seg appearance-mode', role: 'group', 'aria-label': t('shell.appearance') },
-        ['dark', 'light'].map((m) => h('button', { type: 'button', 'aria-pressed': String(m === mode),
-          onclick: () => { setTheme(m); draw(); } }, icon(m === 'dark' ? 'moon' : 'sun', 13, 2), ' ', t(`shell.mode.${m}`)))),
-      h('div', { class: 'menu-sep', role: 'separator' }),
-      h('div', { class: 'menu-label muted small' }, t('shell.palette')),
-      ...PALETTES.map(([key, name, bg, accent]) => h('button', { class: 'menu-item', type: 'button', role: 'menuitemradio',
-        'aria-checked': String(key === current), onclick: () => { setPalette(key); draw(); } },
-        h('span', { class: 'swatch', 'aria-hidden': 'true', style: { background: `linear-gradient(135deg, ${bg} 0 50%, ${accent} 50% 100%)` } }),
-        h('span', { class: 'menu-text' }, h('span', {}, name), h('span', { class: 'muted small' }, t(`palette.${key}`))),
-        key === current ? h('span', { class: 'menu-end' }, icon('check', 14, 2.2)) : null)));
-  };
+  const draw = () => drawAppearance(menu);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (menu.hidden) draw();
