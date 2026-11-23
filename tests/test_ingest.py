@@ -491,3 +491,28 @@ def test_ct_header_dlp_uses_the_z_range_not_count_times_thickness():
     assert parse(ax).events[0]["scan_length_mm"] == pytest.approx(100.5)
     old = f.ct_series_image(ctdivol=8.4, count=696, spacing=0.5)
     assert parse(old).events[0]["extra_json"]["dlp_method"] == "count_x_thickness"
+
+
+def test_legacy_ge_ct_without_ctdivol_is_kept_as_technique_only():
+    """A decommissioned single-row GE scanner: dynamic (sequential) mode, no CTDIvol in the header."""
+    ds = f.ct_series_image(ctdivol=None, count=None, spacing=5.0, acquisition=None,
+                           scan_options="DYNAMIC MODE", pitch=None)
+    ds.Manufacturer = "GE MEDICAL SYSTEMS"
+    ds.KVP, ds.XRayTubeCurrent, ds.ExposureTime = 120, 100, 2000
+    del ds.CTDIvol
+    p = parse(ds)
+    assert p.kind == "ct_header"
+    (e,) = p.events
+    assert e["event_type"] == "axial" and e["kvp"] == 120 and e["ma"] == 100
+    assert e["mas"] == pytest.approx(200.0)
+    assert e["extra_json"]["dose_missing"] and "ctdivol" not in e and "dlp" not in e
+    loc = f.ct_series_image(ctdivol=None, count=None, acquisition=None, scan_options="LOCALIZER MODE",
+                            pitch=None, image_type=("ORIGINAL", "PRIMARY", "LOCALIZER"))
+    loc.Manufacturer = "GE MEDICAL SYSTEMS"
+    del loc.CTDIvol
+    assert parse(loc).events[0]["is_localizer"]
+    # no CTDIvol on another vendor, or without the MODE option: still no dose information
+    other = f.ct_series_image(ctdivol=None, count=None, scan_options="DYNAMIC MODE", pitch=None)
+    del other.CTDIvol
+    other.Manufacturer = "SIEMENS"
+    assert parse(other).kind != "ct_header"

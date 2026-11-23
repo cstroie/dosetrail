@@ -355,7 +355,7 @@ def _scan_type(ds, itype: list[str], pitch: float | None) -> str | None:
         return "localizer"
     if acq == "SPIRAL" or (not acq and pitch):
         return "spiral"
-    if acq == "SEQUENCED":
+    if acq == "SEQUENCED" or re.search(r"\bDYNAMIC( MODE)?\b", text):  # GE: dynamic = sequential
         return "axial"
     if re.search(r"HELIX|HELICAL|SPIRAL|\bSPI\b", text):
         return "spiral"
@@ -559,8 +559,10 @@ def parse_ct_header(ds) -> ParsedObject | None:
     image is not such a header (no CTDIvol, derived images): the staff names remain."""
     ctdivol = _f(ds.get("CTDIvol"))
     itype = [str(x).upper() for x in (ds.get("ImageType") or [])]
-    if not ctdivol or "DERIVED" in itype or "SECONDARY" in itype:
+    if "DERIVED" in itype or "SECONDARY" in itype:
         return None
+    if not ctdivol:
+        return _parse_ct_technique(ds, itype)
     study, patient, device = _header(ds)
     study["modality"] = "CT"
     n = series_instances(ds)
@@ -607,6 +609,37 @@ def parse_ct_header(ds) -> ParsedObject | None:
                        "series_instances": n, "slice_spacing_mm": spacing,
                        "dlp_method": method, "recon_length_mm": recon,
                        "overrange_mm": over or None},
+    }
+    return ParsedObject("ct_header", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
+                        study=study, patient=patient, device=device, events=[event])
+
+
+def _parse_ct_technique(ds, itype: list[str]) -> ParsedObject | None:
+    """An original image of a legacy GE CT (ScanOptions "DYNAMIC MODE", "LOCALIZER MODE",
+    ...): the header has no CTDIvol, DLP, pitch or collimation, only the technique. One event
+    per series with kVp, mA and exposure time and no dose, so the exam is kept for history
+    (the dose cannot be invented; it would need the scanner's measured CTDI per mAs)."""
+    options = str(ds.get("ScanOptions") or "").upper()
+    if "ORIGINAL" not in itype or "GE" not in str(ds.get("Manufacturer", "")).upper() \
+            or not re.search(r"\b\w+ MODE\b", options):
+        return None
+    kvp, ma, t = _f(ds.get("KVP")), _f(ds.get("XRayTubeCurrent")), _f(ds.get("ExposureTime"))
+    if not kvp or not (ma or t):
+        return None
+    study, patient, device = _header(ds)
+    study["modality"] = "CT"
+    etype = _scan_type(ds, itype, None)
+    when = _datetime(ds.get("AcquisitionDate"), ds.get("AcquisitionTime")) or study["study_datetime"]
+    event = {
+        "event_uid": _s(ds.get("SeriesInstanceUID"), 64), "event_datetime": when,
+        "event_type": etype, "protocol": _s(ds.get("ProtocolName")) or _s(ds.get("SeriesDescription")),
+        "anatomy": _s(ds.get("BodyPartExamined"), 128), "comment": _s(ds.get("SeriesDescription")),
+        "kvp": kvp, "ma": ma, "exposure_time_s": t / 1000 if t else None,
+        "mas": ma * t / 1000 if ma and t else None, "is_localizer": etype == "localizer",
+        "extra_json": {"source": "header", "dose_missing": True, "legacy_technique": True,
+                       "series_instances": series_instances(ds),
+                       "slice_thickness_mm": _f(ds.get("SliceThickness")),
+                       "scan_options": options},
     }
     return ParsedObject("ct_header", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
                         study=study, patient=patient, device=device, events=[event])
