@@ -59,7 +59,10 @@ def build(session: Session, spec: Spec, raw_params: dict, *, secret: bytes = b""
     start, end = window(spec, params)
     now = now or dt.datetime.now()
     q = params.get("q") or ""
-    conds = data.conditions(data.parse(q), now, data.overrides(session))
+    try:
+        conds = data.checked_conditions(q, now, data.overrides(session))
+    except data.QueryError as e:
+        raise SpecError(str(e)) from e
     return Context(session, spec, params, conds, start, end, now, secret, username,
                    data.device_names(session))
 

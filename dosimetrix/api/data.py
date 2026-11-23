@@ -13,6 +13,27 @@ from ..hybrid import label as modality_label
 from ..patient_age import format_age
 from .query import conditions, parse
 
+
+class QueryError(ValueError):
+    """A filter the page cannot apply (typo, bad date): said so, not silently dropped."""
+
+
+def checked_conditions(q: str | None, now: dt.datetime, overrides=None) -> list:
+    """``conditions`` for reports, exports and statistics: a token that does not parse is an
+    error, as dropping it would answer for a wider population than the one asked for. (The
+    study list shows the errors beside the results instead, as one types.)"""
+    tokens = parse(q)
+    _refuse_errors(tokens)
+    return conditions(tokens, now, overrides)
+
+
+def _refuse_errors(tokens: list) -> None:
+    bad = [f"{t.key}:{t.value} ({t.error})" if t.value else f"{t.key} ({t.error})"
+           for t in tokens if t.error]
+    if bad:
+        raise QueryError("query not understood: " + "; ".join(bad))
+
+
 YEAR_DAYS = 365.25
 STALE_DAYS = 2
 GROUPS = [("CT", "CT", ["CT"]), ("DX", "DX/CR", ["DX", "CR"]), ("RF", "RF", ["RF"]),
@@ -467,6 +488,7 @@ def ct_acquisitions(session: Session, q: str, now: dt.datetime, limit: int = 500
     weight and the default test-patient exclusion), one row per acquisition."""
     allowed = {"date", "device", "proto", "desc", "origin", "weight", "age", "modality", "phantom"}
     tokens = [t for t in parse(q) if t.key in allowed]
+    _refuse_errors(tokens)
     conds = conditions(tokens, now, overrides(session))
     phys = _physical_ids(session)
     names = device_names(session)
@@ -576,6 +598,7 @@ def stats(session: Session, q: str, now: dt.datetime, metric: str, by: str, syst
     from .. import stats as st
 
     tokens = parse(q)
+    _refuse_errors(tokens)
     conds = conditions(tokens, now, overrides(session))
     if system is None:
         mods = {m.upper() for t in tokens if t.key == "modality" and not t.neg
@@ -595,7 +618,7 @@ def drl_compare(session: Session, q: str, now: dt.datetime, set_key: str, by: st
     """GET /api/drl/compare – local medians against a reference set."""
     from .. import drl as drl_mod
 
-    conds = conditions(parse(q), now, overrides(session))
+    conds = checked_conditions(q, now, overrides(session))
     out = drl_mod.compare(session, conds, set_key, by_device=(by == "device"), min_n=min_n,
                           physical=_physical_ids(session), names=device_names(session),
                           estimated_weights=estimated)

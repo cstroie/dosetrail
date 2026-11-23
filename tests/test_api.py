@@ -748,3 +748,18 @@ def test_change_own_password(client):
     assert r.status_code == 200
     assert login(client, "phys", "phys-pass-new-1").status_code == 200
     client.put("/api/me/password", json={"current": "phys-pass-new-1", "new": "phys-pass-12"})
+
+
+def test_a_query_that_does_not_parse_is_refused_not_silently_dropped(client):
+    """A typo must not widen a report or export to everyone; the list shows the error."""
+    login(client, "boss", "boss-pass-123")
+    for typo in ("modalty:CT", "date:2025-13-45", "dlp:abc"):
+        r = client.get("/api/quality", params={"q": typo})
+        assert r.status_code == 400 and "query not understood" in r.json()["error"], typo
+        assert client.get("/api/stats", params={"q": typo, "metric": "dlp_total"}
+                          ).status_code == 400
+        assert client.get("/api/export", params={"q": typo}).status_code == 400
+    ok = client.get("/api/quality", params={"q": "modality:XA"})
+    assert ok.status_code == 200
+    lst = client.get("/api/studies", params={"q": "modalty:CT"})  # the list keeps going
+    assert lst.status_code == 200 and lst.json()["errors"]

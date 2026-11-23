@@ -87,7 +87,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
 
-    from .api.data import conditions, overrides, parse
+    from .api.data import checked_conditions, overrides
     from .db.models import AuditLog
     from .db.session import make_engine, make_sessionmaker
     from .export import lists
@@ -95,7 +95,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
     fmt = args.format or ("xlsx" if args.output.lower().endswith(".xlsx") else "csv")
     engine = make_engine(args.url or load_settings().database_url)
     with make_sessionmaker(engine)() as session:
-        conds = conditions(parse(args.query), dt.datetime.now(), overrides(session))
+        conds = checked_conditions(args.query, dt.datetime.now(), overrides(session))
         session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="export",
                              target=f"{args.level}:{fmt}",
                              detail={"q": args.query, "pid": args.pid, "file": args.output}))
@@ -116,7 +116,7 @@ def _cmd_drl_dataset(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
 
-    from .api.data import conditions, overrides, parse
+    from .api.data import checked_conditions, overrides
     from .db.models import AuditLog
     from .db.session import make_engine, make_sessionmaker
     from .export import drl_dataset as ds
@@ -128,7 +128,7 @@ def _cmd_drl_dataset(args: argparse.Namespace) -> int:
     now = dt.datetime.now()
     engine = make_engine(args.url or load_settings().database_url)
     with make_sessionmaker(engine)() as session, open(args.output, "wb") as fh:
-        conds = conditions(parse(args.query), now, overrides(session))
+        conds = checked_conditions(args.query, now, overrides(session))
         session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="export",
                              target=f"drl-dataset:{fmt}",
                              detail={"q": args.query, "file": args.output}))
@@ -143,7 +143,7 @@ def _cmd_survey_export(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
 
-    from .api.data import conditions, overrides, parse
+    from .api.data import checked_conditions, overrides
     from .db.models import AuditLog, Study
     from .db.session import make_engine, make_sessionmaker
     from .export import drl_dataset as ds
@@ -157,7 +157,7 @@ def _cmd_survey_export(args: argparse.Namespace) -> int:
     now = dt.datetime.now()
     engine = make_engine(args.url or load_settings().database_url)
     with make_sessionmaker(engine)() as session, open(args.output, "wb") as fh:
-        conds = [*conditions(parse(args.query), now, overrides(session)),
+        conds = [*checked_conditions(args.query, now, overrides(session)),
                  Study.study_datetime >= start, Study.study_datetime < end]
         session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="export",
                              target=f"survey:{args.month}:{fmt}",
@@ -170,7 +170,7 @@ def _cmd_survey_export(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_export(args: argparse.Namespace) -> int:
+def _cmd_specs(args: argparse.Namespace) -> int:
     """List the report specs, their fields, or run one (any spec dropped in the specs folder)."""
     import datetime as dt
     import getpass
@@ -349,7 +349,7 @@ def _cmd_art12(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
 
-    from .api.data import conditions, overrides, parse
+    from .api.data import checked_conditions, overrides
     from .db.models import AuditLog
     from .db.session import make_engine, make_sessionmaker
     from .reports import art12
@@ -357,7 +357,7 @@ def _cmd_art12(args: argparse.Namespace) -> int:
     now = dt.datetime.now()
     engine = make_engine(args.url or load_settings().database_url)
     with make_sessionmaker(engine)() as session:
-        conds = conditions(parse(args.query), now, overrides(session))
+        conds = checked_conditions(args.query, now, overrides(session))
         books = art12.build(session, args.year, conds)
         session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="report",
                              target=f"art12:{args.year}:zip",
@@ -376,7 +376,7 @@ def _cmd_report_1255(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
 
-    from .api.data import conditions, overrides, parse
+    from .api.data import checked_conditions, overrides
     from .db.models import AuditLog
     from .db.session import make_engine, make_sessionmaker
     from .reports import insp1255
@@ -385,7 +385,7 @@ def _cmd_report_1255(args: argparse.Namespace) -> int:
     start, end = insp1255.quarter_range(args.year, args.quarter)
     engine = make_engine(args.url or load_settings().database_url)
     with make_sessionmaker(engine)() as session:
-        conds = conditions(parse(args.query), now, overrides(session))
+        conds = checked_conditions(args.query, now, overrides(session))
         report = insp1255.build(session, conds, start, end)
         session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="report",
                              target=f"insp1255:{args.year}Q{args.quarter}:xlsx",
@@ -831,7 +831,7 @@ def _cmd_rdsr(args: argparse.Namespace) -> int:
 
     from sqlalchemy import select
 
-    from .api.data import conditions, overrides, parse
+    from .api.data import checked_conditions, overrides
     from .db.models import AuditLog, Event, Study
     from .db.session import make_engine, make_sessionmaker
     from .export import rdsr
@@ -839,7 +839,7 @@ def _cmd_rdsr(args: argparse.Namespace) -> int:
     with make_sessionmaker(make_engine(args.url or load_settings().database_url))() as session:
         ids = list(args.study or [])
         if args.query is not None:
-            conds = conditions(parse(args.query), dt.datetime.now(), overrides(session))
+            conds = checked_conditions(args.query, dt.datetime.now(), overrides(session))
             has_events = select(Event.id).where(Event.study_id == Study.id).exists()
             ids += list(session.scalars(select(Study.id).where(*conds, has_events)
                                         .order_by(Study.study_datetime).limit(args.limit)))
@@ -1093,7 +1093,9 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     with maker() as session:
         done = set() if args.redo else qr.done_days(session)
     day = end
+    incomplete: list[dt.date] = []  # days with failed studies or undelivered objects
     while day >= start:  # newest first
+        stats = None
         if (day.isoformat() in done and day < today - dt.timedelta(days=1)
                 and not (args.staff or args.ct_dose)):
             report(f"{day}: already done")
@@ -1122,10 +1124,16 @@ def _cmd_qr(args: argparse.Namespace) -> int:
             if not args.dry_run and mods is None and not stats.incomplete:
                 with maker() as session:
                     qr.mark_day_done(session, day)
+        if stats is not None and not args.dry_run and stats.incomplete:
+            incomplete.append(day)
         day -= dt.timedelta(days=1)
     if receiver is not None:
         receiver.stop()
     report(f"finished {start}..{end}", force=True)
+    if incomplete:  # a timer unit must not look healthy after an incomplete run
+        print(f"incomplete days (failed studies or objects not delivered): "
+              f"{', '.join(d.isoformat() for d in sorted(incomplete))}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -1228,7 +1236,7 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("-o", "--output", help="file; the extension picks the format (no file: JSON)")
     ex.add_argument("--format", choices=["xlsx", "csv", "json", "zip"])
     ex.add_argument("--url")
-    ex.set_defaults(func=_cmd_export)
+    ex.set_defaults(func=_cmd_specs)
 
     ec = sub.add_parser("esak-curve", help="X-ray tube output curve of a device (annex 2 of "
                                            "Order 1255/2016), for ESAK without a DAP meter")
@@ -1423,7 +1431,13 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError as e:
         print(f"dosimetrix: {e}", file=sys.stderr)
         return 2
-    return args.func(args)
+    from .api.data import QueryError
+
+    try:
+        return args.func(args)
+    except QueryError as e:  # a filter that does not parse: not a report on everyone
+        print(f"dosimetrix: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

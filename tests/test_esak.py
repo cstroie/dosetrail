@@ -137,3 +137,18 @@ def test_esak_curve_rejects_a_malformed_line_but_allows_header_and_blanks(tmp_pa
     bad.write_text("kvp,mgy_per_mas\n60,0.03\n8O,0.06\n100,0.09\n")  # a letter O: a typo
     assert cli.main([*base, str(bad)]) == 2
     assert "line 3" in capsys.readouterr().err
+
+
+def test_cli_export_refuses_a_query_that_does_not_parse(tmp_path, capsys):
+    from dosimetrix import cli
+    from dosimetrix.db.migrate import upgrade
+
+    url = f"sqlite:///{tmp_path / 'q.sqlite3'}"
+    upgrade(url)
+    cfg = tmp_path / "dosimetrix.toml"
+    cfg.write_text(f'[security]\nsecret_file = "{tmp_path / "secret"}"\n')
+    out = tmp_path / "x.csv"
+    base = ["--config", str(cfg), "export", "--url", url, "-o", str(out)]
+    assert cli.main([*base, "-q", "modalty:CT"]) == 2  # a typo: not an export of everyone
+    assert "query not understood" in capsys.readouterr().err and not out.exists()
+    assert cli.main([*base, "-q", "modality:CT"]) == 0 and out.exists()

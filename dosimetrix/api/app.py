@@ -434,7 +434,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return start, end
 
     def _period_conds(q: str, start: dt.date, end: dt.date, session: Session) -> list:
-        return [*data.conditions(data.parse(q), clock(), data.overrides(session)),
+        return [*data.checked_conditions(q, clock(), data.overrides(session)),
                 Study.study_datetime >= dt.datetime.combine(start, dt.time()),
                 Study.study_datetime < dt.datetime.combine(end + dt.timedelta(days=1),
                                                            dt.time())]
@@ -764,7 +764,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                        user: User = Depends(current_user), session: Session = Depends(db)):
         from .. import quality
 
-        conds = data.conditions(data.parse(q), clock(), data.overrides(session))
+        conds = data.checked_conditions(q, clock(), data.overrides(session))
         out = quality.run(session, conds, min(max(limit, 1), 1000),
                           names=data.device_names(session), physical=data._physical_ids(session))
         out["q"] = q
@@ -1176,7 +1176,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if level not in ("study", "event") or format not in ("csv", "xlsx"):
             raise HTTPException(400, "level is study|event, format is csv|xlsx")
         now = clock()
-        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        conds = data.checked_conditions(q, now, data.overrides(session))
         names, physical = data.device_names(session), data._physical_ids(session)
         _audit(session, request, user, "export", f"{level}:{format}",
                {"q": q, "pid": pid})
@@ -1281,7 +1281,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if format not in ("csv", "xlsx", "json"):
             raise HTTPException(400, "format is csv|xlsx|json")
         now = clock()
-        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        conds = data.checked_conditions(q, now, data.overrides(session))
         _audit(session, request, user, "export", f"drl-dataset:{format}", {"q": q})
         session.commit()
 
@@ -1303,7 +1303,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if format not in ("csv", "xlsx", "json"):
             raise HTTPException(400, "format is csv|xlsx|json")
         now = clock()
-        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        conds = data.checked_conditions(q, now, data.overrides(session))
         try:
             rows = ds.summary_rows(session, conds, set, max(min_n, 1))
         except drl_mod.DRLError as e:
@@ -1358,7 +1358,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         except ValueError as e:
             raise HTTPException(400, "month is YYYY-MM") from e
         now = clock()
-        conds = [*data.conditions(data.parse(q), now, data.overrides(session)),
+        conds = [*data.checked_conditions(q, now, data.overrides(session)),
                  Study.study_datetime >= start, Study.study_datetime < end]
         _audit(session, request, user, "export", f"survey:{month}:{format}", {"q": q})
         session.commit()
@@ -1461,7 +1461,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if format not in ("json", "xlsx"):
             raise HTTPException(400, "format is json|xlsx")
         now = clock()
-        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        conds = data.checked_conditions(q, now, data.overrides(session))
         try:
             report = trend.build(session, conds, year, quarter, quarters, set)
         except drl_mod.DRLError as e:
@@ -1496,7 +1496,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         start, _ = quarter_range(*first)
         _, end = quarter_range(year, quarter)
         now = clock()
-        conds = [*data.conditions(data.parse(q), now, data.overrides(session)),
+        conds = [*data.checked_conditions(q, now, data.overrides(session)),
                  Study.study_datetime >= start, Study.study_datetime < end]
         rep = operators.build(session, conds, start.date(), (end - dt.timedelta(days=1)).date(),
                               max(min_n, 1))
@@ -1524,7 +1524,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if format not in ("json", "xlsx"):
             raise HTTPException(400, "format is json|xlsx")
         now = clock()
-        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        conds = data.checked_conditions(q, now, data.overrides(session))
         report = insp1255.build(session, conds, start, end)
         _audit(session, request, user, "report", f"insp1255:{year}Q{quarter}:{format}",
                {"q": q})
@@ -1555,7 +1555,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(403, "the pid role is required: the workbooks hold patient "
                                      "identifiers")
         now = clock()
-        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        conds = data.checked_conditions(q, now, data.overrides(session))
         books = art12.build(session, year, conds)
         _audit(session, request, user, "report", f"art12:{year}:{format}",
                {"q": q, "pid": format == "zip"})
@@ -1585,7 +1585,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if format not in ("json", "xlsx"):
             raise HTTPException(400, "format is json|xlsx")
         now = clock()
-        conds = data.conditions(data.parse(q), now, data.overrides(session))
+        conds = data.checked_conditions(q, now, data.overrides(session))
         report = grid.build(session, conds, start, end, max(min_n, 1), estimated)
         _audit(session, request, user, "report", f"grid:{year}Q{quarter}:{format}",
                {"q": q, "estimated": estimated})
@@ -1634,6 +1634,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     app.mount("/assets", StaticFiles(directory=WEB / "assets"), name="assets")
+
+    @app.exception_handler(data.QueryError)
+    def bad_query(request: Request, exc: data.QueryError):
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
     @app.exception_handler(HTTPException)
     def http_error(request: Request, exc: HTTPException):
