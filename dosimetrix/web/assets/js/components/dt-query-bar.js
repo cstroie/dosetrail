@@ -18,7 +18,8 @@ class DtQueryBar extends HTMLElement {
     this.input = h('input', { class: 'qb-input', type: 'text', role: 'combobox', 'aria-label': 'Add filter',
       'aria-expanded': 'false', 'aria-controls': 'qb-list', 'aria-autocomplete': 'list', spellcheck: 'false', autocomplete: 'off',
       placeholder: 'add filter…  e.g. dlp:>700',
-      oninput: () => this.updateSuggestions(), onkeydown: (e) => this.onKey(e), onblur: () => setTimeout(() => this.hideList(), 150) });
+      oninput: () => this.updateSuggestions(), onfocus: () => this.updateSuggestions(), onclick: () => this.updateSuggestions(),
+      onkeydown: (e) => this.onKey(e), onblur: () => setTimeout(() => this.hideList(), 150) });
     this.list = h('ul', { id: 'qb-list', class: 'qb-list', role: 'listbox', hidden: true });
     this.error = h('span', { class: 'qb-error', role: 'alert' });
     this.append(h('div', { class: 'qb', onclick: (e) => { if (e.target === e.currentTarget) this.input.focus(); } }, this.chips, this.input), this.list, this.error);
@@ -81,7 +82,8 @@ class DtQueryBar extends HTMLElement {
 
   updateSuggestions() {
     const text = this.input.value;
-    this.items = text ? suggest(text, this.context) : [];
+    // empty: every filter name with its hint, for when one is forgotten
+    this.items = suggest(text, this.context);
     this.active = 0;
     clear(this.list);
     this.items.forEach((s, i) => this.list.append(h('li', { id: `qb-${i}`, role: 'option', 'aria-selected': i === 0 ? 'true' : 'false',
@@ -111,7 +113,7 @@ class DtQueryBar extends HTMLElement {
       this.active = (this.active + (e.key === 'ArrowDown' ? 1 : -1) + this.items.length) % this.items.length;
       this.list.querySelectorAll('li').forEach((li, i) => li.setAttribute('aria-selected', i === this.active ? 'true' : 'false'));
       this.input.setAttribute('aria-activedescendant', `qb-${this.active}`);
-    } else if (e.key === 'Tab' && open) {
+    } else if (e.key === 'Tab' && open && this.input.value) {  // not on an empty box: Tab must still move on
       e.preventDefault();
       this.accept(this.active);
     } else if (e.key === 'Enter') {
