@@ -27,7 +27,9 @@ projection counts once under T1 and once under T2. Doses:
   earlier study (early and delayed PET sent as two studies) is one examination: the
   later study is not counted.
 
-ESAK and the dental air kerma are not collected, so those columns stay empty.
+**ESAK** (the "ESAK sau MGD" column) is the device's own entrance dose when it sends one, else
+the value calculated by the annex 2 method (``esak.py``, needs the device's output curve). The
+dental air kerma is not collected, so that column stays empty.
 
 **Art. 7 (3): at least 30 patients.** The norm wants a mean dose over at least 30 patients for
 every device and examination type. Each row therefore lists the examinations per device
@@ -131,9 +133,10 @@ def _units(session: Session, period: list, code_ids: list[int]) -> dict[tuple, d
     units: dict[tuple, dict] = {}
     # exposure-level codes (radiography projections, mammography views): sum of the
     # exposures' DAP / glandular dose
-    for sid, cid, age, sex, dap, agd, dev in session.execute(
+    for sid, cid, age, sex, dap, agd, dev, esd, esak in session.execute(
             select(Classification.study_id, Classification.code_id, Study.age_days,
-                   Patient.sex, Event.dap, Event.agd, Study.device_id)
+                   Patient.sex, Event.dap, Event.agd, Study.device_id, Event.esd,
+                   Event.esak_calc)
             .join(Study, Study.id == Classification.study_id)
             .join(Event, Event.id == Classification.event_id)
             .outerjoin(Patient, Patient.id == Study.patient_id)
@@ -143,8 +146,11 @@ def _units(session: Session, period: list, code_ids: list[int]) -> dict[tuple, d
                                           "activity": None})
         if dap is not None:
             u["dap"] = (u["dap"] or 0.0) + dap
-        if agd is not None:
-            u["mgd"] = (u["mgd"] or 0.0) + agd
+        # the glandular dose of a view; for X-ray the entrance dose: the device's own, else
+        # the one calculated by annex 2 (esak.py)
+        entrance = agd if agd is not None else (esd if esd is not None else esak)
+        if entrance is not None:
+            u["mgd"] = (u["mgd"] or 0.0) + entrance
     # study-level codes: the study's totals
     for sid, cid, age, sex, dap, dlp, kar, mbq, dev in session.execute(
             select(Classification.study_id, Classification.code_id, Study.age_days,
@@ -243,7 +249,7 @@ def build(session: Session, conds: list, start: dt.datetime, end: dt.datetime) -
     return {"start": start.date().isoformat(), "devices": names,
             "end": (end - dt.timedelta(days=1)).date().isoformat(), "sheets": out_sheets,
             "notes": {**notes, "unclassified": unclassified,
-                      "not_collected": "Medicină nucleară — tratament, radioterapie; ESAK; "
+                      "not_collected": "Medicină nucleară — tratament, radioterapie; "
                                        "kerma în aer (dentar)"}}
 
 

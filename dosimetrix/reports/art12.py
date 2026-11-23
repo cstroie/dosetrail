@@ -16,7 +16,9 @@ examination sheet, in the official column order:
   age, sex, height (cm), weight (kg), pregnancy (women of 12 to 55 years) and the clinical
   indication. These are personal data: the API gates the export with the ``pid`` role and
   audits it.
-* **Dose.** CT: the study's DLP. Radiography: the DAP of the projection (retakes included).
+* **Dose.** CT: the study's DLP. Radiography: the DAP of the projection (retakes included), and
+  the ESAK of a room without a DAP meter (the device's own entrance dose, else the annex 2
+  calculation, esak.py) in a last column the official sheet does not have.
   Fluoroscopy: the study's DAP. Mammography: the mean glandular dose of each view. Nuclear
   medicine: the administered activity (one injection split over two studies counts once);
   hybrid: also the CT DLP. The estimated effective dose of nuclear medicine is filled only for
@@ -53,7 +55,9 @@ INDICATION = "Indicatie clinica"
 COLUMNS = {
     "ct": [*COMMON, PREGNANCY, INDICATION, "Nativ/Contrast",
            "DLP total (mGy x cm) per procedura"],
-    "rx": [*COMMON, PREGNANCY, INDICATION, "Proiectie (AP/PA/LAT)", "DAP (Gy x cm2)"],
+    # the official sheet ends at the DAP; the ESAK column is ours, for rooms without a DAP meter
+    "rx": [*COMMON, PREGNANCY, INDICATION, "Proiectie (AP/PA/LAT)", "DAP (Gy x cm2)",
+           "ESAK (mGy), fara DAP-metru"],
     "fluoro": [*COMMON, PREGNANCY, INDICATION, "DAP (Gy x cm2)"],
     "mg": [*COMMON, PREGNANCY, "Proiectie (CC/MLO)", "San stang/drept", "MGD (mGy)"],
     "nm": [*COMMON, PREGNANCY, INDICATION, "Radionuclid folosit", "Forma chimica", "Cod proc",
@@ -140,7 +144,7 @@ def _studies(session: Session, fam: dict, start: dt.datetime, end: dt.datetime,
                 Study.height_m, Study.pregnant, Study.gestation_weeks, Study.indication_text,
                 Study.total_dlp, Study.total_dap, Study.admin_activity_mbq,
                 Patient.patient_id, Patient.sex, Patient.birth_date,
-                Event.dap, Event.agd, Event.view, Event.laterality)
+                Event.dap, Event.agd, Event.view, Event.laterality, Event.esd, Event.esak_calc)
          .join(Code, Code.id == Classification.code_id)
          .join(CodeSystem, CodeSystem.id == Code.system_id)
          .join(Study, Study.id == Classification.study_id)
@@ -160,11 +164,14 @@ def _studies(session: Session, fam: dict, start: dt.datetime, end: dt.datetime,
                 "weight": r.weight_kg, "height": r.height_m, "pregnant": r.pregnant,
                 "weeks": r.gestation_weeks, "indication": r.indication_text,
                 "patient_id": r.patient_id, "sex": r.sex, "birth": r.birth_date,
-                "dlp": r.total_dlp, "dap": None, "agd": r.agd, "view": r.view,
+                "dlp": r.total_dlp, "dap": None, "esak": None, "agd": r.agd, "view": r.view,
                 "side": r.laterality, "activity": r.admin_activity_mbq,
                 "study_dap": r.total_dap, "event_level": r.event_id is not None}
         if r.event_id is not None and r.dap is not None and kind != "mg":
             g["dap"] = (g["dap"] or 0.0) + r.dap  # retakes included
+        entrance = r.esd if r.esd is not None else r.esak_calc
+        if r.event_id is not None and entrance is not None and kind != "mg":
+            g["esak"] = (g["esak"] or 0.0) + entrance
     return list(grouped.values())
 
 
@@ -180,7 +187,7 @@ def _row(kind: str, g: dict, n: int, coefficients: dict[str, float]) -> list:
         return [*head, ind, "contrast" if contrast else "nativ", _num(g["dlp"], 1)]
     if kind == "rx":
         _, _, proj = g["meaning"].partition(" — ")
-        return [*head, ind, proj or g["view"] or "", _num(dose, 4)]
+        return [*head, ind, proj or g["view"] or "", _num(dose, 4), _num(g["esak"], 3)]
     if kind == "fluoro":
         return [*head, ind, _num(dose, 4)]
     if kind == "mg":

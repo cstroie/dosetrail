@@ -117,6 +117,21 @@ class Device(TimestampMixin, Base):
     )
 
 
+class DeviceOutput(Base):
+    """One point of an X-ray tube's output curve (Order 1255/2016 annex 2, point 2): the air
+    kerma per mAs, in mGy/mAs, at ``fdd_cm`` from the focus, measured at ``kvp``. Entered by the
+    medical physicist; the ESAK of studies without a DAP meter is calculated from it."""
+
+    __tablename__ = "device_output"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("device.id", ondelete="CASCADE"))
+    kvp: Mapped[float] = mapped_column(Float)
+    mgy_per_mas: Mapped[float] = mapped_column(Float)
+    fdd_cm: Mapped[float] = mapped_column(Float, default=50.0, server_default="50")
+
+    __table_args__ = (UniqueConstraint("device_id", "kvp", name="uq_device_output_kvp"),)
+
+
 # -------------------------------------------------------------------------- patient
 
 
@@ -248,6 +263,9 @@ class Event(Base):
     # SSDE calculated from wed_mm (ssde.py); ssde above is the scanner-reported value
     ssde_calc: Mapped[float | None] = mapped_column(Float)
     ssde_method: Mapped[str | None] = mapped_column(AsciiId(24))
+    # ESAK calculated by the Order 1255/2016 annex 2 method (esak.py); esd is the device's own
+    esak_calc: Mapped[float | None] = mapped_column(Float)
+    esak_method: Mapped[str | None] = mapped_column(AsciiId(16))
     is_localizer: Mapped[bool] = mapped_column(Boolean, default=False)
     is_principal: Mapped[bool | None] = mapped_column(Boolean)
     dose_check_alert: Mapped[bool | None] = mapped_column(Boolean)

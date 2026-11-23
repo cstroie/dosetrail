@@ -136,6 +136,9 @@ def recompute_all(session: Session, secret: bytes | None = None) -> list[str]:
     from . import ssde
 
     out.append(f"CT series with SSDE calculated from Dw: {ssde.update(session)}")
+    from . import esak
+
+    out.append(f"X-ray exposures with ESAK calculated (annex 2): {esak.update(session)}")
     from . import indications
 
     out.append(f"clinical indications: {dict(indications.update(session))}")

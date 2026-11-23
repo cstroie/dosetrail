@@ -170,6 +170,60 @@ def _cmd_survey_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_esak_curve(args: argparse.Namespace) -> int:
+    """The tube output curve of a device (Order 1255/2016 annex 2): set / show / clear."""
+    import csv
+    import getpass
+
+    from sqlalchemy import delete, select
+
+    from . import esak
+    from .db.models import AuditLog, Device, DeviceOutput
+    from .db.session import make_engine, make_sessionmaker
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        if args.action == "show":
+            names = {d.id: d.display_name or d.station_name or f"Device {d.id}"
+                     for d in session.scalars(select(Device))}
+            for dev, (pts, fdd) in esak.curves(session).items():
+                print(f"{dev} {names.get(dev, '?')}: FDD {fdd:g} cm, "
+                      + ", ".join(f"{k:g} kV {y:g}" for k, y in pts) + " mGy/mAs")
+            return 0
+        if args.device is None or session.get(Device, args.device) is None:
+            print("--device is the id of an existing device", file=sys.stderr)
+            return 2
+        dev = session.get(Device, args.device)
+        if dev.merged_into_id:
+            print(f"device {dev.id} is merged into {dev.merged_into_id}: use that one",
+                  file=sys.stderr)
+            return 2
+        points: list[tuple[float, float]] = []
+        if args.action == "set":
+            if not args.file:
+                print("set needs --file kvp,mgy_per_mas (one point per line)", file=sys.stderr)
+                return 2
+            with open(args.file, newline="") as fh:
+                for row in csv.reader(fh):
+                    try:
+                        points.append((float(row[0]), float(row[1])))
+                    except (ValueError, IndexError):
+                        continue  # a header or a blank line
+            if len(points) < 2 or any(y <= 0 for _, y in points):
+                print("at least two points, with a positive output", file=sys.stderr)
+                return 2
+        session.execute(delete(DeviceOutput).where(DeviceOutput.device_id == dev.id))
+        session.add_all(DeviceOutput(device_id=dev.id, kvp=k, mgy_per_mas=y, fdd_cm=args.fdd)
+                        for k, y in points)
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="config",
+                             target=f"esak-curve:{args.action}:{dev.id}",
+                             detail={"points": len(points), "fdd_cm": args.fdd}))
+        session.commit()
+        print(f"device {dev.id}: {len(points)} points"
+              + (" (run `recompute` to calculate ESAK)" if points else " removed"))
+    return 0
+
+
 def _cmd_art12(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
@@ -1041,6 +1095,15 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("-o", "--output", required=True)
     rp.add_argument("--url")
     rp.set_defaults(func=_cmd_report_1255)
+
+    ec = sub.add_parser("esak-curve", help="X-ray tube output curve of a device (annex 2 of "
+                                           "Order 1255/2016), for ESAK without a DAP meter")
+    ec.add_argument("action", choices=["set", "show", "clear"])
+    ec.add_argument("--device", type=int, help="device id (the physical device, not an alias)")
+    ec.add_argument("--file", help="CSV: kvp,mgy_per_mas (air kerma per mAs at the FDD)")
+    ec.add_argument("--fdd", type=float, default=50.0, help="distance of the measurement, cm")
+    ec.add_argument("--url")
+    ec.set_defaults(func=_cmd_esak_curve)
 
     a12 = sub.add_parser("art12", help="annual DRL return, Order 1255/2016 art. 12: 20 patients "
                                        "per examination and device, Feb-Mar (zip of xlsx)")

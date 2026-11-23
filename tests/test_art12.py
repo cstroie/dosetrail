@@ -83,7 +83,7 @@ def test_twenty_patients_per_sheet_in_the_window(books):
 
 def test_radiography_sums_retakes_per_projection_and_split_by_device(books):
     chest = _sheet(books, "radiografie", "Mobile B", "TORACE CP")
-    assert [r[-2:] for r in chest.rows] == [["AP/PA", 0.03], ["LAT", 0.05]]
+    assert [r[-3:] for r in chest.rows] == [["AP/PA", 0.03, ""], ["LAT", 0.05, ""]]
     assert not any(b.device_name == "Scanner A" and b.family == "radiografie" for b in books)
 
 

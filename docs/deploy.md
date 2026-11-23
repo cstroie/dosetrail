@@ -180,3 +180,18 @@ National statistics, per exam × group × quantity (RP 185 groups: head by age, 
 
 DRL exclusions are left out, and estimated weights too unless asked for. Download as XLSX. Uploading needs the importer or admin role.
 
+## Data only the medical physicist can supply
+
+The nightly checks and the reports work without these, but three Order 1255/2016 items stay empty
+until they are entered:
+
+- **Tube output curve (ESAK, art. 5 and annex 2).** For a room without a DAP meter the ESAK is
+  calculated from the tube's output: measure the air kerma per mAs at 50 cm for 40 to 140 kVp,
+  then `dosimetrix esak-curve set --device ID --file curve.csv` (two columns: `kvp,mgy_per_mas`),
+  `esak-curve show` to check, and `dosimetrix recompute` to calculate. The device id is the
+  physical device's (not an alias). The result is `event.esak_calc`; a device's own entrance dose
+  is never replaced.
+- **Effective dose coefficients (nuclear medicine, art. 3).** See the dose statement and
+  Art. 12 workbooks: the `Doza efectiva estimata` column is filled only for radiopharmaceuticals
+  with a coefficient entered (mSv/MBq); none ship with the program.
+- **Breast glandularity (mammography, art. 3).** Not carried by DICOM; entered per study.
