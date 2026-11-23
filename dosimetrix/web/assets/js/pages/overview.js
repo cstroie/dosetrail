@@ -4,7 +4,7 @@ import '../components/dt-shell.js';
 import { h, append, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
-import { overview, lookup, studyHref, ackAlert, isSample } from '../core/api.js';
+import { overview, lookup, studyHref, ackAlert, deadlineDone, isSample } from '../core/api.js';
 
 // the API's groups are CT, DX, RF, MG (the sample data says XA); anything else takes the accent
 const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', CR: '--m-dx', RF: '--m-rf', XA: '--m-rf', MG: '--m-mg', NM: '--m-nm' };
@@ -124,6 +124,28 @@ function lookupPanel() {
       h('span', { class: 'muted small' }, t('overview.lookup.hint'))));
 }
 
+// Reporting deadlines of Order 1255/2016 (art. 8 quarterly, art. 12 annual): shown as the date
+// approaches; a person marks one as sent, Dosimetrix sends nothing.
+function deadlinePanel(list, reload) {
+  if (!list?.length) return null;
+  const rows = list.map((d) => {
+    const period = d.kind === 'insp' ? `T${d.quarter} ${d.year}` : String(d.year);
+    const left = d.days_left < 0 ? t('deadline.late').replace('{n}', -d.days_left) : t('deadline.left').replace('{n}', d.days_left);
+    const href = d.kind === 'insp' ? `reports.html?r=insp` : `reports.html?r=art12`;
+    return h('li', {},
+      h('span', { class: `tag ${d.level}` }, d.level === 'alert' ? '!' : '·'),
+      h('span', {}, h('span', { class: 't' }, t(`deadline.${d.kind}`).replace('{period}', period)), h('br'),
+        h('span', { class: 'm mono' }, `${t('deadline.due').replace('{date}', d.due)} · ${left}`)),
+      h('span', { class: 'acts' }, h('a', { class: 'btn', href }, t('deadline.go')),
+        h('button', { class: 'btn', type: 'button', onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          try { await deadlineDone(d.id); reload(); } catch (err) { e.currentTarget.disabled = false; toast(err.message); }
+        } }, t('deadline.sent'))));
+  });
+  return h('section', { class: 'panel mt-3', 'aria-labelledby': 'h-dl' },
+    h('div', { class: 'panel-head' }, h('h2', { id: 'h-dl' }, t('deadline.title'))), h('ul', { class: 'queue' }, rows));
+}
+
 async function render() {
   page.replaceChildren(h('div', { class: 'state', 'aria-busy': 'true' }, h('span', { class: 'skeleton' }), h('span', { class: 'skeleton', style: { width: '60%' } })));
   try {
@@ -131,6 +153,7 @@ async function render() {
     page.replaceChildren(
       h('div', { class: 'row', style: { 'align-items': 'baseline', gap: '12px' } }, h('h1', {}, t('overview.title')),
         h('span', { class: 'muted mono' }, dateTime(data.generated))),
+      deadlinePanel(data.deadlines, render),
       kpis(data.modalities),
       h('div', { class: 'cols mt-3' }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), lookupPanel()));
   } catch (err) {

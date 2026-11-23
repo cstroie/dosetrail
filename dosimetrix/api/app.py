@@ -68,6 +68,15 @@ class LocalDRLIn(BaseModel):
     rows: list[dict]
 
 
+class ActionIn(BaseModel):
+    year: int | None = None
+    quarter: int | None = None
+    finding: str | None = None
+    action: str | None = None
+    owner: str | None = None
+    status: str | None = None  # open | doing | done
+
+
 class GlandularityIn(BaseModel):
     percent: float | None = None  # 0..100, None removes it
 
@@ -528,6 +537,103 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         out["indication"] = indications.of_study(session, study_id)
         return out
+
+    # ------------------------------------------------------------------ plan of measures
+
+    ACTION_STATUS = ("open", "doing", "done")
+
+    def _action_dict(a) -> dict:
+        return {"id": a.id, "year": a.year, "quarter": a.quarter, "finding": a.finding,
+                "action": a.action, "owner": a.owner, "status": a.status,
+                "created_by": a.created_by,
+                "updated_at": a.updated_at.isoformat(timespec="minutes") if a.updated_at else None}
+
+    @app.get("/api/actions")
+    def actions_list(year: int, quarter: int, user: User = Depends(current_user),
+                     session: Session = Depends(db)):
+        """The quarter's plan of optimisation measures (art. 7(2))."""
+        from ..db.models import OptimizationAction as A
+
+        rows = session.scalars(select(A).where(A.year == year, A.quarter == quarter)
+                               .order_by(A.id))
+        return {"year": year, "quarter": quarter, "rows": [_action_dict(a) for a in rows]}
+
+    @app.post("/api/actions")
+    def actions_add(body: ActionIn, request: Request, user: User = Depends(current_user),
+                    session: Session = Depends(db)):
+        from ..db.models import OptimizationAction as A
+
+        _exporter(user)
+        text_ok = (body.finding or "").strip() and (body.action or "").strip()
+        if body.year is None or body.quarter not in (1, 2, 3, 4) or not text_ok:
+            raise HTTPException(400, "year, quarter 1..4, finding and action are required")
+        if (body.status or "open") not in ACTION_STATUS:
+            raise HTTPException(400, "status is open|doing|done")
+        a = A(year=body.year, quarter=body.quarter, finding=body.finding.strip()[:1000],
+              action=body.action.strip()[:1000], owner=(body.owner or "").strip()[:120] or None,
+              status=body.status or "open", created_by=user.username)
+        session.add(a)
+        session.flush()
+        _audit(session, request, user, "action.add", f"action:{a.id}",
+               {"period": f"{a.year}Q{a.quarter}"})
+        session.commit()
+        return _action_dict(a)
+
+    @app.put("/api/actions/{action_id}")
+    def actions_edit(action_id: int, body: ActionIn, request: Request,
+                     user: User = Depends(current_user), session: Session = Depends(db)):
+        from ..db.models import OptimizationAction as A
+
+        _exporter(user)
+        a = session.get(A, action_id)
+        if a is None:
+            raise HTTPException(404, "action not found")
+        if body.status is not None and body.status not in ACTION_STATUS:
+            raise HTTPException(400, "status is open|doing|done")
+        changed = {}
+        for k in ("finding", "action", "owner", "status"):
+            v = getattr(body, k)
+            if v is not None and v.strip() != (getattr(a, k) or ""):
+                changed[k] = v.strip()[:1000]
+                setattr(a, k, v.strip()[:1000] or None)
+        if not a.finding or not a.action:
+            raise HTTPException(400, "finding and action cannot be empty")
+        _audit(session, request, user, "action.edit", f"action:{a.id}", changed)
+        session.commit()
+        return _action_dict(a)
+
+    @app.delete("/api/actions/{action_id}")
+    def actions_delete(action_id: int, request: Request, user: User = Depends(current_user),
+                       session: Session = Depends(db)):
+        from ..db.models import OptimizationAction as A
+
+        _exporter(user)
+        a = session.get(A, action_id)
+        if a is None:
+            raise HTTPException(404, "action not found")
+        _audit(session, request, user, "action.delete", f"action:{a.id}",
+               {"period": f"{a.year}Q{a.quarter}", "action": a.action[:120]})
+        session.delete(a)
+        session.commit()
+        return {"deleted": action_id}
+
+    @app.post("/api/deadlines/{deadline_id}/done")
+    def deadline_done(deadline_id: str, request: Request, user: User = Depends(current_user),
+                      session: Session = Depends(db)):
+        """Mark a reporting deadline as sent: only a person knows that (nothing is sent)."""
+        from .. import deadlines
+        from ..db.models import AppSetting
+
+        _exporter(user)
+        known = {d["id"] for d in deadlines.upcoming(clock().date())}
+        if deadline_id not in known:
+            raise HTTPException(404, "no such deadline in its window")
+        row = session.get(AppSetting, deadlines.DONE_KEY) or AppSetting(key=deadlines.DONE_KEY)
+        row.value = sorted({*(row.value or []), deadline_id})
+        session.add(row)
+        _audit(session, request, user, "deadline.done", deadline_id)
+        session.commit()
+        return {"done": deadline_id}
 
     @app.put("/api/studies/{study_id}/glandularity")
     def study_glandularity(study_id: int, body: GlandularityIn, request: Request,

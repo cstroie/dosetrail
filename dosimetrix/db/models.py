@@ -539,6 +539,23 @@ class AuditLog(Base):
     remote_addr: Mapped[str | None] = mapped_column(AsciiId(64))
 
 
+class OptimizationAction(TimestampMixin, Base):
+    """One line of the quarterly plan of optimisation measures (Order 1255/2016 art. 7(2)):
+    what the quarter's analysis found, what will be done about it, by whom, and where it stands."""
+
+    __tablename__ = "optimization_action"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(SmallInteger)
+    quarter: Mapped[int] = mapped_column(SmallInteger)
+    finding: Mapped[str] = mapped_column(Text(1000))
+    action: Mapped[str] = mapped_column(Text(1000))
+    owner: Mapped[str | None] = mapped_column(Text(120))
+    status: Mapped[str] = mapped_column(AsciiId(8), default="open", server_default="open")
+    created_by: Mapped[str | None] = mapped_column(Text(64))
+
+    __table_args__ = (Index("ix_action_period", "year", "quarter"),)
+
+
 class AppSetting(Base):
     """Small key/value store for administrative state (e.g. dismissed merge suggestions)."""
 

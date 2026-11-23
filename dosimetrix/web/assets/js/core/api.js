@@ -215,6 +215,14 @@ export function drlSets() {
 
 /** GET /api/drl/sets/{key} → { key, name, source, notes, values: [{ exam, exam_meaning, modality,
  *  scheme, band, band_label, quantity, value, unit, applies_to }] } */
+/** Plan of optimisation measures (art. 7(2)): GET /api/actions?year=&quarter=; writes need exporter. */
+export const actionList = (year, quarter) => (isSample ? serverOnly('Reports') : remote('/api/actions', { year, quarter }));
+export const addAction = (a) => send('POST', '/api/actions', a);
+export const editAction = (id, patch) => send('PUT', `/api/actions/${id}`, patch);
+export const deleteAction = (id) => send('DELETE', `/api/actions/${id}`);
+/** POST /api/deadlines/{id}/done: a person says the report was sent (nothing is sent by Dosimetrix). */
+export const deadlineDone = (id) => send('POST', `/api/deadlines/${encodeURIComponent(id)}/done`);
+
 /** PUT /api/studies/{id}/glandularity {percent|null} (admin): mammography, typed in. */
 export const setGlandularity = (id, percent) => send('PUT', `/api/studies/${id}/glandularity`, { percent });
 /** PUT /api/studies/{id}/indication {code|null} (admin); PUT /api/indications/mappings. */

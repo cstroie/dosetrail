@@ -75,9 +75,12 @@ def overview(session: Session, now: dt.datetime) -> dict:
             "month": total(mods, today - dt.timedelta(days=30), today),
             "delta_pct": round(100 * (week - prev) / prev) if prev else 0, "weekly": weekly,
         })
-    from .. import alerts
+    from .. import alerts, deadlines
+    from ..db.models import AppSetting
 
+    marked = session.get(AppSetting, deadlines.DONE_KEY)
     return {"generated": iso_min(now), "modalities": modalities,
+            "deadlines": deadlines.upcoming(now.date(), (marked.value if marked else None) or []),
             "alerts": alerts.listing(session, "open", 10, names=device_names(session)),
             "alerts_open": alerts.open_count(session),
             "feeds": feeds(session, now)}

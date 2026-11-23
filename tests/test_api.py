@@ -380,6 +380,36 @@ def test_glandularity_is_typed_in_for_mammography_only(client):
     assert log and log[0]["detail"]["from"] == 25.0
 
 
+def test_plan_of_measures_crud_and_deadline_marking(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/actions", params={"year": 2026, "quarter": 3}).json()["rows"] == []
+    body = {"year": 2026, "quarter": 3, "finding": "T1 above DRL", "action": "Check the AEC",
+            "owner": "physicist"}
+    assert client.post("/api/actions", json=body).status_code == 403  # writing needs exporter
+    login(client, "regist", "regist-pass-12")
+    assert client.post("/api/actions", json={**body, "quarter": 9}).status_code == 400
+    assert client.post("/api/actions", json={**body, "action": " "}).status_code == 400
+    a = client.post("/api/actions", json=body).json()
+    assert a["status"] == "open" and a["created_by"] == "regist"
+    put = client.put(f"/api/actions/{a['id']}", json={"status": "doing"})
+    assert put.json()["status"] == "doing"
+    assert client.put(f"/api/actions/{a['id']}", json={"status": "x"}).status_code == 400
+    assert client.put(f"/api/actions/{a['id']}", json={"finding": " "}).status_code == 400
+    rows = client.get("/api/actions", params={"year": 2026, "quarter": 3}).json()["rows"]
+    assert [r["status"] for r in rows] == ["doing"] and rows[0]["finding"] == "T1 above DRL"
+    assert client.delete(f"/api/actions/{a['id']}").json() == {"deleted": a["id"]}
+    assert client.delete(f"/api/actions/{a['id']}").status_code == 404
+    # deadlines: NOW is 2026-11-23: the Q3 report (due 20 Oct) is overdue and listed
+    ov = client.get("/api/overview").json()["deadlines"]
+    assert any(d["id"] == "insp:2026Q3" and d["level"] == "alert" for d in ov)
+    assert client.post("/api/deadlines/insp:2026Q3/done").json() == {"done": "insp:2026Q3"}
+    left = client.get("/api/overview").json()["deadlines"]
+    assert not any(d["id"] == "insp:2026Q3" for d in left)
+    assert client.post("/api/deadlines/art12:2031/done").status_code == 404
+    login(client, "viewer", "viewer-pass-1")
+    assert client.post("/api/deadlines/insp:2026Q3/done").status_code == 403
+
+
 def test_survey_export_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/survey/export", params={"month": "2026-11", "q": "", "format": "json"})

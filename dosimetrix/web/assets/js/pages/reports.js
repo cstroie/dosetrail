@@ -3,11 +3,12 @@
 // can be pasted into the INSP workbook.
 
 import '../components/dt-shell.js';
+import { confirmDialog } from '../core/confirm.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
-import { art12Report, art12Url, inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
+import { actionList, addAction, editAction, deleteAction, art12Report, art12Url, inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const today = new Date();
@@ -49,7 +50,7 @@ function render() {
         h('button', { class: 'btn primary', type: 'button', onclick: load }, t('rep.preview')),
         xlsx(() => inspReportUrl({ year: state.year, quarter: state.quarter })),
         h('span', { class: 'muted small' }, t('rep.insp.hint'))),
-      h('div', { id: 'rep' })],
+      h('div', { id: 'rep' }), h('div', { id: 'plan' })],
     art12: () => [
       h('div', { class: 'toolbar' }, yearSel,
         h('button', { class: 'btn primary', type: 'button', onclick: loadArt12 }, t('rep.preview')),
@@ -220,7 +221,36 @@ function lowTitle(x, r) {
   return t('rep.low.title').replace('{n}', r.min_patients).replace('{dev}', dev);
 }
 
+// Plan of optimisation measures of the quarter on screen (art. 7(2)).
+async function loadPlan() {
+  const host = document.getElementById('plan');
+  if (!host) return;
+  let r;
+  try { r = await actionList(state.year, state.quarter); } catch (e) { clear(host); return; }
+  const status = (a) => h('select', { class: 'input', 'aria-label': t('plan.status'), onchange: async (e) => {
+    try { await editAction(a.id, { status: e.target.value }); } catch (err) { toast(err.message); loadPlan(); }
+  } }, ['open', 'doing', 'done'].map((v) => h('option', { value: v, selected: a.status === v }, t(`plan.${v}`))));
+  const rows = r.rows.map((a) => h('tr', {}, h('td', {}, a.finding), h('td', {}, a.action), h('td', {}, a.owner || ''), h('td', {}, status(a)),
+    h('td', {}, h('button', { class: 'btn xs ghost danger', type: 'button', onclick: async () => {
+      if (!(await confirmDialog(a.action, { title: t('plan.delete'), label: t('plan.delete'), danger: true }))) return;
+      try { await deleteAction(a.id); loadPlan(); } catch (err) { toast(err.message); }
+    } }, t('plan.delete')))));
+  const f = h('input', { class: 'input', placeholder: t('plan.finding'), 'aria-label': t('plan.finding') });
+  const m = h('input', { class: 'input', placeholder: t('plan.action'), 'aria-label': t('plan.action') });
+  const o = h('input', { class: 'input w-140', placeholder: t('plan.owner'), 'aria-label': t('plan.owner') });
+  const add = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+    try { await addAction({ year: state.year, quarter: state.quarter, finding: f.value, action: m.value, owner: o.value }); loadPlan(); } catch (err) { toast(err.message); }
+  } }, t('plan.add'));
+  clear(host).append(h('h2', { class: 'section-title mt-5' }, `${t('plan.title')} · T${state.quarter} ${state.year}`),
+    h('p', { class: 'muted small' }, t('plan.hint')),
+    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll panel-scroll' }, h('table', { class: 'grid' },
+      h('thead', {}, h('tr', {}, ['finding', 'action', 'owner', 'status'].map((k) => h('th', {}, t(`plan.${k}`))), h('th', {}, ''))),
+      h('tbody', {}, rows.length ? rows : h('tr', {}, h('td', { colspan: 5, class: 'empty' }, t('plan.none')))))),
+    h('div', { class: 'row panel-body' }, f, m, o, add)));
+}
+
 async function load() {
+  loadPlan();
   const host = document.getElementById('rep');
   clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
   let r;
