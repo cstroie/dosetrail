@@ -131,8 +131,9 @@ dx-chart { display: block; min-width: 0; }
 .queue .m { font-size: var(--fs-xs); color: var(--muted); }
 .queue .v { font-family: var(--font-mono); text-align: right; }
 .queue .acts { grid-column: 2 / 4; display: flex; gap: 6px; }
-.feed { display: grid; grid-template-columns: minmax(70px, 1fr) repeat(7, minmax(16px, 30px)) minmax(76px, max-content); gap: 4px; padding: 10px 12px; align-items: center; font-size: var(--fs-sm); }
+.feed { display: grid; grid-template-columns: minmax(120px, max-content) repeat(7, minmax(16px, 30px)) minmax(40px, max-content); gap: 4px; padding: 10px 12px; align-items: center; font-size: var(--fs-sm); }
 .feed > * { min-width: 0; }
+.feed [role=rowheader] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feed .hd { font-size: 10px; white-space: nowrap; overflow: hidden; color: var(--muted); text-align: center; }
 .feed .c { height: 16px; border-radius: 2px; background: var(--seq); }
 .feed .c.zero { background: none; border: 1px dashed var(--warn); }
@@ -214,7 +215,7 @@ dx-chart { display: block; min-width: 0; }
 
 /* ---------- phone: overview leads with lookup and alerts ---------- */
 @media (max-width: 575.98px) {
-  .feed { grid-template-columns: minmax(90px, 1fr) repeat(7, 18px) 76px; gap: 3px; padding: 10px 8px; }
+  .feed { grid-template-columns: minmax(100px, 1fr) repeat(7, 18px) 40px; gap: 3px; padding: 10px 8px; }
   .queue li { grid-template-columns: 1fr auto; }
   .queue li > .tag { grid-column: 1 / -1; }
   .queue li > span:nth-child(4) { display: none; }
