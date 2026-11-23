@@ -1,4 +1,4 @@
-"""``records``: individual records, one row per study, or per examination, the columns named by field.
+"""``records``: individual records, a row per study or per examination, columns named by field.
 
 For cohorts, extracts and the forms an authority asks for as "N patients per examination".
 
@@ -116,7 +116,8 @@ class Records:
         for f in fams:
             for c in f.get("column", []):
                 if c.get("value") and c["value"] not in f.get("values", {}):
-                    errs.append(f"family {f['key']}: value {c['value']!r} is not in [family.values]")
+                    errs.append(f"family {f['key']}: value {c['value']!r} is not in "
+                                "[family.values]")
         return errs
 
     # ------------------------------------------------------------------ run
