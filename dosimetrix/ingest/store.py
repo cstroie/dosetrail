@@ -175,8 +175,11 @@ class Store:
                                    .filter_by(sop_instance_uid=obj.sop_instance_uid[:64]))
         # an object ignored before may be usable now (a parser learnt it, e.g. the OCR of a
         # dose page): only a second "ignored" verdict is a duplicate
-        if seen is not None and (seen.status in ("imported", "superseded")
-                                 or (seen.status == "ignored" and obj.kind == "ignored")):
+        improved = obj.kind == "ct_header" and any(
+            (e.get("extra_json") or {}).get("dlp_method") == "z_extent" for e in obj.events)
+        if seen is not None and not (seen.status == "imported" and improved) and (
+                seen.status in ("imported", "superseded")
+                or (seen.status == "ignored" and obj.kind == "ignored")):
             return self._count(Result("duplicate", seen.study_id, message="already processed"))
         if obj.kind == "ignored":
             self._record(obj, None, "ignored", obj.reason, seen)
@@ -218,6 +221,17 @@ class Store:
                 self.stats["header_events_replaced"] += len(stale)
                 existing = [e for e in existing if e not in stale]
 
+        # a header estimate made from the z range replaces one made from count x thickness
+        by_uid = {e.event_uid: e for e in existing if e.event_uid}
+        for ev in obj.events:
+            old = by_uid.get(ev.get("event_uid"))
+            if obj.kind == "ct_header" and old is not None and _source(old) == "header" \
+                    and (old.extra_json or {}).get("dlp_method", "count_x_thickness") \
+                    == "count_x_thickness" \
+                    and (ev.get("extra_json") or {}).get("dlp_method") == "z_extent":
+                for k in ("dlp", "scan_length_mm", "extra_json"):
+                    setattr(old, k, ev[k])
+                self.stats["header_estimates_improved"] += 1
         uids = {e.event_uid for e in existing if e.event_uid}
         sigs = {_sig(e) for e in existing} if projection else set()
         added = 0

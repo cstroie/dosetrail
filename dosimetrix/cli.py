@@ -1097,13 +1097,20 @@ def _cmd_qr(args: argparse.Namespace) -> int:
     while day >= start:  # newest first
         stats = None
         if (day.isoformat() in done and day < today - dt.timedelta(days=1)
-                and not (args.staff or args.ct_dose or args.dose_pages)):
+                and not (args.staff or args.ct_dose or args.dose_pages or args.ct_headers)):
             report(f"{day}: already done")
         elif args.ct_dose:  # known NM / PET studies: their CT dose report (SR series only)
             stats = qr.QRStats()
             if not args.dry_run:
                 qr.ct_dose_backfill(node, day, worker.spool, drain, maker, stats, args.pause,
                                     progress=report)
+            if stats.counts:
+                report(f"{day}: {dict(stats.counts)}; imported {worker.stats}", force=True)
+        elif args.ct_headers:  # known CT studies with old-style header estimates
+            stats = qr.QRStats()
+            if not args.dry_run:
+                qr.ct_header_backfill(node, day, worker.spool, drain, maker, stats, args.pause,
+                                      progress=report)
             if stats.counts:
                 report(f"{day}: {dict(stats.counts)}; imported {worker.stats}", force=True)
         elif args.dose_pages:  # known Toshiba CT studies: the console's dose pages
@@ -1416,6 +1423,9 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--ct-dose", action="store_true",
                    help="only NM / PET studies already imported without a CT dose: fetch "
                         "their SR series (PET/CT whose images came first)")
+    q.add_argument("--ct-headers", action="store_true",
+                   help="only CT studies imported from header estimates made from the image "
+                        "count: read their headers again (z range of each series)")
     q.add_argument("--dose-pages", action="store_true",
                    help="only Toshiba CT studies already imported from headers: fetch the "
                         "console's dose pages (a short Secondary Capture series, read by OCR)")

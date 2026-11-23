@@ -535,6 +535,37 @@ def dose_page_backfill(node: Node, day: dt.date, spool: Spool, drain: Callable[[
         time.sleep(pause)
 
 
+def ct_header_backfill(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
+                       session_factory, stats: QRStats, pause: float = 0.2,
+                       progress: Callable[[str], None] = print) -> None:
+    """CT studies of the day known only from header estimates made the old way (image
+    count x thickness): read their headers again, with the z range of each series."""
+    lo = dt.datetime.combine(day, dt.time())
+    with session_factory() as session:
+        uids = []
+        for st in session.scalars(select(Study).where(
+                Study.modality == "CT", Study.source_kind == "ct_header",
+                Study.study_datetime >= lo, Study.study_datetime < lo + dt.timedelta(days=1))):
+            evs = session.scalars(select(Event).where(Event.study_id == st.id)).all()
+            if any((e.extra_json or {}).get("dlp_method", "count_x_thickness")
+                   == "count_x_thickness" and (e.extra_json or {}).get("source") == "header"
+                   for e in evs):
+                uids.append(st.study_uid)
+    if uids:
+        progress(f"{day}: {len(uids)} CT studies with count x thickness estimates")
+    for uid in uids:
+        try:
+            ct = [s for s in find_series(node, uid) if s["modality"] == "CT"][:MAX_CT_SERIES]
+            if ct and one_per_series(node, uid, ct, spool, stats, "ct_header_images",
+                                     with_counts=True):
+                drain()
+            stats.add("ct_header_studies")
+        except Exception as e:  # keep going
+            stats.add("study_errors")
+            log.warning("CT headers of %s failed: %s", uid, e)
+        time.sleep(pause)
+
+
 def fetch_sr(node: Node, study_uid: str, spool: Spool, drain: Callable[[], int],
              stats: QRStats) -> int:
     """Only the study's SR series (the dose report)."""

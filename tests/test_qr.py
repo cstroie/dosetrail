@@ -4,6 +4,8 @@ import datetime as dt
 import socket
 
 import pytest
+
+from dosimetrix.ingest.parse import parse as parse_object
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian
 from pynetdicom import AE, evt
@@ -355,3 +357,41 @@ def test_a_day_with_undelivered_objects_is_not_complete():
     third = qr.QRStats()
     third.add("study_errors")
     assert third.incomplete
+
+
+def test_old_header_estimates_are_improved_by_a_second_read(env):
+    maker, spool, worker, drain = env
+    imgs = [f.ct_series_image(study_uid="6.8", sop_uid=f"6.8.{i}", series_uid="6.8.s1",
+                              ctdivol=10.0, count=None, spacing=5.0, acquisition="SEQUENCED",
+                              pitch=None) for i in range(3)]
+    for i, o in enumerate(imgs):
+        o.InstanceNumber = i + 1
+        o.ImagePositionPatient = [0, 0, -2.0 * i]  # 2 mm apart: the images overlap
+        _date(o)
+    pacs = FakePACS(imgs)
+    try:
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        # the study as an older version stored it: count x thickness (3 x 5 mm = 15 mm)
+        old = f.ct_series_image(study_uid="6.8", sop_uid="6.8.0", series_uid="6.8.s1",
+                                ctdivol=10.0, count=3, spacing=5.0, acquisition="SEQUENCED",
+                                pitch=None)
+        _date(old)
+        parsed = parse_object(old)
+        parsed.events[0]["extra_json"].pop("dlp_method")
+        with maker() as s:
+            from dosimetrix.ingest.store import Store
+            Store(s, b"x" * 32).store(parsed)
+            s.commit()
+        stats = qr.QRStats()
+        qr.ct_header_backfill(node, DAY, spool, drain, maker, stats, pause=0,
+                              progress=lambda _m: None)
+        assert stats.counts["ct_header_studies"] == 1
+        with maker() as s:
+            st = s.scalar(select(Study).filter_by(study_uid="6.8"))
+            assert st.n_events == 1 and st.total_dlp == pytest.approx(10.0 * 0.9)  # 4 + 5 mm
+        stats2 = qr.QRStats()  # nothing left to improve
+        qr.ct_header_backfill(node, DAY, spool, drain, maker, stats2, pause=0,
+                              progress=lambda _m: None)
+        assert not stats2.counts
+    finally:
+        pacs.stop()
