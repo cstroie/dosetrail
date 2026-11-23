@@ -145,7 +145,7 @@ class Store:
                                                   "device_observer_uid", "station_name",
                                                   "institution_name", "department_name",
                                                   "software_versions", "gantry_id")})
-            dev.display_name = d.get("station_name") or d.get("model_name")
+            dev.display_name = display_name(d.get("station_name"), d.get("model_name"))
             self.session.add(dev)
             self.session.flush()
             self.stats["devices_new"] += 1
@@ -360,6 +360,17 @@ def derive(session: Session, study_ids: list[int], helpers: Helpers | None = Non
     growth.apply_exclusions(session, study_ids)
     skindose.update_psd(session, study_ids)
     alerts.evaluate(session, study_ids, evaluator=helpers.evaluator if helpers else None)
+
+
+# Factory defaults that name no station (Toshiba writes ID_STATION on every scanner).
+PLACEHOLDER_STATIONS = {"id_station", "station", "unknown", "none", "n/a"}
+
+
+def display_name(station: str | None, model: str | None) -> str | None:
+    """A device's label: the station name unless it is a vendor placeholder, then the model."""
+    if station and station.strip().casefold() not in PLACEHOLDER_STATIONS:
+        return station
+    return model or station
 
 
 def _touch_device(device: Device, when: dt.datetime | None, new_study: bool) -> None:
