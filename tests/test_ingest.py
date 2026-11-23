@@ -330,3 +330,40 @@ def test_lookup_tables_are_built_once_per_store(session, monkeypatch):
         r = store.store(parse(f.ct_rdsr(study_uid=f"1.2.3.9{i}", sop_uid=f"1.2.3.9{i}.1")))
         assert r.status == "imported"
     assert built["c"] == 1 and built["e"] == 1 and built["m"] <= 1
+
+
+# ------------------------------------------------------------ CT without a dose report
+
+
+def test_ct_series_header_gives_an_estimated_event():
+    p = parse(f.ct_series_image(ctdivol=10.0, count=50, spacing=5.0))
+    assert p.kind == "ct_header" and p.study["modality"] == "CT"
+    (e,) = p.events
+    assert e["event_uid"] == "1.2.3.600.9" and e["event_type"] == "spiral"
+    assert e["ctdivol"] == 10.0 and e["scan_length_mm"] == 250.0
+    assert e["dlp"] == pytest.approx(250.0)  # 10 mGy x 25 cm
+    assert e["extra_json"]["dlp_estimated"] and e["kvp"] == 120 and e["exposure_time_s"] == 0.5
+    # without the image count (C-MOVE): the CTDIvol only, no DLP
+    e2 = parse(f.ct_series_image(count=None)).events[0]
+    assert e2["ctdivol"] == 10.0 and e2["dlp"] is None
+    assert parse(f.ct_series_image(image_type=("DERIVED", "SECONDARY"))).kind == "ignored"
+    loc = parse(f.ct_series_image(image_type=("ORIGINAL", "PRIMARY", "LOCALIZER"))).events[0]
+    assert loc["is_localizer"] and loc["event_type"] == "localizer"
+
+
+def test_ct_headers_import_then_the_dose_report_replaces_them(session):
+    store = Store(session, SECRET)
+    assert store.store(parse(f.ct_series_image(sop_uid="1.2.3.600.1"))).status == "imported"
+    store.store(parse(f.ct_series_image(sop_uid="1.2.3.600.2", series_uid="1.2.3.600.8",
+                                        ctdivol=4.0, count=20, spacing=3.0)))
+    st = session.scalar(select(Study).filter_by(study_uid="1.2.3.600"))
+    assert st.source_kind == "ct_header" and st.n_events == 2 and st.modality == "CT"
+    assert st.total_dlp == pytest.approx(250.0 + 24.0)
+    # the dose report arrives later: it replaces the estimated header events
+    store.store(parse(f.ct_rdsr(study_uid="1.2.3.600", sop_uid="1.2.3.600.50")))
+    session.refresh(st)
+    assert st.source_kind == "ct_rdsr" and st.n_events == 2
+    assert st.total_dlp == pytest.approx(822.5)
+    # and a header arriving after the report is superseded
+    assert store.store(parse(f.ct_series_image(sop_uid="1.2.3.600.3", series_uid="1.2.3.600.7"))
+                       ).status == "superseded"

@@ -37,6 +37,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
+from pydicom import dcmwrite
 from pydicom.dataset import Dataset
 from pydicom.uid import (
     DeflatedExplicitVRLittleEndian,
@@ -57,6 +58,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import AppSetting, Event, IngestedObject, Study
+from ..ingest.parse import mark_series_instances
 from .spool import Spool
 
 log = logging.getLogger("dosimetrix.qr")
@@ -65,6 +67,7 @@ XRAY = {"CT", "DX", "CR", "MG", "RF", "XA", "SR", "NM", "PT", "IO", "PX"}
 # SR finds studies that hold only a dose report
 DEFAULT_MODALITIES = ["CT", "DX", "CR", "RF", "XA", "MG", "NM", "PT", "SR"]
 NM_IMAGES = {"NM", "PT"}
+MAX_CT_SERIES = 12  # per study, for the header fallback
 PROJECTION_IMAGES = {"DX", "CR", "MG", "RF", "XA"}
 SR_CLASSES = [
     "1.2.840.10008.5.1.4.1.1.88.11", "1.2.840.10008.5.1.4.1.1.88.22",
@@ -316,12 +319,15 @@ def move_series(node: Node, study_uid: str, series_uids: list[str],
 
 
 def retrieve(node: Node, study_uid: str, series_uids: list[str], spool: Spool,
-             instances: dict[str, str] | None = None) -> dict:
+             instances: dict[str, str] | None = None,
+             counts: dict[str, int] | None = None) -> dict:
     """C-GET or C-MOVE, with one retry after a timeout or a dropped association.
-    ``instances``: series UID -> the one SOP instance to fetch from it."""
+    ``instances``: series UID -> the one SOP instance to fetch from it. ``counts``: series
+    UID -> its image count, written into the object (C-GET only: C-MOVE objects go
+    straight to the receiver, so their CT dose is estimated without a scan length)."""
     fn = (lambda: move_series(node, study_uid, series_uids, instances)) \
         if node.retrieve == "move" \
-        else (lambda: get_series(node, study_uid, series_uids, spool, instances))
+        else (lambda: get_series(node, study_uid, series_uids, spool, instances, counts))
     try:
         return fn()
     except (TimeoutError, ConnectionError, RuntimeError) as first:
@@ -334,14 +340,23 @@ def retrieve(node: Node, study_uid: str, series_uids: list[str], spool: Spool,
 
 
 def get_series(node: Node, study_uid: str, series_uids: list[str], spool: Spool,
-               instances: dict[str, str] | None = None) -> dict:
+               instances: dict[str, str] | None = None,
+               counts: dict[str, int] | None = None) -> dict:
     """C-GET the series into the spool; returns delivered/claimed counts."""
     delivered = 0
 
     def on_store(event) -> int:
         nonlocal delivered
-        data = event.encoded_dataset()
-        spool.write(str(event.request.AffectedSOPInstanceUID), lambda p: p.write_bytes(data))
+        uid = str(event.request.AffectedSOPInstanceUID)
+        n = (counts or {}).get(str(getattr(event.dataset, "SeriesInstanceUID", "")))
+        if n:  # the image count of the series, for the CT dose estimate (parse_ct_header)
+            ds = event.dataset
+            ds.file_meta = event.file_meta
+            mark_series_instances(ds, n)
+            spool.write(uid, lambda p: dcmwrite(p, ds, enforce_file_format=True))
+        else:
+            data = event.encoded_dataset()
+            spool.write(uid, lambda p: p.write_bytes(data))
         delivered += 1
         return 0x0000
 
@@ -405,6 +420,16 @@ def needs_ct_dose(session: Session, study_uid: str) -> bool:
         IngestedObject.sop_class_uid.startswith(SR_CLASS)).limit(1)) is None
 
 
+def needs_ct_sr(session: Session, study_uid: str) -> bool:
+    """A CT study we know only from image headers (no dose report was available) and none
+    of whose SR objects we have seen: look again, the dose report may have arrived."""
+    sid = session.scalar(select(Study.id).where(
+        Study.study_uid == study_uid, Study.modality == "CT", Study.source_kind == "ct_header"))
+    return sid is not None and session.scalar(select(IngestedObject.id).where(
+        IngestedObject.study_id == sid,
+        IngestedObject.sop_class_uid.startswith(SR_CLASS)).limit(1)) is None
+
+
 def fetch_sr(node: Node, study_uid: str, spool: Spool, drain: Callable[[], int],
              stats: QRStats) -> int:
     """Only the study's SR series (the dose report)."""
@@ -427,7 +452,7 @@ def needs_staff(session: Session, study_uid: str) -> bool:
 
 
 def one_per_series(node: Node, study_uid: str, series: list[dict], spool: Spool,
-                   stats: QRStats, key: str) -> int:
+                   stats: QRStats, key: str, with_counts: bool = False) -> int:
     """Retrieve the first image of each series (its header is all we read)."""
     instances = {}
     for s in series:
@@ -436,7 +461,9 @@ def one_per_series(node: Node, study_uid: str, series: list[dict], spool: Spool,
             instances[s["uid"]] = sop
     if not instances:
         return 0
-    r = retrieve(node, study_uid, list(instances), spool, instances)
+    counts = {s["uid"]: s["instances"] for s in series
+              if with_counts and s["instances"] and s["uid"] in instances}
+    r = retrieve(node, study_uid, list(instances), spool, instances, counts or None)
     stats.add(key, r["delivered"])
     return r["delivered"]
 
@@ -462,13 +489,22 @@ def retrieve_study(node: Node, hit: StudyHit, spool: Spool, drain: Callable[[], 
         if r["claimed"] > r["delivered"]:
             stats.add("not_delivered", r["claimed"] - r["delivered"])
         drain()
+    ct_headers = False
+    if not sr and not any(s["modality"] in NM_IMAGES for s in series):
+        # a CT study without a dose report: one image per series gives its dose header
+        ct = [s for s in series if s["modality"] == "CT"][:MAX_CT_SERIES]
+        if ct and one_per_series(node, hit.uid, ct, spool, stats, "ct_header_images",
+                                 with_counts=True):
+            drain()
+            ct_headers = True
+            stats.add("ct_studies_by_headers")
     nm = [s for s in series if s["modality"] in NM_IMAGES][:4]
     if nm and one_per_series(node, hit.uid, nm, spool, stats, "nm_headers"):
         drain()
     with session_factory() as session:
         covered = has_dose_report(session, hit.uid)
         staff = needs_staff(session, hit.uid)
-    if staff:
+    if staff and not ct_headers:  # the CT headers carry the names as well
         fetch_staff(node, hit.uid, series, spool, drain, stats)
     if covered:
         stats.add("studies_by_dose_report")
@@ -510,7 +546,8 @@ def run_day(node: Node, day: dt.date, spool: Spool, drain: Callable[[], int],
             if in_database(session, h.uid):
                 if h.modalities & NM_IMAGES and needs_activity(session, h.uid):
                     todo.append(h)
-                elif h.modalities & {"SR", "CT"} and needs_ct_dose(session, h.uid):
+                elif h.modalities & {"SR", "CT"} and (needs_ct_dose(session, h.uid)
+                                                      or needs_ct_sr(session, h.uid)):
                     ct_dose.append(h)
                 else:
                     stats.add("skipped_known")

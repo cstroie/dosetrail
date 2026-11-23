@@ -206,6 +206,28 @@ def ct_image(study_uid="1.2.3.100", sop_uid="1.2.3.100.7", operator="RAD^ANA",
     return ds
 
 
+def ct_series_image(study_uid="1.2.3.600", sop_uid="1.2.3.600.1", series_uid="1.2.3.600.9",
+                    ctdivol=10.0, count=50, spacing=5.0,
+                    image_type=("ORIGINAL", "PRIMARY", "AXIAL"), acquisition="SPIRAL"):
+    """A CT image whose header carries the series' dose values (no dose report exists)."""
+    ds = ct_image(study_uid, sop_uid, operator=None, physician=None)
+    ds.SeriesInstanceUID = series_uid
+    ds.ImageType = list(image_type)
+    ds.CTDIvol = ctdivol
+    ds.KVP = 120
+    ds.XRayTubeCurrent = 200
+    ds.ExposureTime = 500
+    ds.SpiralPitchFactor = 0.9
+    ds.AcquisitionType = acquisition
+    ds.SliceThickness = spacing
+    ds.TotalCollimationWidth = 20.0
+    ds.ProtocolName = "HEAD"
+    if count:
+        from dosimetrix.ingest.parse import mark_series_instances
+        mark_series_instances(ds, count)
+    return ds
+
+
 def pet_image(study_uid="1.2.3.500", sop_uid="1.2.3.500.1", mbq=185.0, agent="Fluorodeoxyglucose"):
     ds = header(Dataset(), study_uid=study_uid, sop_uid=sop_uid, modality="PT")
     ds.SOPClassUID = PET

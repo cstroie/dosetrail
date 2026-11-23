@@ -53,7 +53,7 @@ PROJ_ACQ = ({"113611", "113612", "113613"},
 
 @dataclass
 class ParsedObject:
-    kind: str  # ct_rdsr | proj_rdsr | header | nm_header | staff | ignored
+    kind: str  # ct_rdsr | proj_rdsr | header | ct_header | nm_header | staff | ignored
     sop_instance_uid: str
     sop_class_uid: str
     reason: str = ""
@@ -227,6 +227,9 @@ def parse(ds) -> ParsedObject:
     if sop_class in NM_SOP:
         return parse_nm(ds)
     if sop_class in CT_IMAGE_SOP:
+        got = parse_ct_header(ds)
+        if got is not None:
+            return got
         study, _patient, _device = _header(ds)
         staff = {k: study[k] for k in ("study_uid", "operator_name", "performing_physician")}
         if staff["operator_name"] or staff["performing_physician"]:
@@ -415,6 +418,67 @@ def parse_projection(ds, root: Node) -> ParsedObject:
     study["modality"] = modality
     return ParsedObject("proj_rdsr", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
                         study=study, patient=patient, device=device, events=events)
+
+
+# --------------------------------------------------------------- CT image header (no SR)
+
+PRIVATE_GROUP, PRIVATE_CREATOR = 0x0023, "DOSIMETRIX"  # added by the Q/R step: see below
+
+
+def series_instances(ds) -> int | None:
+    """Images in the CT series the object came from, when Q/R recorded it (private tag)."""
+    try:
+        v = ds.private_block(PRIVATE_GROUP, PRIVATE_CREATOR)[0x01].value
+        return int(v) if v else None
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def mark_series_instances(ds, n: int) -> None:
+    ds.private_block(PRIVATE_GROUP, PRIVATE_CREATOR, create=True).add_new(0x01, "IS", int(n))
+
+
+def parse_ct_header(ds) -> ParsedObject | None:
+    """One CT image of a series, retrieved because the study has no dose report: its header
+    carries CTDIvol, kV, mA, pitch and collimation of the whole (constant) series. The DLP
+    is estimated as CTDIvol x scan length, the length being the series' image count (given
+    by Q/R) times the slice spacing; the event says so (``dlp_estimated``). None when the
+    image is not such a header (no CTDIvol, derived images): the staff names remain."""
+    ctdivol = _f(ds.get("CTDIvol"))
+    itype = [str(x).upper() for x in (ds.get("ImageType") or [])]
+    if not ctdivol or "DERIVED" in itype or "SECONDARY" in itype:
+        return None
+    study, patient, device = _header(ds)
+    study["modality"] = "CT"
+    n = series_instances(ds)
+    spacing = _f(ds.get("SpacingBetweenSlices")) or _f(ds.get("SliceThickness"))
+    length = n * abs(spacing) if n and spacing else None
+    acq = str(ds.get("AcquisitionType", "") or "").upper()
+    pitch = _f(ds.get("SpiralPitchFactor"))
+    etype = "localizer" if "LOCALIZER" in itype else \
+        "spiral" if acq == "SPIRAL" or (not acq and pitch) else \
+        "axial" if acq == "SEQUENCED" else None
+    when = parse_dt(_s(ds.get("AcquisitionDateTime"))) or \
+        _datetime(ds.get("AcquisitionDate"), ds.get("AcquisitionTime")) or study["study_datetime"]
+    t = _f(ds.get("ExposureTime"))
+    event = {
+        "event_uid": _s(ds.get("SeriesInstanceUID"), 64), "event_datetime": when,
+        "event_type": etype,
+        "protocol": _s(ds.get("ProtocolName")) or _s(ds.get("SeriesDescription")),
+        "anatomy": _s(ds.get("BodyPartExamined"), 128),
+        "comment": _s(ds.get("SeriesDescription")),
+        "ctdivol": ctdivol, "dlp": ctdivol * length / 10 if length else None,
+        "scan_length_mm": length, "pitch": pitch,
+        "collimation_mm": _f(ds.get("TotalCollimationWidth")),
+        "rotation_time_s": _f(ds.get("RevolutionTime")),
+        "exposure_time_s": t / 1000 if t is not None else None,
+        "kvp": _f(ds.get("KVP")), "ma": _f(ds.get("XRayTubeCurrent")),
+        "is_localizer": etype == "localizer",
+        "extra_json": {"source": "header", "dlp_estimated": length is not None,
+                       "series_instances": n, "slice_spacing_mm": spacing},
+    }
+    return ParsedObject("ct_header", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
+                        study=study, patient=patient, device=device, events=[event])
 
 
 # ------------------------------------------------------------------------- image headers

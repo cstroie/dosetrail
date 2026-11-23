@@ -87,6 +87,14 @@ class FakePACS:
                 r.StudyInstanceUID = uid
                 r.ModalitiesInStudy = sorted(mods)
                 yield 0xFF00, r
+        elif q.QueryRetrieveLevel == "IMAGE":
+            for o in self.objects:
+                if o.SeriesInstanceUID == q.SeriesInstanceUID:
+                    r = Dataset()
+                    r.QueryRetrieveLevel = "IMAGE"
+                    r.SOPInstanceUID = o.SOPInstanceUID
+                    r.InstanceNumber = o.get("InstanceNumber", 1)
+                    yield 0xFF00, r
         else:
             series = {}
             for o in self.objects:
@@ -101,7 +109,8 @@ class FakePACS:
 
     def on_get(self, event):
         q = event.identifier
-        hits = [o for o in self.objects if o.SeriesInstanceUID == q.SeriesInstanceUID]
+        hits = [o for o in self.objects if o.SeriesInstanceUID == q.SeriesInstanceUID
+                and (q.QueryRetrieveLevel != "IMAGE" or o.SOPInstanceUID == q.SOPInstanceUID)]
         self.gets.append(q.SeriesInstanceUID)
         yield len(hits)
         for o in hits:
@@ -287,5 +296,46 @@ def test_pet_ct_whose_images_came_first_gets_its_ct_dose_report(env):
         qr.ct_dose_backfill(node, DAY, spool, drain, maker, stats3, pause=0,
                             progress=lambda _m: None)
         assert not stats3.counts
+    finally:
+        pacs.stop()
+
+
+def test_ct_without_a_dose_report_falls_back_to_one_image_per_series(env):
+    maker, spool, worker, drain = env
+    imgs = [f.ct_series_image(study_uid="6.9", sop_uid=f"6.9.{i}", series_uid="6.9.s1",
+                              ctdivol=10.0, count=None, spacing=5.0) for i in range(3)]
+    imgs.append(f.ct_series_image(study_uid="6.9", sop_uid="6.9.9", series_uid="6.9.s2",
+                                  ctdivol=4.0, count=None, spacing=3.0))
+    for i, o in enumerate(imgs):
+        o.InstanceNumber = i + 1
+        _date(o)
+    pacs = FakePACS(imgs)
+    try:
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        stats = qr.QRStats()
+        qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None)
+        assert stats.counts["ct_header_images"] == 2  # one image per series, not all four
+        assert len(pacs.gets) == 2
+        with maker() as s:
+            st = s.scalar(select(Study).filter_by(study_uid="6.9"))
+            assert st.source_kind == "ct_header" and st.n_events == 2
+            # series 1: 3 images x 5 mm = 15 mm at 10 mGy; series 2: 1 x 3 mm at 4 mGy
+            assert st.total_dlp == pytest.approx(10.0 * 1.5 + 4.0 * 0.3)
+            assert qr.needs_ct_sr(s, "6.9")
+        stats2 = qr.QRStats()  # known only by headers: looked at again for a dose report
+        qr.run_day(node, DAY, spool, drain, maker, stats2, pause=0, progress=lambda _m: None)
+        assert stats2.counts["ct_dose_studies"] == 1 and stats2.counts["no_sr_series"] == 1
+    finally:
+        pacs.stop()
+    sr = _date(f.ct_rdsr(study_uid="6.9", sop_uid="6.9.50"))
+    pacs = FakePACS([*imgs, sr])
+    try:
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        qr.run_day(node, DAY, spool, drain, maker, qr.QRStats(), pause=0,
+                   progress=lambda _m: None)
+        with maker() as s:
+            st = s.scalar(select(Study).filter_by(study_uid="6.9"))
+            assert st.source_kind == "ct_rdsr" and st.total_dlp == pytest.approx(822.5)
+            assert not qr.needs_ct_sr(s, "6.9")
     finally:
         pacs.stop()
