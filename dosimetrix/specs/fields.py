@@ -119,19 +119,23 @@ def birth_date(r):
     return r.p.birth_date if r.p else None
 
 
+def cnp7_of(patient_id, sex, born) -> str | None:
+    """First 7 digits of a CNP: from the stored ID when it is a valid CNP, else rebuilt from the
+    recorded sex and birth date."""
+    if patient_id and nationalid.ro_cnp(patient_id):
+        return patient_id.strip()[:7]
+    if sex in ("M", "F") and born:
+        century = {18: 3, 19: 1, 20: 5}.get(born.year // 100)
+        if century is not None:
+            return f"{century + (1 if sex == 'F' else 0)}{born:%y%m%d}"
+    return None
+
+
 @field("patient.cnp7", identifying=True)
 def cnp7(r):
     """First 7 digits of the CNP (sex/century and birth date): from the stored ID when it is a
     valid CNP, else rebuilt from the recorded sex and birth date. Partial, but still personal."""
-    pid = r.p.patient_id if r.p else None
-    if pid and nationalid.ro_cnp(pid):
-        return pid.strip()[:7]
-    sx, born = (r.p.sex, r.p.birth_date) if r.p else (None, None)
-    if sx in ("M", "F") and born:
-        century = {18: 3, 19: 1, 20: 5}.get(born.year // 100)
-        if century is not None:
-            return f"{century + (1 if sx == 'F' else 0)}{born:%y%m%d}"
-    return None
+    return cnp7_of(r.p.patient_id, r.p.sex, r.p.birth_date) if r.p else None
 
 
 @field("age.display", unit="")
@@ -163,15 +167,19 @@ def age_coarse(r):
     return f"{m} mo" if m < 24 else f"{int(d / 365.25)} y"
 
 
+def pregnancy_text(sex, age_days, pregnant, weeks) -> str | None:
+    if sex != "F" or age_days is None or not 12 <= age_days / 365.25 <= 55 or pregnant is None:
+        return None
+    if not pregnant:
+        return "Nu"
+    return f"Da, {weeks} sapt" if weeks else "Da"
+
+
 @field("pregnancy.text")
 def pregnancy(r):
     """"Da, N sapt" / "Nu" for women of 12 to 55 years when it is recorded, else empty."""
-    d = r.s.age_days
-    if not r.p or r.p.sex != "F" or d is None or not 12 <= d / 365.25 <= 55 or r.s.pregnant is None:
-        return None
-    if not r.s.pregnant:
-        return "Nu"
-    return f"Da, {r.s.gestation_weeks} sapt" if r.s.gestation_weeks else "Da"
+    return pregnancy_text(r.p.sex if r.p else None, r.s.age_days, r.s.pregnant,
+                          r.s.gestation_weeks)
 
 
 # ----------------------------------------------------------------------------- device, time
@@ -193,6 +201,12 @@ def manufacturer(r):
 def model(r):
     "Model name."
     return r.d.model_name if r.d else None
+
+
+@field("device.department")
+def department(r):
+    "Department name the device reports."
+    return r.d.department_name if r.d else None
 
 
 @field("device.serial")

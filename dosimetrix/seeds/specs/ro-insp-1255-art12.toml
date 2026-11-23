@@ -1,0 +1,656 @@
+# Annual DRL return, Order MS 1255/2016 art. 12: the individual records of 20 patients examined in
+# February and March, per examination type and per X-ray or nuclear-medicine device, to the county
+# public-health authority by 15 April. One workbook per family and device, in the INSP layout
+# (reference/insp-forms/Art12_*.xls); the first-N selection is deterministic (time order).
+# Interventional cardiology/radiology, dental and bone densitometry have their own INSP files and
+# are not generated yet: add a [[family]] for each.
+
+[spec]
+id = "ro-insp-1255-art12"
+kind = "records"
+version = "2016-11-07"
+title = { en = "Annual DRL return (Order 1255/2016 art. 12)", ro = "Raportarea anuală NRD (OMS 1255/2016 art. 12)" }
+authority = "INSP / LIR-DSP"
+country = "RO"
+legal = "Ordinul MS nr. 1255/2016, art. 12"
+formats = ["json", "zip"]
+access = ["exporter"]     # the patient columns (CNP, indication) add the pid role by themselves
+
+[params]
+period = { type = "year" }
+q = { type = "query", default = "origin:local" }
+
+[rules]
+patients_per_sheet = { value = 20, article = "art. 12 alin. 1" }
+window_months = { value = [2, 3], article = "art. 12 alin. 1" }
+due_month = { value = 4, article = "art. 12 alin. 4" }
+due_day = { value = 15, article = "art. 12 alin. 4" }
+contrast_codes = { value = ["TEP"], article = "CT codes that are contrast studies without the SC suffix" }
+
+[deadline]
+id = "art12"
+month = "${rules.due_month}"
+day = "${rules.due_day}"
+
+[window]
+months = "${rules.window_months}"
+
+[select]
+first = "${rules.patients_per_sheet}"
+
+[unit]
+level = "exam"
+none_as = ""
+
+[[book.info]]
+header = "Institutia"
+field = "device.institution"
+[[book.info]]
+header = "Departament"
+field = "device.department"
+[[book.info]]
+header = "Tip si model echipament"
+field = "device.model"
+[[book.info]]
+header = "Producator"
+field = "device.manufacturer"
+[[book.info]]
+header = "Serie"
+field = "device.serial"
+[[book.info]]
+header = "Anul"
+text = "{year}"
+[[book.info]]
+header = "Perioada"
+text = "{start} – {end}"
+[[book.info]]
+header = "Selectie"
+text = "primii {first} pacienți în ordine cronologică per examinare (art. 12 alin. 1)"
+
+[[family]]
+key = "ct"
+title = "CT (DLP)"
+file = "Art12_CT_DLP"
+system = "ro-insp-1255-ct"
+modalities = ["CT"]
+
+[[family.column]]
+header = "Nr. crt"
+seq = true
+
+[[family.column]]
+header = "CNP (primele 7 cifre)"
+field = "patient.cnp7"
+
+[[family.column]]
+header = "Varsta"
+field = "age.years"
+
+[[family.column]]
+header = "Gen"
+field = "patient.sex"
+
+[[family.column]]
+header = "Inaltime (cm)"
+field = "study.height_cm"
+
+[[family.column]]
+header = "Greutate (kg)"
+field = "study.weight_kg"
+transform = "round:1"
+
+[[family.column]]
+header = "Insarcinata Da/Nu / Varsta sarcinii"
+field = "pregnancy.text"
+
+[[family.column]]
+header = "Indicatie clinica"
+field = "study.indication"
+
+[[family.column]]
+header = "Nativ/Contrast"
+field = "exam.contrast"
+
+[[family.column]]
+header = "DLP total (mGy x cm) per procedura"
+field = "study.total_dlp"
+transform = "round:1"
+
+[[family.sheet]]
+name = "Cap"
+codes = ["C", "CSC"]
+
+[[family.sheet]]
+name = "Ureche"
+codes = ["U", "USC"]
+
+[[family.sheet]]
+name = "Orbita"
+codes = ["OR", "ORSC"]
+
+[[family.sheet]]
+name = "Sinus"
+codes = ["S", "SSC"]
+
+[[family.sheet]]
+name = "Gat(parti moi)"
+codes = ["G", "GSC"]
+
+[[family.sheet]]
+name = "Coloana cervicala"
+codes = ["CC", "CCSC"]
+
+[[family.sheet]]
+name = "Cap+Col cervicala"
+codes = ["CCC", "CCCSC"]
+
+[[family.sheet]]
+name = "Coloana toracala"
+codes = ["CT", "CTSC"]
+
+[[family.sheet]]
+name = "Coloana lombara"
+codes = ["CL", "CLSC"]
+
+[[family.sheet]]
+name = "Torace"
+codes = ["T", "TSC", "TLD", "TEP"]
+
+[[family.sheet]]
+name = "Abdomen"
+codes = ["A", "ASC"]
+
+[[family.sheet]]
+name = "Pelvis"
+codes = ["P", "PSC"]
+
+[[family.sheet]]
+name = "Trunchi"
+codes = ["TR", "TRSC"]
+
+[[family.sheet]]
+name = "Torace+Abdomen"
+codes = ["TA", "TASC"]
+
+[[family.sheet]]
+name = "Abdomen + Pelvis"
+codes = ["AP", "APSC"]
+
+[[family.sheet]]
+name = "Cap+Torace+Abdomen"
+codes = ["CTA", "CTASC"]
+
+[[family.sheet]]
+name = "Cap+Abdomen+Pelvis"
+codes = ["CAP", "CAPSC"]
+
+[[family.sheet]]
+name = "Cap+Torace+Abdomen+Pelvis"
+codes = ["CTAP", "CTAPSC"]
+
+[[family.sheet]]
+name = "Cap+Gat"
+codes = ["CG", "CGSC"]
+
+[[family.sheet]]
+name = "Cap+Gat+Torace"
+codes = ["CGT", "CGTSC"]
+
+[[family.sheet]]
+name = "Gat+Torace"
+codes = ["GT", "GTSC"]
+
+[[family.sheet]]
+name = "Gat+Torace+Abdomen"
+codes = ["GTA", "GTASC"]
+
+[[family.sheet]]
+name = "Gat+Torace+Abdomen+Pelvis"
+codes = ["GTAP", "GTAPSC"]
+
+[[family.sheet]]
+name = "Urografie CT"
+codes = ["URO", "UROSC"]
+
+[[family.sheet]]
+name = "Extremitati"
+codes = ["E", "ESC"]
+
+[[family]]
+key = "radiografie"
+title = "Radiologie conventionala (DAP)"
+file = "Art12_Radiografie_DAP"
+system = "ro-insp-1255-rx"
+modalities = ["DX", "CR"]
+
+[family.values]
+dap = { event = ["event.dap"], study = "study.total_dap" }
+esak = { event = ["event.esd", "event.esak_calc"] }
+
+[[family.column]]
+header = "Nr. crt"
+seq = true
+
+[[family.column]]
+header = "CNP (primele 7 cifre)"
+field = "patient.cnp7"
+
+[[family.column]]
+header = "Varsta"
+field = "age.years"
+
+[[family.column]]
+header = "Gen"
+field = "patient.sex"
+
+[[family.column]]
+header = "Inaltime (cm)"
+field = "study.height_cm"
+
+[[family.column]]
+header = "Greutate (kg)"
+field = "study.weight_kg"
+transform = "round:1"
+
+[[family.column]]
+header = "Insarcinata Da/Nu / Varsta sarcinii"
+field = "pregnancy.text"
+
+[[family.column]]
+header = "Indicatie clinica"
+field = "study.indication"
+
+[[family.column]]
+header = "Proiectie (AP/PA/LAT)"
+field = "exam.projection"
+
+[[family.column]]
+header = "DAP (Gy x cm2)"
+value = "dap"
+transform = "round:4"
+
+[[family.column]]
+header = "ESAK (mGy), fara DAP-metru"
+value = "esak"
+transform = "round:3"
+
+[[family.sheet]]
+name = "CRANIU"
+codes = ["C1", "C2"]
+
+[[family.sheet]]
+name = "SINUS"
+codes = ["S1"]
+
+[[family.sheet]]
+name = "TORACE CP"
+codes = ["T1", "T2", "T3"]
+
+[[family.sheet]]
+name = "TORACE OSOS"
+codes = ["T4", "T5"]
+
+[[family.sheet]]
+name = "MEMBRE SI ARTICULATII"
+codes = ["OL"]
+
+[[family.sheet]]
+name = "COLOANA CERVICALA"
+codes = ["CC1", "CC2"]
+
+[[family.sheet]]
+name = "COLOANA TORACALA"
+codes = ["CT1", "CT2"]
+
+[[family.sheet]]
+name = "COLOANA LOMBARA"
+codes = ["CL1", "CL2", "CL3", "CL4"]
+
+[[family.sheet]]
+name = "PELVIS SI SOLD"
+codes = ["P1", "P2"]
+
+[[family.sheet]]
+name = "ABDOMEN"
+codes = ["A1"]
+
+[[family.sheet]]
+name = "TRACT GASTRODUODENAL"
+codes = ["TG1", "TG2", "TG3", "TG4", "TG5", "TG6"]
+
+[[family.sheet]]
+name = "UROGRAFIE"
+codes = ["U2"]
+
+[[family.sheet]]
+name = "HISTEROSALPINGOGRAFIE"
+codes = ["H1"]
+
+[[family.sheet]]
+name = "PIELOGRAFIE"
+codes = ["PR1"]
+
+[[family.sheet]]
+name = "URETRO-CISTOGRAFIE"
+codes = ["UCR1"]
+
+[[family.sheet]]
+name = "RRVS"
+codes = ["R1"]
+
+[[family.sheet]]
+name = "COLANGIOGRAFIE"
+codes = ["CLG1"]
+
+[[family]]
+key = "fluoroscopie"
+title = "Fluoroscopie (DAP)"
+file = "Art12_Fluoroscopie_DAP"
+system = "ro-insp-1255-rx"
+modalities = ["RF"]
+
+[family.values]
+dap = { event = ["event.dap"], study = "study.total_dap" }
+
+[[family.column]]
+header = "Nr. crt"
+seq = true
+
+[[family.column]]
+header = "CNP (primele 7 cifre)"
+field = "patient.cnp7"
+
+[[family.column]]
+header = "Varsta"
+field = "age.years"
+
+[[family.column]]
+header = "Gen"
+field = "patient.sex"
+
+[[family.column]]
+header = "Inaltime (cm)"
+field = "study.height_cm"
+
+[[family.column]]
+header = "Greutate (kg)"
+field = "study.weight_kg"
+transform = "round:1"
+
+[[family.column]]
+header = "Insarcinata Da/Nu / Varsta sarcinii"
+field = "pregnancy.text"
+
+[[family.column]]
+header = "Indicatie clinica"
+field = "study.indication"
+
+[[family.column]]
+header = "DAP (Gy x cm2)"
+value = "dap"
+transform = "round:4"
+
+[[family.sheet]]
+name = "TORACE"
+codes = ["T3"]
+
+[[family.sheet]]
+name = "GASTRODUODEN"
+codes = ["TG1", "TG2", "TG4"]
+
+[[family.sheet]]
+name = "COLON"
+codes = ["TG3", "TG5"]
+
+[[family.sheet]]
+name = "PANSDORF"
+codes = ["TG6"]
+
+[[family]]
+key = "mamografie"
+title = "Mamografie / tomosinteza (MGD)"
+file = "Art12_Mamografie_MGD"
+system = "ro-insp-1255-rx"
+modalities = ["MG"]
+per = "event"
+
+[[family.column]]
+header = "Nr. crt"
+seq = true
+
+[[family.column]]
+header = "CNP (primele 7 cifre)"
+field = "patient.cnp7"
+
+[[family.column]]
+header = "Varsta"
+field = "age.years"
+
+[[family.column]]
+header = "Gen"
+field = "patient.sex"
+
+[[family.column]]
+header = "Inaltime (cm)"
+field = "study.height_cm"
+
+[[family.column]]
+header = "Greutate (kg)"
+field = "study.weight_kg"
+transform = "round:1"
+
+[[family.column]]
+header = "Insarcinata Da/Nu / Varsta sarcinii"
+field = "pregnancy.text"
+
+[[family.column]]
+header = "Proiectie (CC/MLO)"
+field = "event.view"
+
+[[family.column]]
+header = "San stang/drept"
+field = "event.laterality"
+transform = "map:R=drept:L=stang"
+
+[[family.column]]
+header = "MGD (mGy)"
+field = "event.agd"
+transform = "round:3"
+
+[[family.sheet]]
+name = "Mamografie"
+codes = ["SMB1", "SMB2", "SMU1", "SMU2"]
+
+[[family.sheet]]
+name = "Tomosinteza"
+codes = ["STB", "STU"]
+
+[[family]]
+key = "nm_diagnostic"
+title = "Medicina nucleara diagnostic"
+file = "Art12_NM_diagnostic"
+system = "ro-insp-1255-nm"
+modalities = ["NM"]
+exclude = ["shared_administration"]
+
+[[family.column]]
+header = "Nr. crt"
+seq = true
+
+[[family.column]]
+header = "CNP (primele 7 cifre)"
+field = "patient.cnp7"
+
+[[family.column]]
+header = "Varsta"
+field = "age.years"
+
+[[family.column]]
+header = "Gen"
+field = "patient.sex"
+
+[[family.column]]
+header = "Inaltime (cm)"
+field = "study.height_cm"
+
+[[family.column]]
+header = "Greutate (kg)"
+field = "study.weight_kg"
+transform = "round:1"
+
+[[family.column]]
+header = "Insarcinata Da/Nu / Varsta sarcinii"
+field = "pregnancy.text"
+
+[[family.column]]
+header = "Indicatie clinica"
+field = "study.indication"
+
+[[family.column]]
+header = "Radionuclid folosit"
+field = "exam.nuclide"
+
+[[family.column]]
+header = "Forma chimica"
+field = "exam.form"
+
+[[family.column]]
+header = "Cod proc"
+field = "exam.code"
+
+[[family.column]]
+header = "Activitatea administrata (MBq)"
+field = "study.activity_mbq"
+transform = "round:1"
+
+[[family.column]]
+header = "Doza efectiva estimata (mSv)"
+field = "exam.effective_dose"
+transform = "round:2"
+
+[[family.sheet]]
+name = "SCINTIGRAFIE TIROIDIANA"
+codes = ["ST1", "ST2"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE FUNCTIE TIROIDIANA"
+codes = ["ST3", "ST4"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE PULMONARA PERFUZIE"
+codes = ["SP1", "SP2"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE PULMONARA VENTILAT"
+codes = ["SP3"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE CARDIOVASCULARA"
+codes = ["SV1", "SV2", "SV3", "SV4", "SV5", "SV6", "SV7"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE HEPATICA BILIARA S"
+codes = ["SH1", "SH2"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE RENALA"
+codes = ["SR1", "SR2", "SR3", "SR4", "SR5"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE OSOASA"
+codes = ["SO1", "SO2", "SO3", "SO4"]
+
+[[family.sheet]]
+name = "TRACT GASTROINTESTINAL"
+codes = ["SG1"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE PARATIROIDIANA"
+codes = ["SPT1", "SPT2", "SPT3"]
+
+[[family.sheet]]
+name = "LIMFOSCINTIGRAFIE"
+codes = ["SL1"]
+
+[[family.sheet]]
+name = "SCINTIGRAFIE NEUROENDOCRINA"
+codes = ["SNE"]
+
+[[family.sheet]]
+name = "ALTELE"
+codes = ["SDM", "ALTMN"]
+
+[[family]]
+key = "nm_hibride"
+title = "Medicina nucleara hibrida"
+file = "Art12_NM_hibride"
+system = "ro-insp-1255-nm-hybrid"
+modalities = ["PT", "NM"]
+exclude = ["shared_administration"]
+
+[[family.column]]
+header = "Nr. crt"
+seq = true
+
+[[family.column]]
+header = "CNP (primele 7 cifre)"
+field = "patient.cnp7"
+
+[[family.column]]
+header = "Varsta"
+field = "age.years"
+
+[[family.column]]
+header = "Gen"
+field = "patient.sex"
+
+[[family.column]]
+header = "Inaltime (cm)"
+field = "study.height_cm"
+
+[[family.column]]
+header = "Greutate (kg)"
+field = "study.weight_kg"
+transform = "round:1"
+
+[[family.column]]
+header = "Insarcinata Da/Nu / Varsta sarcinii"
+field = "pregnancy.text"
+
+[[family.column]]
+header = "Indicatie clinica"
+field = "study.indication"
+
+[[family.column]]
+header = "Radionuclid folosit"
+field = "exam.nuclide"
+
+[[family.column]]
+header = "Forma chimica"
+field = "exam.form"
+
+[[family.column]]
+header = "Cod proc"
+field = "exam.code"
+
+[[family.column]]
+header = "Activitatea administrata (MBq)"
+field = "study.activity_mbq"
+transform = "round:1"
+
+[[family.column]]
+header = "DLP (mGy x cm)"
+field = "study.total_dlp"
+transform = "round:1"
+
+[[family.sheet]]
+name = "PET-CT"
+codes = ["PCT1", "PCT2", "PCT3", "PCT4", "PCT5"]
+
+[[family.sheet]]
+name = "SPECT-CT"
+codes = ["SCTO", "SCTC", "SCTN", "SCTR1", "SCTR2", "SCTT", "SCTP", "SCTA", "SCTL"]
+
+[[family.sheet]]
+name = "ALTELE"
+codes = ["ALTSCT"]
