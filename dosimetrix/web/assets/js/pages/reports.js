@@ -20,20 +20,33 @@ const sheetTitle = (s) => t(`rep.sheet.${s.key}`) === `rep.sheet.${s.key}` ? s.t
 const Q_KEYS = { 'DAP mediu': 'dap', 'DLP mediu': 'dlp', 'Doza medie în punctul de referință': 'kar', 'ESAK sau MGD': 'esak', 'Kerma în aer': 'kerma', DAP: 'dapd' };
 const qLabel = (q) => (Q_KEYS[q.label] ? t(`rep.q.${Q_KEYS[q.label]}`) : q.label);
 
-// One report at a time, chosen by whom it goes to (the choice is kept between visits).
-const TARGETS = ['insp', 'art12', 'trend', 'operators', 'grid', 'survey', 'specs'];
-const fromUrl = new URLSearchParams(location.search).get('r');
-state.target = TARGETS.includes(fromUrl) ? fromUrl : (TARGETS.includes(prefs.get('reports.target')) ? prefs.get('reports.target') : 'insp');
+// One report at a time, chosen by whom it goes to (the choice is kept between visits). The list
+// is the server's: every spec file it knows is a target, so a dropped file appears with no code.
+// The reports that have a richer page of their own keep it, keyed by their spec id; any other
+// spec gets the generic parameters, preview and download.
+const BESPOKE = { 'ro-insp-1255-quarterly': 'insp', 'ro-insp-1255-art12': 'art12',
+  'ro-ms1245-drl-trend': 'trend', 'dosimetrix-operator-doses': 'operators',
+  'dosimetrix-icrp135-grid': 'grid', 'ro-sdnp-paediatric-survey': 'survey' };
+const LEGACY = Object.fromEntries(Object.entries(BESPOKE).map(([id, k]) => [k, id]));  // old ?r=insp links
+let targets = [];  // [{ id, label }]
+
+function chooseTarget() {
+  const wanted = new URLSearchParams(location.search).get('r');
+  const ids = targets.map((x) => x.id);
+  const pick = [LEGACY[wanted] || wanted, prefs.get('reports.target'), LEGACY[prefs.get('reports.target')]].find((x) => ids.includes(x));
+  state.target = pick || ids[0];
+}
 
 function render() {
   const years = [];
   for (let y = today.getFullYear(); y >= today.getFullYear() - 8; y -= 1) years.push(y);
-  const reload = () => ({ specs: loadSpecs, insp: load, art12: loadArt12, trend: loadTrend, grid: loadGrid, operators: loadOperators })[state.target]?.();
+  const section = BESPOKE[state.target] || 'specs';
+  const reload = () => ({ specs: loadSpecs, insp: load, art12: loadArt12, trend: loadTrend, grid: loadGrid, operators: loadOperators })[section]?.();
   const targetSel = h('select', { class: 'input', 'aria-label': t('rep.target'), onchange: (e) => {
     state.target = e.target.value;
     prefs.set('reports.target', state.target);
     render();
-  } }, TARGETS.map((k) => h('option', { value: k, selected: k === state.target }, t(`rep.to.${k}`))));
+  } }, targets.map((x) => h('option', { value: x.id, selected: x.id === state.target }, x.label)));
   const yearSel = h('select', { class: 'input', 'aria-label': 'Year', onchange: (e) => { state.year = Number(e.target.value); reload(); } },
     years.map((y) => h('option', { value: y, selected: y === state.year }, String(y))));
   const qSel = h('select', { class: 'input', 'aria-label': 'Quarter', onchange: (e) => { state.quarter = Number(e.target.value); reload(); } },
@@ -88,9 +101,21 @@ function render() {
       surveyBar(),
       h('p', { class: 'muted small' }, t('rep.central'), h('a', { href: 'survey-central.html' }, t('rep.central.link')))],
   };
+  const title = targets.find((x) => x.id === state.target)?.label || '';
   clear(page).append(h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, t('rep.target')), targetSel),
-    h('h1', { class: 'section-title' }, t(`rep.${state.target}`)), ...sections[state.target]());
+    h('h1', { class: 'section-title' }, title), ...sections[section]());
   reload();
+}
+
+async function boot() {
+  const lang = document.documentElement.lang === 'ro' ? 'ro' : 'en';
+  try {
+    const list = await exportList();
+    targets = list.specs.filter((s) => s.allowed).map((s) => ({ id: s.id, label: `${s.title[lang] || s.title.en || s.id}${s.country ? ` · ${s.country}` : ''}` }));
+  } catch { /* sample mode, or no server: the fixed list below */ }
+  if (!targets.length) targets = Object.entries(LEGACY).map(([k, id]) => ({ id, label: t(`rep.to.${k}`) }));
+  chooseTarget();
+  render();
 }
 
 // Drop-in report specs (docs/specs.md): the list, the parameters and the preview all come from
@@ -105,10 +130,8 @@ async function loadSpecs() {
   const lang = document.documentElement.lang === 'ro' ? 'ro' : 'en';
   const specs = list.specs.filter((s) => s.allowed);
   if (!specs.length) { clear(host).append(h('p', { class: 'empty' }, t('rep.none')), ...problemsNote(list)); return; }
-  const spec = specs.find((s) => s.id === specState.id) || specs[0];
-  specState.id = spec.id;
-  const pick = h('select', { class: 'input', 'aria-label': t('rep.target'), onchange: (e) => { specState.id = e.target.value; specState.params = {}; loadSpecs(); } },
-    specs.map((s) => h('option', { value: s.id, selected: s.id === spec.id }, `${s.title[lang] || s.title.en || s.id}${s.country ? ` · ${s.country}` : ''}`)));
+  const spec = specs.find((s) => s.id === state.target) || specs[0];
+  if (specState.id !== spec.id) { specState.id = spec.id; specState.params = {}; }
   const p = specState.params;
   const input = (name, type, extra = {}) => {
     const el = h('input', { class: 'input', type, 'aria-label': name, value: p[name] ?? extra.value ?? '', ...extra.attrs,
@@ -150,7 +173,7 @@ async function loadSpecs() {
     try { drawSpec(out, await exportRun(spec.id, p), lang); } catch (e) { clear(out).append(h('p', { class: 'error' }, e.message)); }
   }
   clear(host).append(
-    h('div', { class: 'toolbar' }, pick, ...controls, h('button', { class: 'btn primary', type: 'button', onclick: run('json') }, t('rep.preview')),
+    h('div', { class: 'toolbar' }, ...controls, h('button', { class: 'btn primary', type: 'button', onclick: run('json') }, t('rep.preview')),
       spec.formats.filter((f) => f !== 'json').map((f) => h('button', { class: 'btn', type: 'button', onclick: run(f) }, f.toUpperCase()))),
     h('p', { class: 'muted small' }, [spec.authority, spec.legal, `v${spec.version}`].filter(Boolean).join(' · '),
       spec.needs_pid ? h('span', { class: 'tag warn ml-1', title: t('rep.spec.pid') }, 'pid') : null),
@@ -374,4 +397,4 @@ async function load() {
   }
 }
 
-render();
+boot();

@@ -1,0 +1,58 @@
+# EXAMPLE: a cohort extract another hospital could drop into its specs folder.
+# Copy it to <config dir>/specs/ (see [specs] dir in dosimetrix.toml); it shows up on the Reports
+# page and in `dosimetrix specs list` with no restart. Nothing in it names a person (the patient is
+# the program's own pseudonym, the age is coarse), so the exporter role is enough.
+
+[spec]
+id = "example-ct-under-5"
+kind = "records"
+version = "1"
+title = { en = "CT of children under 5 (example cohort)", ro = "CT la copii sub 5 ani (cohortă exemplu)" }
+authority = "Example hospital"
+country = "RO"
+legal = "Internal audit"
+formats = ["xlsx", "csv", "json"]
+access = ["exporter"]
+
+[params]
+period = { type = "range" }
+# The typed query language of the study list: key:value, ranges, lists, - to negate.
+q = { type = "query", default = "modality:CT age:<5 origin:local" }
+
+[rules]
+max_rows = { value = 50000, article = "guard against a runaway query" }
+
+[unit]
+level = "study"
+limit = "${rules.max_rows}"
+
+[[sheet]]
+name = "CT under 5"
+
+[[sheet.column]]
+header = "Month"
+field = "time.month"
+[[sheet.column]]
+header = "Patient (pseudonym)"
+field = "pseudo.patient"
+[[sheet.column]]
+header = "Sex"
+field = "patient.sex"
+[[sheet.column]]
+header = "Age"
+field = "age.coarse"
+[[sheet.column]]
+header = "Weight [kg]"
+field = "study.weight_kg"
+transform = "round:1"
+[[sheet.column]]
+header = "Description"
+field = "study.description"
+[[sheet.column]]
+header = "DLP [mGy.cm]"
+field = "study.total_dlp"
+transform = "round:1"
+[[sheet.column]]
+header = "CTDIvol max [mGy]"
+field = "study.ctdivol_max"
+transform = "round:2"

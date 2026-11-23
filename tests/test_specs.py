@@ -337,3 +337,98 @@ def test_a_threshold_comes_from_the_spec_not_the_code(session, tmp_path):
     ctx = run.build(session, spec, {"year": 2026, "quarter": 3, "q": ""},
                     now=dt.datetime(2026, 11, 1))
     assert "2.5" in dict(run.run(ctx).books[0].info)["Semnalare"]
+
+
+# ------------------------------------------------------------------ drop a file, get the export
+
+
+def test_a_dropped_plugin_and_spec_become_an_export_in_a_running_app(tmp_path):
+    """The whole promise: a site folder with a spec and a plugin, a running app, no code change."""
+    from fastapi.testclient import TestClient
+
+    from dosimetrix.api.app import create_app
+    from dosimetrix.config import Settings
+    from dosimetrix.db.migrate import upgrade
+    from dosimetrix.db.models import User
+    from dosimetrix.db.session import make_engine, make_sessionmaker
+    from dosimetrix.security import hash_password
+
+    url = f"sqlite:///{tmp_path / 'site.sqlite3'}"
+    upgrade(url)
+    engine = make_engine(url)
+    with make_sessionmaker(engine)() as s:
+        s.add_all([User(username="boss", password_hash=hash_password("boss-pass-123"),
+                        roles="viewer,admin"),
+                   User(username="exp", password_hash=hash_password("exp-pass-1234"),
+                        roles="viewer,exporter"),
+                   Study(study_uid="x.1", modality="CT", source_kind="test",
+                         study_datetime=dt.datetime(2026, 5, 5), total_dlp=321.0)])
+        s.commit()
+    specs_dir, plugins_dir = tmp_path / "specs", tmp_path / "plugins"
+    specs_dir.mkdir()
+    plugins_dir.mkdir()
+    (plugins_dir / "hospital.py").write_text(textwrap.dedent('''
+        from dosimetrix.specs.registry import field, transform
+
+        @field("site.hospital")
+        def hospital(row):
+            "The name of this hospital."
+            return "Spitalul Test"
+
+        @transform("kilo")
+        def kilo(v):
+            return None if v is None else v / 1000
+    '''))
+    (plugins_dir / "broken.py").write_text("import nothing_here_exists")
+    (specs_dir / "mine.toml").write_text(SPEC.replace("t-cohort", "site-cohort").replace(
+        'field = "patient.sex"',
+        'field = "site.hospital"\n    [[sheet.column]]\n    header = "DLP kGy.cm"\n'
+        '    field = "study.total_dlp"\n    transform = "kilo"'))
+    (specs_dir / "typo.toml").write_text(SPEC.replace("t-cohort", "site-typo")
+                                         .replace("study.id", "study.idd"))
+    app = create_app(Settings(database_url=url, specs_dir=specs_dir, plugins_dir=plugins_dir),
+                     engine=engine, secret=b"k" * 32, now=dt.datetime(2026, 6, 1))
+    try:
+        c = TestClient(app)
+        login = {"username": "boss", "password": "boss-pass-123"}
+        assert c.post("/api/login", json=login).status_code == 200
+        ls = c.get("/api/exports").json()
+        assert "site-cohort" in {x["id"] for x in ls["specs"]}  # dropped, no restart
+        assert [p["file"].rsplit("/", 1)[1] for p in ls["plugins"]] == ["broken.py", "hospital.py"]
+        assert ls["plugins"][0]["error"] and ls["plugins"][1]["error"] is None  # isolated failure
+        assert any("typo.toml" in p["file"] and "unknown field" in p["error"]
+                   for p in ls["problems"])
+        audit = c.get("/api/audit", params={"action": "plugin"}).json()["rows"]
+        assert {a["target"].rsplit("/", 1)[1] for a in audit} == {"broken.py", "hospital.py"}
+        assert all(len(a["detail"]["sha256"]) == 64 for a in audit)  # a changed plugin is visible
+        c.post("/api/logout")
+        login = {"username": "exp", "password": "exp-pass-1234"}
+        assert c.post("/api/login", json=login).status_code == 200
+        assert c.get("/api/exports").json()["problems"] == []  # only an admin sees the faults
+        r = c.get("/api/exports/site-cohort", params={"from": "2026-05-01", "to": "2026-05-31",
+                                                       "q": ""})
+        sheet = r.json()["books"][0]["sheets"][0]
+        assert sheet["columns"] == ["Study", "Sex", "DLP kGy.cm"]
+        assert sheet["rows"] == [[sheet["rows"][0][0], "Spitalul Test", 0.321]]
+        # and a spec dropped while the app runs shows up on the next listing
+        (specs_dir / "later.toml").write_text(SPEC.replace("t-cohort", "site-later"))
+        assert "site-later" in {x["id"] for x in c.get("/api/exports").json()["specs"]}
+    finally:
+        registry.FIELDS.pop("site.hospital", None)
+        registry.TRANSFORMS.pop("kilo", None)
+
+
+def test_the_documented_examples_stay_valid():
+    """docs/examples are what a new site copies: they must load against the real registries."""
+    root = loader.BUNDLED.parents[2] / "docs" / "examples"
+    for name in ("cohort-ct-paediatric.toml", "monthly-return.toml"):
+        spec = loader.parse(root / name)
+        assert spec.id.startswith("example-") and not run.needs_pid(spec)
+    monthly = loader.parse(root / "monthly-return.toml")
+    from dosimetrix import deadlines
+
+    got = deadlines.upcoming(dt.date(2026, 11, 1), (), [monthly])
+    assert got and got[0]["id"].startswith("ex-monthly:") and got[0]["due"] <= "2026-11-10"
+    plugin = (root / "plugin-site-fields.py").read_text()
+    assert "registry import field, transform" in plugin  # the documented import still exists
+    assert hasattr(registry, "field") and hasattr(registry, "transform")

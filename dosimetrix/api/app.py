@@ -373,7 +373,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/api/overview")
     def overview(user: User = Depends(current_user), session: Session = Depends(db)):
-        return data.overview(session, clock())
+        return data.overview(session, clock(), settings.specs_dir)
 
     @app.get("/api/devices")
     def devices(user: User = Depends(current_user), session: Session = Depends(db)):
@@ -634,7 +634,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         from ..db.models import AppSetting
 
         _exporter(user)
-        known = {d["id"] for d in deadlines.upcoming(clock().date())}
+        from ..specs import loader as _loader
+
+        known = {d["id"] for d in deadlines.upcoming(
+            clock().date(), (), list(_loader.discover(settings.specs_dir).specs.values()))}
         if deadline_id not in known:
             raise HTTPException(404, "no such deadline in its window")
         row = session.get(AppSetting, deadlines.DONE_KEY) or AppSetting(key=deadlines.DONE_KEY)

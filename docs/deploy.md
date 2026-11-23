@@ -195,3 +195,20 @@ until they are entered:
   Art. 12 workbooks: the `Doza efectiva estimata` column is filled only for radiopharmaceuticals
   with a coefficient entered (mSv/MBq); none ship with the program.
 - **Breast glandularity (mammography, art. 3).** Not carried by DICOM; entered per study.
+
+## Report specs and plugins
+
+Every report and export is a spec file (`docs/specs.md`). The ones that ship are in
+`dosimetrix/seeds/specs/`; a site adds its own by dropping a `.toml` file in the specs folder, with no
+restart:
+
+```toml
+[specs]
+dir = "/etc/dosimetrix/specs"            # default: <config dir>/specs
+plugins_dir = "/etc/dosimetrix/plugins"  # default: <config dir>/plugins
+```
+
+`dosimetrix specs list` shows what is registered and any file that failed to load. **Plugins** (`.py`
+files that register fields, transforms or kinds) run with the server's rights: make `plugins_dir`
+writable by the administrator only. The name and SHA-256 of every plugin loaded are in the audit log.
+The reporting deadlines on the overview come from the specs' `[deadline]` blocks.

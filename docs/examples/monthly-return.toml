@@ -1,0 +1,50 @@
+# EXAMPLE: a monthly return to an authority, with a deadline. Another country's form is one file:
+# the code system down the side (a table), the period by month, and a [deadline] that the overview
+# shows from three weeks before and a person marks as sent. Replace the code system, the bands and
+# the quantity with the ones the authority asks for.
+
+[spec]
+id = "example-monthly-ct-return"
+kind = "table"
+version = "2027-01"
+title = { en = "Monthly CT return (example)", ro = "Raport lunar CT (exemplu)" }
+authority = "Example ministry"
+country = "RO"
+legal = "Example order art. 3"
+formats = ["xlsx", "json"]
+access = ["exporter"]
+
+[params]
+period = { type = "month" }
+q = { type = "query", default = "origin:local" }
+
+[rules]
+min_patients = { value = 10, article = "art. 3: a mean needs at least 10 patients per device" }
+due_day = { value = 10, article = "art. 4: by the 10th of the next month" }
+
+[deadline]
+id = "ex-monthly"
+months_after_period = 1
+day = "${rules.due_day}"
+
+[table]
+exclude = []
+unclassified_modalities = ["CT"]
+not_collected = ""
+note = "One examination = one study x one code. DLP is the study total."
+
+[table.values]
+dlp = { study = "study.total_dlp" }
+
+[[sheet]]
+key = "ct"
+title = "CT"
+system = "ro-insp-1255-ct"
+count_scheme = "ro-1255-count-age"
+mean_scheme = "ro-1255-mean-age"
+
+[[sheet.quantity]]
+key = "dlp"
+label = "Mean DLP"
+unit = "mGy·cm"
+digits = 1

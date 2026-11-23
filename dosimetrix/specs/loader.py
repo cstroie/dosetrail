@@ -132,6 +132,13 @@ def parse(path: Path, bundled: bool = False) -> Spec:
     if period not in PERIODS:
         raise SpecError(f"params.period.type is one of {', '.join(PERIODS)}")
     deadline = body.pop("deadline", None)
+    if deadline is not None:
+        if not isinstance(deadline, dict) or not deadline.get("id") or "day" not in deadline:
+            raise SpecError("[deadline] needs id and day")
+        if period not in ("quarter", "year", "month"):
+            raise SpecError("[deadline] needs params.period.type quarter, year or month")
+        if "month" not in deadline and "months_after_period" not in deadline:
+            raise SpecError("[deadline] needs months_after_period or month")
     spec = Spec(id=meta["id"], kind=meta["kind"], version=str(meta["version"]), title=title,
                 authority=meta.get("authority", ""), country=meta.get("country", ""),
                 legal=meta.get("legal", ""), formats=formats,

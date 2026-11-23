@@ -49,7 +49,7 @@ def _r(x: float | None, nd: int = 4) -> float | None:
 # --------------------------------------------------------------------------- overview
 
 
-def overview(session: Session, now: dt.datetime) -> dict:
+def overview(session: Session, now: dt.datetime, specs_dir=None) -> dict:
     day0 = (now - dt.timedelta(days=84)).date()
     day = func.date(Study.study_datetime)
     counts: dict[tuple[str, dt.date], int] = {}
@@ -83,10 +83,13 @@ def overview(session: Session, now: dt.datetime) -> dict:
         })
     from .. import alerts, deadlines
     from ..db.models import AppSetting
+    from ..specs import loader
 
     marked = session.get(AppSetting, deadlines.DONE_KEY)
     return {"generated": iso_min(now), "modalities": modalities,
-            "deadlines": deadlines.upcoming(now.date(), (marked.value if marked else None) or []),
+            "deadlines": deadlines.upcoming(
+                now.date(), (marked.value if marked else None) or [],
+                list(loader.discover(specs_dir).specs.values())),
             "alerts": alerts.listing(session, "open", 10, names=device_names(session)),
             "alerts_open": alerts.open_count(session),
             "feeds": feeds(session, now)}

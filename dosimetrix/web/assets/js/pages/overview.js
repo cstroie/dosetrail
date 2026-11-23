@@ -129,12 +129,13 @@ function lookupPanel() {
 function deadlinePanel(list, reload) {
   if (!list?.length) return null;
   const rows = list.map((d) => {
-    const period = d.kind === 'insp' ? `T${d.quarter} ${d.year}` : String(d.year);
+    const period = d.quarter ? `T${d.quarter} ${d.year}` : String(d.month || d.year);
     const left = d.days_left < 0 ? t('deadline.late').replace('{n}', -d.days_left) : t('deadline.left').replace('{n}', d.days_left);
-    const href = d.kind === 'insp' ? `reports.html?r=insp` : `reports.html?r=art12`;
+    const href = `reports.html?r=${encodeURIComponent(d.spec)}`;
+    const lang = document.documentElement.lang === 'ro' ? 'ro' : 'en';
     return h('li', {},
       h('span', { class: `tag ${d.level}` }, d.level === 'alert' ? '!' : '·'),
-      h('span', {}, h('span', { class: 't' }, t(`deadline.${d.kind}`).replace('{period}', period)), h('br'),
+      h('span', {}, h('span', { class: 't' }, `${d.title[lang] || d.title.en} · ${period}`), h('br'),
         h('span', { class: 'm mono' }, `${t('deadline.due').replace('{date}', d.due)} · ${left}`)),
       h('span', { class: 'acts' }, h('a', { class: 'btn', href }, t('deadline.go')),
         h('button', { class: 'btn', type: 'button', onclick: async (e) => {

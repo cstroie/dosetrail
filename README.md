@@ -13,6 +13,7 @@ Dosimetrix collects radiation dose data from imaging equipment. It covers CT, ra
 Dosimetrix is a modern alternative to [OpenREM](https://openrem.org/) and can import an existing OpenREM database.
 
 > **Status:** early design phase. See [`docs/design.md`](docs/design.md) and [`docs/openrem-analysis.md`](docs/openrem-analysis.md).
+> Reports and exports are spec files you can add yourself: [`docs/specs.md`](docs/specs.md).
 
 ## Stack
 
