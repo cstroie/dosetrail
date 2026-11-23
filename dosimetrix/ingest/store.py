@@ -241,6 +241,10 @@ class Store:
             study.height_m, study.height_source = s["height_m"], SizeSource.dicom_unknown
         if obj.kind in ("ct_rdsr", "proj_rdsr") and study.modality in ("SR", "OT", None):
             study.modality = s.get("modality") or study.modality
+        if obj.kind == "nm_header" and study.modality in ("CT", "SR", "OT", None) \
+                and s.get("modality") in ("PT", "NM"):
+            # a PET/CT or SPECT/CT whose CT dose report came first (hybrid.py)
+            study.modality = s["modality"]
         self.session.flush()
         if new and self._his_wanted(device) and _recent(study.study_datetime):
             self.session.add(HisLookup(study_id=study.id, status="pending", attempts=0))

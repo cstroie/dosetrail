@@ -66,18 +66,22 @@ function rxColumns() {
 export function renderStudy(page, s, { revealButton, ackAlert }) {
   const p = s.patient;
   const T = s.totals;
-  const ct = s.modality === 'CT';
+  const hybrid = (s.modality_label || s.modality) !== s.modality; // PET/CT, SPECT/CT
+  const ct = s.modality === 'CT' || hybrid;
   const ev = s.events;
   const identity = h('span', { class: 'mono' }, p.pseudo_id || '—');
   const series = ev.filter((e) => !e.localizer);
   const views = [...new Set(ev.map((e) => e.projection).filter(Boolean))];
   const placeholder = !s.description || /^[-\s.0/]*$/.test(s.description);
   const examName = (s.exams || []).find((x) => x.system.startsWith('ro-nom'))?.meaning;
-  const title = placeholder ? (examName || `${s.modality} study`) : s.description;
+  const title = placeholder ? (examName || `${s.modality_label || s.modality} study`) : s.description;
   const ro = ct ? [
+    ...(T.activity_mbq != null ? [readout('Administered activity', num(T.activity_mbq, 0), 'MBq')] : []),
     readout('Total DLP', num(T.dlp_mgycm, 1), 'mGy·cm', `${series.length} series + ${ev.length - series.length} localizer`),
     readout('Highest CTDIvol', num(T.ctdivol_max, 2), 'mGy', [...new Set(series.map((e) => e.phantom_cm).filter(Boolean))].map((x) => `${x} cm phantom`).join(' · ')),
     readout('Contrast', { N: 'native', C: 'contrast', NC: 'native + contrast', MF: 'multiphase' }[s.contrast] || '—'),
+  ] : ['PT', 'NM'].includes(s.modality) ? [
+    readout('Administered activity', T.activity_mbq != null ? num(T.activity_mbq, 0) : '—', 'MBq', `${ev.length} administration${ev.length === 1 ? '' : 's'}`),
   ] : [
     readout('Total DAP', dap(T.dap_gycm2, 3), dapUnit(), `${ev.length} exposures`),
     readout('Projections', views.length ? views.join(', ') : '—'),
@@ -121,7 +125,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
             h('dt', {}, 'Height · weight'), h('dd', { class: 'mono' }, `${p.height_cm ?? '—'} cm · ${p.weight_kg ?? '—'} kg`, weightNote(p)),
             h('dt', {}, 'Date'), h('dd', { class: 'mono' }, (s.start || '').replace('T', ' ')),
             h('dt', {}, 'Device'), h('dd', {}, s.device.name || '—'),
-            h('dt', {}, 'Modality'), h('dd', {}, s.modality),
+            h('dt', {}, 'Modality'), h('dd', {}, s.modality_label || s.modality),
             ...indicationRow(s))),
         h('section', { class: 'panel', 'aria-labelledby': 'h-ro' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ro' }, t('study.readouts'))), ...ro),
         h('section', { class: 'panel', 'aria-labelledby': 'h-ex' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ex' }, 'Exam codes')),

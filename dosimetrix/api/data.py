@@ -9,6 +9,7 @@ from sqlalchemy import and_, asc, desc, func, select
 from sqlalchemy.orm import Session
 
 from ..db.models import Device, Event, Patient, SizeSource, Study
+from ..hybrid import label as modality_label
 from ..patient_age import format_age
 from .query import conditions, parse
 
@@ -258,6 +259,7 @@ def _study_row(s: Study, d: Device | None, p: Patient | None, protocol: str | No
         "id": s.id, "accession": accession_display(s), "accession_hashed": s.accession_is_hashed,
         "modality": (d.modality_override if d and d.modality_override else s.modality),
         "modality_original": s.modality,
+        "modality_label": modality_label(s.modality, s.total_dlp),
         "date": iso_min(s.study_datetime), "device_id": (d.merged_into_id or d.id) if d else None,
         "device_name": names.get(d.id, "—") if d else "—",
         "description": s.study_description or "", "protocol": protocol,
@@ -283,8 +285,8 @@ def study(session: Session, study_id: int) -> dict | None:
     planes = {e.plane for e in events if e.plane}
     return {
         "id": s.id, "accession": accession_display(s), "accession_hashed": s.accession_is_hashed,
-        "modality": s.modality, "description": s.study_description or "",
-        "contrast": s.contrast_mode,
+        "modality": s.modality, "modality_label": modality_label(s.modality, s.total_dlp),
+        "description": s.study_description or "", "contrast": s.contrast_mode,
         "start": iso_min(min(times) if times else s.study_datetime),
         "end": iso_min(max(times) if times else s.study_datetime),
         "device": {"id": (d.merged_into_id or d.id) if d else None,
@@ -302,7 +304,7 @@ def study(session: Session, study_id: int) -> dict | None:
             "fluoro_s": _r(s.total_fluoro_time, 1), "acquisitions": len(acq),
             "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": _r(s.psd_mgy, 1),
             "dlp_mgycm": _r(s.total_dlp, 1), "ctdivol_max": _r(s.ctdivol_max, 2),
-            "n_events": s.n_events,
+            "n_events": s.n_events, "activity_mbq": _r(s.admin_activity_mbq, 1),
         },
         "thresholds": XA_THRESHOLDS if s.modality in ("RF", "XA") else None,
         "alerts": _alerts(session, s.id),

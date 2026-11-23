@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import hybrid
 from .db.models import (
     Alert,
     AlertRule,
@@ -60,8 +61,7 @@ def _fmt(v: float, unit: str | None) -> str:
 
 
 def _applies(rule: AlertRule, s: Study) -> bool:
-    if rule.modality and s.modality not in {m.strip().upper()
-                                             for m in rule.modality.split(",")}:
+    if rule.modality and not hybrid.matches(s.modality, s.total_dlp, _modalities(rule)):
         return False
     return not (rule.max_age_days is not None
                 and (s.age_days is None or s.age_days >= rule.max_age_days))
@@ -127,8 +127,7 @@ class Evaluator:
             .where(Study.patient_id == s.patient_id, Study.study_datetime > lo,
                    Study.study_datetime <= s.study_datetime)
         if rule.modality:
-            q = q.where(Study.modality.in_([m.strip().upper()
-                                            for m in rule.modality.split(",")]))
+            q = q.where(hybrid.modality_in(_modalities(rule)))
         n, total = self.session.execute(q).one()
         return float(total or 0), int(n or 0)
 
@@ -386,7 +385,7 @@ def window_studies(session: Session, alert_id: int,
     q = select(Study).where(Study.patient_id == s.patient_id, Study.study_datetime > lo,
                             Study.study_datetime <= s.study_datetime)
     if r.modality:
-        q = q.where(Study.modality.in_([m.strip().upper() for m in r.modality.split(",")]))
+        q = q.where(hybrid.modality_in(_modalities(r)))
     return [{"id": x.id, "current": x.id == s.id,
              "accession": None if x.accession_is_hashed else x.accession,
              "time": x.study_datetime.isoformat(timespec="minutes"), "modality": x.modality,

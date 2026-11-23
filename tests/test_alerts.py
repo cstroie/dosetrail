@@ -323,3 +323,22 @@ def test_room_above_drl_two_quarters(session, world):
         session.delete(s)
     session.flush()
     assert alerts.evaluate_devices(session, NOW, ["drl_sustained"])["new"] == 0
+
+
+def test_pet_ct_counts_as_ct_exposure(session, world):
+    """The CT part of a PET/CT (stored as PT) counts in the patient's CT rules; a PET
+    without a CT dose does not."""
+    dev, kid = world
+    pet = _study(session, dev, kid, "pt.1", NOW - dt.timedelta(hours=20), modality="PT",
+                 total_dlp=3000.0, age_days=4200)
+    pet_only = _study(session, dev, kid, "pt.2", NOW - dt.timedelta(hours=10), modality="PT",
+                      age_days=4200)
+    ct = _study(session, dev, kid, "ct.9", NOW, modality="CT", total_dlp=2500.0,
+                ctdivol_max=10.0, age_days=4201)
+    alerts.evaluate(session, [pet.id, pet_only.id, ct.id])
+    got = _alerts(session, ct)
+    assert set(got) == {"ct-dlp-cumulative-paed-12m", "ct-repeat-48h"}
+    assert got["ct-dlp-cumulative-paed-12m"].value == pytest.approx(5500.0)
+    assert got["ct-repeat-48h"].value == 2
+    assert {r["id"] for r in alerts.window_studies(session, got["ct-repeat-48h"].id)} \
+        == {pet.id, ct.id}

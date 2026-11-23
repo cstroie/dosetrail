@@ -59,7 +59,7 @@ def update(session, study_ids=None) -> int:
     from .quality import _head_series, _national_codes
 
     q = (select(Event).join(Study, Study.id == Event.study_id)
-         .where(Study.modality == "CT", Event.wed_mm.is_not(None)))
+         .where(Study.modality.in_(("CT", "PT", "NM")), Event.wed_mm.is_not(None)))
     if study_ids is not None:
         q = q.where(Event.study_id.in_(list(study_ids)))
     events = list(session.scalars(q))

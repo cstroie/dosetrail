@@ -5,7 +5,8 @@ from __future__ import annotations
 from sqlalchemy import and_, bindparam, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from .db.models import Device, Event, Patient, Study
+from .db.models import Device, Event, IngestedObject, Patient, Study
+from .hybrid import NM_MODALITIES
 from .security import pseudonym
 
 
@@ -27,10 +28,42 @@ def recompute_ct_columns(session: Session, study_ids: list[int] | None = None) -
         ctdivol_max=(select(func.max(ev.c.ctdivol))
                      .where(and_(ev.c.study_id == Study.id, ev.c.is_localizer.is_(False)))
                      .scalar_subquery()),
-    ).where(Study.modality == "CT")
+    ).where(Study.modality.in_(("CT", *NM_MODALITIES)))
     if study_ids is not None:
         stmt = stmt.where(Study.id.in_(study_ids))
     return session.execute(stmt, execution_options={"synchronize_session": False}).rowcount
+
+
+PET_SOP = {"1.2.840.10008.5.1.4.1.1.128", "1.2.840.10008.5.1.4.1.1.128.1",
+           "1.2.840.10008.5.1.4.1.1.130"}
+NM_SOP = "1.2.840.10008.5.1.4.1.1.20"
+PET_HALF_LIFE_S = 3 * 3600  # F-18 110 min, Ga-68 68 min, C-11, N-13, Rb-82; Tc-99m is 6 h
+
+
+def relabel_hybrid(session: Session) -> int:
+    """A CT study with a radiopharmaceutical administration is a PET/CT or SPECT/CT whose
+    CT dose report came first: store it under PT / NM, as if the images had come first.
+    PET or NM from the images received, else from the radionuclide's half-life."""
+    ids = list(session.scalars(select(Study.id).where(
+        Study.modality == "CT",
+        select(Event.id).where(Event.study_id == Study.id,
+                               Event.event_type == "radiopharmaceutical").exists())))
+    for sid in ids:
+        sops = set(session.scalars(select(IngestedObject.sop_class_uid).where(
+            IngestedObject.study_id == sid).distinct()))
+        if sops & PET_SOP:
+            mod = "PT"
+        elif NM_SOP in sops:
+            mod = "NM"
+        else:
+            hl = [(e.extra_json or {}).get("half_life_s") for e in session.scalars(
+                select(Event).where(Event.study_id == sid,
+                                    Event.event_type == "radiopharmaceutical"))]
+            hl = [h for h in hl if h]
+            mod = "PT" if hl and min(hl) < PET_HALF_LIFE_S else "NM"
+        session.execute(update(Study).where(Study.id == sid).values(modality=mod),
+                        execution_options={"synchronize_session": False})
+    return len(ids)
 
 
 def recompute_device_stats(session: Session) -> int:
@@ -79,6 +112,7 @@ def zero_doses_as_missing(session: Session) -> int:
 
 def recompute_all(session: Session, secret: bytes | None = None) -> list[str]:
     out = [f"studies with zero doses set to missing: {zero_doses_as_missing(session)}",
+           f"PET/CT and SPECT/CT studies filed as CT, relabelled: {relabel_hybrid(session)}",
            f"CT studies updated: {recompute_ct_columns(session)}",
            f"devices updated: {recompute_device_stats(session)}"]
     from . import ssde

@@ -250,3 +250,33 @@ def test_mammography_laterality_as_a_target_region_modifier():
         f.item("CODE", ("272741003", "Laterality"), ("24028007", "Right", "SCT"),
                rel="HAS CONCEPT MOD")]))
     assert parse(ds).events[0]["laterality"] == "R"
+
+
+def test_pet_ct_is_pt_whichever_part_comes_first(session):
+    store = Store(session, SECRET)
+    store.store(parse(f.ct_rdsr(study_uid="1.2.3.510", sop_uid="1.2.3.510.1")))
+    store.store(parse(f.pet_image(study_uid="1.2.3.510", sop_uid="1.2.3.510.2")))
+    s = session.scalar(select(Study).filter_by(study_uid="1.2.3.510"))
+    assert s.modality == "PT" and s.total_dlp and s.admin_activity_mbq == pytest.approx(185.0)
+    store.store(parse(f.pet_image(study_uid="1.2.3.511", sop_uid="1.2.3.511.1")))
+    store.store(parse(f.ct_rdsr(study_uid="1.2.3.511", sop_uid="1.2.3.511.2")))
+    t = session.scalar(select(Study).filter_by(study_uid="1.2.3.511"))
+    assert t.modality == "PT" and t.total_dlp
+    from dosimetrix.hybrid import label
+
+    assert label(s.modality, s.total_dlp) == "PET/CT" and label("PT", None) == "PT"
+
+
+def test_recompute_relabels_pet_ct_filed_as_ct(session):
+    from dosimetrix.maintenance import relabel_hybrid
+
+    store = Store(session, SECRET)
+    store.store(parse(f.ct_rdsr(study_uid="1.2.3.520", sop_uid="1.2.3.520.1")))
+    store.store(parse(f.pet_image(study_uid="1.2.3.520", sop_uid="1.2.3.520.2")))
+    s = session.scalar(select(Study).filter_by(study_uid="1.2.3.520"))
+    s.modality = "CT"  # as the code before this change stored it
+    session.flush()
+    assert relabel_hybrid(session) == 1
+    session.expire_all()
+    assert session.get(Study, s.id).modality == "PT"
+    assert relabel_hybrid(session) == 0
