@@ -298,7 +298,8 @@ def write_xlsx(report: dict, target: IO, info: dict[str, object]) -> None:
                         cells.append(round(v, q.digits) if v is not None else None)
                 ws.row(cells)
         low = wb.sheet(f"Sub {MIN_PATIENTS} pacienti",
-                       ["Foaie", "Cod", "Procedura", "Aparat", "Nr. examinări"], [22, 12, 44, 30, 14])
+                       ["Foaie", "Cod", "Procedura", "Aparat", "Nr. examinări"],
+                       [22, 12, 44, 30, 14])
         names = report["devices"]
         for s in report["sheets"]:
             for r in s.rows:
