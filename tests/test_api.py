@@ -140,7 +140,8 @@ def test_overview_and_pages(client):
     assert ov["feeds"][0]["status"] == "stale"  # last study 5 days ago
     page = client.get("/studies.html")
     assert page.status_code == 200 and 'data-api="http://testserver"' in page.text
-    assert client.get("/assets/css/tokens.css").status_code == 200
+    css = client.get("/assets/css/tokens.css")
+    assert css.status_code == 200 and css.headers["cache-control"] == "no-cache"  # revalidated
     assert client.get("/api/lookup", params={"q": "A1"}).json() == []  # min 3 chars
     assert client.get("/api/lookup", params={"q": "P-ABC"}).json() == []  # too short
     assert client.get("/api/lookup", params={"q": "P-ABCDE"}).json()[0]["accession"] == "A1"

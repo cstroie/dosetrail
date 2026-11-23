@@ -52,6 +52,17 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "dose-statement.html": "dose-statement.html"}
 
 
+class RevalidatedStatic(StaticFiles):
+    """Static files that the browser must revalidate (ETag / 304) on every load: without a
+    Cache-Control header it caches scripts heuristically and keeps showing an old page after
+    an update."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
 class LoginIn(BaseModel):
     username: str
     password: str
@@ -1633,7 +1644,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         html = re.sub(r"<html(\s|>)", f'<html data-api="{origin}"\\1', html, count=1)
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
-    app.mount("/assets", StaticFiles(directory=WEB / "assets"), name="assets")
+    app.mount("/assets", RevalidatedStatic(directory=WEB / "assets"), name="assets")
 
     @app.exception_handler(data.QueryError)
     def bad_query(request: Request, exc: data.QueryError):
