@@ -6,8 +6,8 @@ import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
 import { overview, lookup, studyHref, ackAlert, deadlineDone, isSample } from '../core/api.js';
 
-// the API's groups are CT, DX, RF, MG (the sample data says XA); anything else takes the accent
-const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', CR: '--m-dx', RF: '--m-rf', XA: '--m-rf', MG: '--m-mg', NM: '--m-nm' };
+// the API's groups are CT, DX, RF, MG, NM, PT (the sample data says XA); anything else takes the accent
+const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', CR: '--m-dx', RF: '--m-rf', XA: '--m-rf', MG: '--m-mg', NM: '--m-nm', PT: '--m-pt' };
 const modColor = (code) => MOD_COLOR[code] || '--accent';
 const page = document.getElementById('page');
 
