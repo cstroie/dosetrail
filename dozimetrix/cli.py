@@ -920,7 +920,10 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     # access_log off: query strings may contain search terms with identifiers.
     # X-Forwarded-For/-Proto are honoured only from the configured reverse proxies.
     uvicorn.run(create_app(), host=host, port=port, access_log=False,
-                proxy_headers=True, forwarded_allow_ips=",".join(s.web_trusted_proxies))
+                proxy_headers=True, forwarded_allow_ips=",".join(s.web_trusted_proxies),
+                # open live streams (/api/live) would hold a restart for minutes; browsers
+                # reconnect on their own
+                timeout_graceful_shutdown=5)
     return 0
 
 
