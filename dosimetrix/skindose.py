@@ -228,6 +228,8 @@ def compute(events, age_days: int | None = None, weight_kg: float | None = None,
         "events_used": len(beams), "events_skipped": skipped,
         "geometries": len(pool(beams)) if beams else 0,
         "region": region,
+        # the surface the map is drawn on (3D view): elliptical cylinder semi-axes, cm
+        "phantom_cm": {"lateral": ph.a, "ap": ph.b},
         "assumptions": {
             "phantom": ph.note,
             "factors": f"backscatter {BSF}, tissue/air {F_TISSUE}, table and mattress "

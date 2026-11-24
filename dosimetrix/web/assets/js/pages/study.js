@@ -2,6 +2,7 @@
 // 12-week cumulative dose, running Ka,r curve with events, event table, skin-dose placeholder.
 // Clicking an event bar selects the row in the table, and selecting a row highlights the bar.
 
+import '../components/dx-skin3d.js';
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
 import { indicationRow } from '../components/indication.js';
@@ -278,11 +279,21 @@ function skinPanel(s) {
     });
     const at = r.psd_at;
     const A = r.assumptions;
+    // 2D: the surface unfolded; 3D: the same values on the model's elliptical cylinder
+    const view3d = h('dx-skin3d', { hidden: true });
+    const views = h('div', {}, chart, view3d);
+    const segBtn = (label, is3d) => h('button', { type: 'button', 'aria-pressed': String(!is3d), onclick: (e) => {
+      chart.hidden = is3d; view3d.hidden = !is3d;
+      [...e.currentTarget.parentNode.children].forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget)));
+      if (is3d) { view3d.map = r; } else chart.draw(option);
+    } }, label);
+    const seg = h('span', { class: 'seg no-print', role: 'group', 'aria-label': 'Skin map view' }, segBtn('Unfolded 2D', false), segBtn('3D', true));
     host.replaceChildren(
+      h('div', { class: 'row', style: { 'justify-content': 'flex-end', padding: '0 0 6px' } }, seg),
       h('div', { class: 'readout' }, h('span', { class: 'l' }, 'Peak skin dose (estimate)'),
         h('span', { class: 'v' }, num(r.psd_mgy / 1000, 2), h('span', { class: 'unit' }, ' Gy')),
         h('span', { class: 'sub' }, `${side(at.theta)} (${at.theta}°) · ${at.z_cm >= 0 ? '+' : ''}${at.z_cm} cm from the isocentre · ${num(r.psd_over_kar, 2)} × Ka,r total · area ≥ 2 Gy ${num(r.area_cm2_over_2gy)} cm², ≥ 3 Gy ${num(r.area_cm2_over_3gy)} cm²`)),
-      chart,
+      views,
       h('details', {}, h('summary', { class: 'muted small', style: { cursor: 'pointer' } }, `Model and assumptions · ${r.events_used} events in ${r.geometries} geometries${r.events_skipped ? `, ${r.events_skipped} without Ka,r` : ''}`),
         h('ul', { class: 'muted small' }, [A.phantom, A.factors, `isocentre ${A.isocentre}`, ...A.notes].map((x) => h('li', {}, x)),
           h('li', {}, 'A Dosimetrix model, not a measurement: use it to decide on patient follow-up, not as a skin dose record.'))));

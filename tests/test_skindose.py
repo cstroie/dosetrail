@@ -24,6 +24,8 @@ def test_pa_beam_peak_matches_inverse_square():
     assert r["psd_mgy"] == pytest.approx(expected, rel=0.01)
     assert r["psd_at"] == {"theta": 180, "z_cm": 0.0}  # posterior midline
     assert r["estimate"] is True and r["events_used"] == 1
+    ph = sd.phantom(ADULT, None)  # the 3D view draws the map on this surface
+    assert r["phantom_cm"] == {"lateral": ph.a, "ap": ph.b}
 
 
 def test_field_size_from_dap_over_kar():
