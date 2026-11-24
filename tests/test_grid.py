@@ -83,6 +83,7 @@ def test_report(session, studies):
     head = rows[("CT-CAP", "age:3mo-1y", "dlp")]
     assert head["parameter"] == "age" and head["n"] == 1 and head["edrl"] == 385.0
     assert head["status"] == "below"
+    assert {x["modality_group"] for x in r["rows"] if x["quantity"] == "dlp"} == {"CT"}
     body = rows[("CT-TORACE", "weight:15-30kg", "dlp")]
     assert body["edrl"] is not None and body["median"] == 80.0
     assert ("CT-TORACE", "weight:?", "dlp") in rows

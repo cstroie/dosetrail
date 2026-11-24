@@ -36,10 +36,13 @@ from sqlalchemy import select
 
 from ...db.models import Code, GroupBand, ReferenceSet, ReferenceValue, SizeSource, Study
 from ...grid import LABEL, Grid, crosswalk
+from ...modality_profiles import PROFILES, group_of
 from ...stats import compute
 from ..context import Context
 from ..registry import kind
 from ..result import Book, Result, Sheet
+
+GROUP_ORDER = {p["code"]: i for i, p in enumerate(PROFILES)}
 
 
 def _r(x, nd=6):
@@ -102,6 +105,7 @@ def grid_report(ctx: Context) -> dict:
     for part in cfg["part"]:
         mods, metric, quantity, unit = (part["modalities"], part["metric"], part["quantity"],
                                         part["unit"])
+        mgroup = group_of(mods[0]) or mods[0]
         base = [*conds, *period, Study.modality.in_(mods)]
         every = compute(session, base, metric, ["exam", "ref_group"], system=national,
                         estimated_weights=estimated)
@@ -120,7 +124,7 @@ def grid_report(ctx: Context) -> dict:
             k = kept_by.get((exam, group), {"n": 0})
             band = group.partition(":")[2]
             ref = edrl.get((exam, band, quantity))
-            row = {"exam": exam, "exam_meaning": g["label"]["exam"],
+            row = {"exam": exam, "exam_meaning": g["label"]["exam"], "modality_group": mgroup,
                    "parameter": grid.parameter(national, exam), "group": group,
                    "group_label": g["label"]["ref_group"], "order": grid.order.get(group, 999),
                    "quantity": quantity, "metric": metric, "unit": unit,
@@ -133,7 +137,8 @@ def grid_report(ctx: Context) -> dict:
                    "ratio": k["median"] / ref if ref and k.get("median") else None}
             row["status"] = _status(k["median"], ref, k["n"], min_n, above) if k["n"] else None
             rows.append(row)
-    rows.sort(key=lambda r: (r["exam"], r["quantity"], r["order"]))
+    rows.sort(key=lambda r: (GROUP_ORDER.get(r["modality_group"], 99), r["exam"], r["quantity"],
+                             r["order"]))
     n_body = sum(r["n_all"] for r in rows if r["parameter"] == "weight")
     n_body_unknown = sum(r["n_all"] for r in rows if r["group"] == "weight:?")
     n_body_est = sum(r["estimated"] for r in rows if r["parameter"] == "weight")
@@ -170,15 +175,21 @@ def grid_result(ctx: Context, report: dict, info: dict | None = None) -> Result:
             "Excluse", "Greutate estimată", "Medie", "Mediană", "P75", "EDRL RP 185",
             "Mediană/EDRL", "Stare"]
     sheets = []
-    for title, param in (("Cap (varsta)", "age"), ("Corp (greutate)", "weight")):
+    # one sheet per modality group and grid parameter: CT DLP never shares a table with DAP
+    groups = list(dict.fromkeys(r["modality_group"] for r in report["rows"])) or ["CT"]
+    for mg, (title, param) in ((m, x) for m in groups
+                               for x in (("cap (varsta)", "age"), ("corp (greutate)", "weight"))):
         rows = [[r["exam_meaning"], r["exam"], "vârstă" if param == "age" else "greutate",
                  r["group_label"], r["quantity"], r["unit"], r["n"], r["n_studies"],
                  r["excluded"] or None, r["estimated"] or None, _round(r["mean"]),
                  _round(r["median"]), _round(r["p75"]), r["edrl"],
                  round(r["ratio"], 3) if r["ratio"] else None, status_ro[r["status"]]]
-                for r in report["rows"] if r["parameter"] == param]
-        sheets.append(Sheet(title, head, rows, [30, 18, 10, 16, 9, 9, 7, 7, 7, 9, 10, 10, 10, 10,
-                                                10, 18]))
+                for r in report["rows"]
+                if r["parameter"] == param and r["modality_group"] == mg]
+        if not rows and len(groups) > 1:
+            continue
+        widths = [30, 18, 10, 16, 9, 9, 7, 7, 7, 9, 10, 10, 10, 10, 10, 18]
+        sheets.append(Sheet(f"{mg.replace('/', '-')} {title}", head, rows, widths))
     return Result([Book(f"{ctx.spec.id}.xlsx", sheets, ctx.spec.label("ro"), lines)],
                   extra={"report": report})
 

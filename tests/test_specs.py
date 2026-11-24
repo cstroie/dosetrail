@@ -304,7 +304,7 @@ def test_the_comparison_specs_are_bundled_with_their_rules():
     ("ro-ms1245-drl-trend", {"year": 2026, "quarter": 3}, ["Tendinte"]),
     ("dosimetrix-operator-doses", {"year": 2026, "quarter": 3}, ["Operatori", "Acoperire"]),
     ("dosimetrix-icrp135-grid", {"year": 2026, "quarter": 3, "estimated": "true"},
-     ["Cap (varsta)", "Corp (greutate)"]),
+     ["CT cap (varsta)", "CT corp (greutate)"]),
     ("dosimetrix-icrp135-summary", {"from": "2026-07-01", "to": "2026-09-30"},
      ["ICRP 135 summary"]),
 ])

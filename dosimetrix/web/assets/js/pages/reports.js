@@ -288,8 +288,11 @@ async function loadGrid() {
   clear(host).append(h('p', { class: 'muted small' }, `${r.start} – ${r.end} · body values: ${num(n.body_values)}, of which weight estimated (median for age and sex, WHO / CDC) ${num(n.body_weight_estimated || 0)}, no weight ${num(n.body_weight_unknown)}`
     + (n.body_values && n.body_weight_unknown / n.body_values > 0.5 ? ' — the weight grid needs weights (RIS or entered at the modality).' : '')
     + (r.estimated_weights ? '. Estimated weights fill the weight groups; they are never measured values.' : '. Estimated weights left out: only reported weights place body exams in a group.')));
-  for (const [param, title] of [['age', t('rep.head')], ['weight', t('rep.body')]]) {
-    const rows = r.rows.filter((x) => x.parameter === param);
+  // one table per modality group and grid parameter: CT DLP never shares a table with DAP or MBq
+  const groups = [...new Set(r.rows.map((x) => x.modality_group || 'CT'))];
+  for (const [mg, param, title] of (groups.length ? groups : ['CT']).flatMap((g) => [[g, 'age', t('rep.head')], [g, 'weight', t('rep.body')]])) {
+    const rows = r.rows.filter((x) => x.parameter === param && (x.modality_group || 'CT') === mg);
+    if (!rows.length && groups.length > 1) continue;
     let last = null;
     const body = h('tbody', {}, rows.map((x) => {
       const first = `${x.exam}|${x.quantity}` !== last;
@@ -304,7 +307,7 @@ async function loadGrid() {
         h('td', { class: 'r' }, x.status ? h('span', { class: `tag ${tone[x.status]}`, title: x.ratio ? `median / EDRL = ${num(x.ratio, 2)}` : '' }, x.ratio && x.status !== 'insufficient' ? `${num(x.ratio, 2)}×` : label[x.status]) : ''));
     }));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, t('rep.none'))));
-    append(host, [h('h2', { class: 'section-title mt-5' }, title),
+    append(host, [h('h2', { class: 'section-title mt-5' }, `${mg === 'DX' ? 'DX/CR' : mg} · ${title}`),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
         h('thead', {}, h('tr', {}, t('rep.cols').split('|').map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
   }

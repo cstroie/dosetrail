@@ -35,7 +35,7 @@ title_ro = "Statistici de doză pe grila ICRP 135 / RP 185 (extinsă), alături 
 head_groups = "după vârstă: 0–<3 luni, 3 luni–<1 an, 1–<6 ani, 6–<18 ani, ≥18 ani"
 body_groups = "după greutate: <5, 5–<15, 15–<30, 30–<50, 50–<80, 80–<110, ≥110 kg"
 limits = "intervale semi-deschise: la limita exactă, grupa superioară"
-note = "CT: DLP și CTDIvol pe secvență; radiografie: DAP pe expunere; radioscopie: DAP al studiului. Statisticile exclud studiile cu greutate sub P5 / peste P95 OMS pentru vârstă și prematurii (coloana «excluse»). EDRL: RP 185, unde există."
+note = "CT: DLP și CTDIvol pe secvență; radiografie: DAP pe expunere; radioscopie și angiografie: DAP al studiului; mamografie: AGD pe sân; medicină nucleară și PET: activitatea administrată. Fiecare modalitate are tabelul ei. Statisticile exclud studiile cu greutate sub P5 / peste P95 OMS pentru vârstă și prematurii (coloana «excluse»). EDRL: RP 185, unde există."
 
 # RP 185 band keys that differ from the extended scheme: its "6y+" band is 6-<18 y
 [compare.band_alias]
@@ -70,3 +70,27 @@ modalities = ["RF"]
 metric = "dap_total"
 quantity = "dap"
 unit = "Gy.cm2"
+
+[[compare.part]]
+modalities = ["XA"]
+metric = "dap_total"
+quantity = "dap"
+unit = "Gy.cm2"
+
+[[compare.part]]
+modalities = ["MG"]
+metric = "agd_breast"
+quantity = "mgd"
+unit = "mGy"
+
+[[compare.part]]
+modalities = ["NM"]
+metric = "activity"
+quantity = "activity"
+unit = "MBq"
+
+[[compare.part]]
+modalities = ["PT"]
+metric = "activity"
+quantity = "activity"
+unit = "MBq"
