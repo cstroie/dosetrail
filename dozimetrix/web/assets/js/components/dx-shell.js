@@ -9,6 +9,7 @@ import { t, lang } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
 import './dx-command-palette.js';
 import { me, logout, changePassword } from '../core/api.js';
+import { live } from '../core/live.js';
 
 const NAV = [
   ['overview', 'index.html', 'overview'],
@@ -52,6 +53,7 @@ class DtShell extends HTMLElement {
     const ctx = h('header', { class: 'ctx' },
       h('a', { class: 'ctx-logo', href: 'index.html', 'aria-label': `Dozimetrix · ${t('nav.overview')}`, title: t('nav.overview') }, icon('logo', 24, 2)),
       crumb,
+      serviceBadge(),
       h('button', { class: 'cmdk-trigger', type: 'button', onclick: () => palette.open() },
         icon('search', 14, 2), h('span', { class: 'cmdk-label' }, t('shell.search')), h('kbd', {}, 'Ctrl K')),
       ctxExtras.map((n) => { n.removeAttribute('slot'); return n; }),
@@ -69,6 +71,21 @@ class DtShell extends HTMLElement {
       else if (e.key === '/' && !typing) { e.preventDefault(); palette.open(); }
     });
   }
+}
+
+// A badge in the header while a background service is down or needs a look (live). Hidden
+// when all is well; links to the overview, whose Services panel says more.
+function serviceBadge() {
+  const badge = h('a', { class: 'tag alert svc-badge', href: 'index.html#h-svc', style: { display: 'none' } });
+  live(['services'], { services: (list) => {
+    const bad = (list || []).filter((x) => x.state === 'alert' || x.state === 'warn');
+    badge.style.display = bad.length ? '' : 'none';  // .tag sets its own display: no `hidden`
+    if (!bad.length) return;
+    badge.className = `tag ${bad.some((x) => x.state === 'alert') ? 'alert' : 'warn'} svc-badge`;
+    badge.textContent = bad.length === 1 ? `${bad[0].name}: ${bad[0].state === 'alert' ? 'down' : 'check'}` : `${bad.length} services need a look`;
+    badge.title = bad.map((x) => `${x.name}: ${x.detail || x.state}`).join('\n');
+  } });
+  return badge;
 }
 
 // The signed-in user: initials on the button; the menu has the name, roles and sign-out.

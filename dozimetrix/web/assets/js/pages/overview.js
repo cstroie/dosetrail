@@ -116,13 +116,14 @@ function sinceText(at) {
 let lastServices = null;
 function drawServices(list) {
   lastServices = list;
-  servicesBody.replaceChildren(h('table', { class: 'grid' }, h('tbody', {}, list.map((x) => {
+  // two columns: the service with its detail under it (wraps), then state and age stacked
+  servicesBody.replaceChildren(h('table', { class: 'grid svc-table' }, h('tbody', {}, list.map((x) => {
     const [cls, label] = SVC_TAG[x.state] || ['', x.state];
     return h('tr', {},
-      h('td', {}, x.name),
-      h('td', {}, h('span', { class: `tag ${cls}` }, label)),
-      h('td', { class: 'muted small' }, x.detail || ''),
-      h('td', { class: 'muted small mono', style: { 'text-align': 'right', 'white-space': 'nowrap' }, title: x.at ? `last heartbeat ${x.at.replace('T', ' ')}` : null }, sinceText(x.at)));
+      h('td', {}, x.name, x.detail ? h('div', { class: 'muted small', style: { 'overflow-wrap': 'anywhere' } }, x.detail) : null),
+      h('td', { style: { 'text-align': 'right', 'white-space': 'nowrap', width: '1%' } },
+        h('span', { class: `tag ${cls}` }, label),
+        x.at ? h('div', { class: 'muted small mono', title: `last heartbeat ${x.at.replace('T', ' ')}` }, sinceText(x.at)) : null));
   }))));
 }
 setInterval(() => lastServices && drawServices(lastServices), 15000);  // tick the ages

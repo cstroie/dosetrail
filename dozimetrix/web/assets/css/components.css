@@ -126,6 +126,10 @@ dx-chart { display: block; min-width: 0; }
 /* panels of different heights: fill column by column, no gap under the short ones */
 .cols.stack { display: block; columns: 400px; column-gap: var(--sp-3); }
 .cols.stack > * { break-inside: avoid; margin: 0 0 var(--sp-3); }
+/* a small panel table: not the data grid's 860 px minimum, cells wrap */
+table.grid.svc-table { width: 100%; min-width: 0; table-layout: auto; }
+.grid.svc-table td { vertical-align: top; white-space: normal; max-width: none; overflow: visible; }
+.svc-badge { white-space: nowrap; text-decoration: none; }
 .queue { list-style: none; margin: 0; padding: 0; }
 .queue li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 2px 10px; padding: 9px 12px; border-top: 1px solid var(--line); align-items: center; }
 .queue li:first-child { border-top: 0; }

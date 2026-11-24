@@ -51,7 +51,8 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "indications.html": "indications.html", "survey-central.html": "survey-central.html",
          "dose-statement.html": "dose-statement.html"}
 OLD_PAGES = {"dicom.html": "integration.html"}
-LIVE_TOPICS = {"pulse", "services", "dicom", "his"}
+LIVE_TOPICS = {"pulse", "services", "dicom", "his", "studies", "alerts"}
+LIVE_TOPIC_EVERY_S = {"studies": 60, "alerts": 60}  # list pages: scarce updates are enough
 LIVE_EVERY_S = 5  # heartbeats come every minute or so, HIS lookups every few seconds
 LIVE_PING_S = 25
 LIVE_RETRY_MS = 5000
@@ -1123,6 +1124,18 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                                 "alerts_open": _alerts.open_count(session)}
             if "services" in topics:
                 out["services"] = services_health(session)
+            if "studies" in topics:  # newest study per modality, from the latest 500 (PK scan)
+                newest: dict[str, int] = {}
+                for sid, mod in session.execute(select(Study.id, Study.modality)
+                                                .order_by(Study.id.desc()).limit(500)):
+                    newest.setdefault(mod or "?", sid)
+                out["studies"] = newest
+            if "alerts" in topics:
+                from .. import alerts as _alerts
+                from ..db.models import Alert
+
+                out["alerts"] = {"open": _alerts.open_count(session),
+                                 "newest": session.scalar(select(func.max(Alert.id)))}
             if "dicom" in topics:
                 out["dicom"] = {
                     "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
@@ -1220,8 +1233,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             last: dict = {}
             quiet = elapsed = 0.0
             yield f"retry: {LIVE_RETRY_MS}\n\n"
+            due_at: dict[str, float] = {}
             while True:
-                snap = await run_in_threadpool(live_snapshot, want)
+                now_t = elapsed
+                topics_now = {t for t in want if due_at.get(t, 0.0) <= now_t}
+                for t in topics_now & LIVE_TOPIC_EVERY_S.keys():
+                    due_at[t] = now_t + LIVE_TOPIC_EVERY_S[t]
+                snap = await run_in_threadpool(live_snapshot, topics_now) if topics_now else {}
                 for topic, value in snap.items():
                     # ages tick every second: compare without them, send them along
                     key = _json.dumps(value, sort_keys=True, default=str,

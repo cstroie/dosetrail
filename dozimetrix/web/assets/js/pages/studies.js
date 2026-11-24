@@ -9,6 +9,7 @@ import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
 import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
+import { live } from '../core/live.js';
 
 const DEFAULT_Q = 'modality:CT date:90d age:>=18 origin:local -phantom';
 const SAVED_KEY = 'savedQueries.ct';  // the key predates the other modalities; kept for users' saved queries
@@ -169,7 +170,11 @@ async function init() {
   let profile = profileOf(profiles, currentQ);
   const gridKey = (p) => `grid.${p ? p.code.toLowerCase() : 'all'}`;
   const gridLabel = (p) => (p ? `${p.label} studies` : 'Studies');
+  // new studies of the modality shown (checked once a minute): offer a refresh, never jump
+  const fresh = h('button', { slot: 'actions', class: 'btn primary', type: 'button', style: { display: 'none' }, title: 'New studies arrived for this list',
+    onclick: () => { fresh.style.display = 'none'; grid.reload(); } }, 'New studies · Refresh');
   const grid = h('dx-data-grid', { label: gridLabel(profile), noun: t('studies.count'), 'storage-key': gridKey(profile) },
+    fresh,
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows('csv') }, 'CSV'),
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows('xlsx') }, 'XLSX'),
     h('a', { slot: 'actions', class: 'btn primary', href: '#', onclick: (e) => { e.currentTarget.href = `charts.html?q=${encodeURIComponent(currentQ)}`; } }, t('studies.chart')));
@@ -197,10 +202,18 @@ async function init() {
     if (p !== profile) setProfile(p);
     grid.setState({ page: 1 });
     renderTabs();
+    fresh.style.display = 'none';
     grid.reload();
   };
 
   setProfile(profile);
+  let seen = null;  // newest study id per modality when the list was loaded
+  live(['studies'], { studies: (newest) => {
+    if (seen === null) { seen = newest; return; }
+    const mods = profile?.modalities || Object.keys(newest);
+    if (mods.some((m) => (newest[m] || 0) > (seen[m] || 0))) fresh.style.display = '';
+    seen = newest;
+  } });
   grid.rowId = (s) => s.id ?? s.accession;
   grid.setState({ sort: initial.sort, dir: initial.dir, page: initial.page, size: 50 });
   grid.fetcher = (state) => studies({ q: currentQ, ...state }).then((res) => {
