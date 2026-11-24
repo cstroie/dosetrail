@@ -607,6 +607,23 @@ def _image_z(ds) -> float | None:
 OVERRANGE_PER_COLLIMATION = 0.7
 
 
+_NO_AGENT = {"", "NONE", "NO", "N", "NATIV", "NATIVE", "-", "0"}
+
+
+def ct_contrast(ds) -> dict | None:
+    """The Contrast/Bolus module of a CT image (0018,0010…1049), when it names an agent or a
+    volume: the series was acquired with contrast. None when absent or empty: an empty agent
+    does not prove a native scan (many scanners never fill it)."""
+    agent = _s(ds.get("ContrastBolusAgent"), 64)
+    volume = _f(ds.get("ContrastBolusVolume"))
+    if (agent or "").strip().upper() in _NO_AGENT and not volume:
+        return None
+    return {k: v for k, v in (
+        ("agent", agent), ("route", _s(ds.get("ContrastBolusRoute"), 64)), ("volume_ml", volume),
+        ("ingredient", _s(ds.get("ContrastBolusIngredient"), 64)),
+        ("start", _s(ds.get("ContrastBolusStartTime"), 16))) if v}
+
+
 def parse_ct_header(ds) -> ParsedObject | None:
     """One CT image of a series, retrieved because the study has no dose report: its header
     carries CTDIvol, kV, mA, pitch and collimation of the whole (constant) series. The DLP
@@ -661,7 +678,8 @@ def parse_ct_header(ds) -> ParsedObject | None:
         "exposure_time_s": t / 1000 if t is not None else None,
         "kvp": _f(ds.get("KVP")), "ma": _f(ds.get("XRayTubeCurrent")),
         "is_localizer": etype == "localizer",
-        "extra_json": {"source": "header", "dlp_estimated": length is not None,
+        "extra_json": {"source": "header", "contrast": ct_contrast(ds),
+                       "dlp_estimated": length is not None,
                        "series_instances": n, "slice_spacing_mm": spacing,
                        "dlp_method": method, "recon_length_mm": recon,
                        "overrange_mm": over or None},
@@ -706,7 +724,8 @@ def _parse_ct_technique(ds, itype: list[str]) -> ParsedObject | None:
         "kvp": kvp, "ma": ma, "exposure_time_s": t / 1000 if t else None,
         "mas": per_image * n if per_image and n and etype != "localizer" else per_image,
         "is_localizer": etype == "localizer",
-        "extra_json": {"source": "header", "dose_missing": True, "legacy_technique": True,
+        "extra_json": {"source": "header", "contrast": ct_contrast(ds),
+                       "dose_missing": True, "legacy_technique": True,
                        "series_instances": n, "mas_per_image": per_image,
                        "slice_thickness_mm": _f(ds.get("SliceThickness")),
                        "scan_options": options},

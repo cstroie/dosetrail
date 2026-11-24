@@ -382,7 +382,9 @@ match = 'gamba|tibi'
 # CT contrast mode (ro-nom-ct-contrast) from the description and series protocols.
 [contrast]
 multiphase = 'multifaz|multiphas|trifaz|bifaz|triphas|biphas|arterial\w* (venos|venous|portal)'
-contrast = 'contrast|bolus|\bangio|\bcu sdc\b|\bc\b'
+# SC / SDC = substanță de contrast, K = Kontrast ("TAP SC", "CER K", "ABD K PORT"), IV;
+# but "K 0-3 ani" / "K 6-18 ani" is a children's age band, not contrast
+contrast = 'contrast|bolus|\bangio|\bcu sdc\b|\bc\b|\bsdc?\b|\bk\b(?! \d+ \d+ (?:ani|yrs))|\biv\b'
 native = 'nativ|native|non ?contrast|without|fara|simplu|\bn\b'
 
 # ---------------------------------------------------------------- nuclear medicine (national codes)

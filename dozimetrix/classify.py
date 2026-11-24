@@ -321,6 +321,10 @@ class Classifier:
         if family == "ct":
             texts = [normalise(study.get(f)) for f in STUDY_FIELDS]
             texts += [normalise(e.get("protocol")) for e in events if not e.get("is_localizer")]
+            # an image header naming a contrast agent (0018,0010) is direct evidence
+            if any((e.get("extra_json") or {}).get("contrast") for e in events
+                   if not e.get("is_localizer")):
+                texts.append("contrast")
             out.contrast = self.rules.contrast_mode(texts)
         if hit:
             cid, mid = hit
@@ -410,7 +414,7 @@ _STUDY_COLS = (Study.id, Study.modality, Study.study_description, Study.procedur
                Study.requested_procedure)
 _EVENT_COLS = (Event.id, Event.study_id, Event.protocol, Event.anatomy, Event.view,
                Event.is_localizer, Event.event_type, Event.comment, Event.dlp, Event.agd,
-               Event.laterality)
+               Event.laterality, Event.extra_json)
 
 
 def run(session: Session, study_ids: Iterable[int] | None = None,

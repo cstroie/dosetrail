@@ -147,6 +147,122 @@ function timelinePanel(kind, events, grid) {
     h('div', { class: 'panel-body' }, chart));
 }
 
+// ---------------------------------------------------------------- dose vs DRL (bullet chart)
+// For CT and projection X-ray the order in time says little; what matters is each dose
+// against its reference level. One row per item, the bar as % of its DRL (a dashed line at
+// 100 %, red past it); items without a DRL show their value only. CT: the exam's total DLP,
+// then each series' DLP against the same exam DRL (they add up to the total). DX/CR: DAP per
+// projection, retakes stacked (the DRL applies per projection), then each exposure against
+// that DRL. MG: AGD per breast, views stacked (no DRL here: absolute mGy).
+function drlPanel(kind, events, grid, unitOf) {
+  const rows = [];  // { label, parts: [{ v, e }], ref, unit, d }
+  if (kind === 'ct') {
+    const series = events.filter((e) => !e.localizer && e.agent === undefined);
+    const ref = series.find((e) => e.drl?.dlp)?.drl;
+    const total = series.reduce((a, e) => a + (e.dlp || 0), 0);
+    if (total) rows.push({ label: 'Exam DLP (total)', parts: series.filter((e) => e.dlp).map((e) => ({ v: e.dlp, e })), ref: ref?.dlp, unit: 'mGy·cm', d: 0, code: ref?.code });
+    // each series: its DLP against the same exam DRL, so the series add up to the total bar
+    for (const e of series) {
+      if (e.dlp == null) continue;
+      rows.push({ label: `#${e.no} ${e.protocol || 'series'}`, parts: [{ v: e.dlp, e }], ref: ref?.dlp, unit: 'mGy·cm', d: 0,
+        extra: e.ctdivol != null ? `CTDIvol ${num(e.ctdivol, 2)} mGy${e.drl?.ctdivol ? ` · DRL ${num(e.drl.ctdivol, 1)} mGy (${Math.round((e.ctdivol / e.drl.ctdivol) * 100)}%)` : ''}` : '' });
+    }
+  } else if (kind === 'rx') {
+    const by = new Map();
+    for (const e of events) {
+      if (e.dap_gycm2 == null) continue;
+      const key = e.drl?.code || e.projection || e.protocol || `#${e.no}`;
+      if (!by.has(key)) by.set(key, { label: [e.projection, e.anatomy].filter(Boolean).join(' · ') || e.protocol || key, parts: [], ref: e.drl?.dap, unit: unitOf(), d: 2, code: e.drl?.code });
+      by.get(key).parts.push({ v: e.dap_gycm2, e });
+    }
+    // each projection: its cumulative row (retakes stacked), then every exposure on its own
+    for (const r of by.values()) {
+      rows.push({ ...r, label: `${r.label} (total)` });
+      for (const p of r.parts) {
+        rows.push({ label: `#${p.e.no} ${[p.e.projection, p.e.anatomy].filter(Boolean).join(' · ') || p.e.protocol || 'exposure'}`,
+          parts: [p], ref: r.ref, unit: r.unit, d: r.d, code: r.code,
+          extra: [p.e.kvp != null ? `${num(p.e.kvp, 0)} kV` : '', p.e.mas != null ? `${num(p.e.mas, 1)} mAs` : '',
+            p.e.exposure_index != null ? `EI ${num(p.e.exposure_index, 0)}` : '', p.e.deviation_index != null ? `DI ${num(p.e.deviation_index, 1)}` : ''].filter(Boolean).join(' · ') });
+      }
+    }
+  } else if (kind === 'mg') {
+    for (const lat of ['R', 'L']) {
+      const parts = events.filter((e) => e.laterality === lat && e.agd_mgy != null).map((e) => ({ v: e.agd_mgy, e }));
+      if (parts.length) rows.push({ label: lat === 'R' ? 'Right breast' : 'Left breast', parts, ref: null, unit: 'mGy AGD', d: 2 });
+    }
+  }
+  if (!rows.length) return null;
+  const withRef = rows.some((r) => r.ref);
+  const isDap = kind === 'rx';
+  const f = isDap ? DAP_UNITS[dapUnit()].factor : 1;
+  let selected = null;
+  const maxParts = Math.max(...rows.map((r) => r.parts.length));
+  const option = (th) => {
+    const base = baseOption(th);
+    const total = (r) => r.parts.reduce((a, p) => a + p.v, 0);
+    // % of the DRL when there is one, else the value itself (on a second axis it would not
+    // compare: rows without a DRL are drawn on the same axis only when none has one)
+    const scale = (r, v) => (withRef ? (r.ref ? (v / r.ref) * 100 : null) : v * (isDap ? f : 1));
+    const cats = rows.map((r) => r.label);
+    const series = [];
+    for (let k = 0; k < maxParts; k += 1) {
+      series.push({ type: 'bar', stack: 'v', barMaxWidth: 18, name: k ? `retake ${k}` : 'dose',
+        data: rows.map((r, i) => {
+          const p = r.parts[k];
+          if (!p) return null;
+          const over = r.ref && total(r) > r.ref;
+          return { value: scale(r, p.v), row: i, part: k,
+            itemStyle: { color: over ? th.alert : (k ? th.devices[1] : th.accent), opacity: k ? 0.75 : 1,
+              borderColor: p.e.no === selected ? th.text : 'transparent', borderWidth: p.e.no === selected ? 2 : 0 } };
+        }) });
+    }
+    if (withRef) series[0].markLine = { silent: true, symbol: 'none', label: { formatter: 'DRL', color: th.muted, fontFamily: th.mono, fontSize: 10 },
+      lineStyle: { color: th.text, type: 'dashed', width: 1.5 }, data: [{ xAxis: 100 }] };
+    const maxPct = withRef ? Math.max(110, ...rows.map((r) => scale(r, total(r)) || 0)) : undefined;
+    return {
+      ...base,
+      legend: { show: false },
+      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => {
+        const r = rows[p.data.row];
+        const part = r.parts[p.data.part];
+        const v = (x) => `${num(x * (isDap ? f : 1), r.d)} ${isDap ? dapUnit() : r.unit}`;
+        return `${r.label}${r.parts.length > 1 ? ` · ${p.data.part ? `retake ${p.data.part}` : 'first'}: ${v(part.v)}` : ''}<br>`
+          + `total ${v(total(r))}${r.ref ? ` · DRL ${v(r.ref)} (${Math.round((total(r) / r.ref) * 100)}%)${r.code ? ` · ${r.code}` : ''}` : ' · no DRL'}`
+          + (r.extra ? `<br>${r.extra}` : '');
+      } },
+      grid: { left: 150, right: 30, top: 16, bottom: 30 },
+      xAxis: { type: 'value', min: 0, max: maxPct, ...base._axis, axisLabel: { ...base._axis.axisLabel, formatter: withRef ? '{value}%' : '{value}' },
+        name: withRef ? '% of DRL' : (isDap ? dapUnit() : rows[0].unit), nameLocation: 'middle', nameGap: 22 },
+      yAxis: { type: 'category', data: cats, inverse: true, ...base._axis, axisLabel: { ...base._axis.axisLabel, width: 140, overflow: 'truncate' } },
+      series,
+    };
+  };
+  const chart = h('dx-chart', { label: 'Dose against the diagnostic reference level, per item', height: String(Math.max(140, 40 + rows.length * 30)) });
+  let bound = false;
+  const draw = () => {
+    chart.draw(option);
+    if (bound || !chart.instance) return;
+    bound = true;
+    chart.on('click', (ev) => {
+      const r = rows[ev.data?.row];
+      const p = r?.parts[ev.data.part];
+      if (!p) return;
+      selected = p.e.no;
+      grid.focusById(selected);
+      draw();
+    });
+  };
+  queueMicrotask(draw);
+  document.addEventListener('dx-unit-change', draw);
+  grid.addEventListener('row-focus', (e) => { if (e.detail?.no !== selected) { selected = e.detail?.no ?? null; draw(); } });
+  const title = { ct: 'Dose vs DRL · exam and series DLP', rx: 'Dose vs DRL · DAP per projection and exposure', mg: 'AGD per breast' }[kind];
+  const hint = withRef ? 'dashed line = DRL · red = above it' : 'no DRL for this exam';
+  return h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
+    h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, title), h('span', { class: 'spacer' }),
+      h('span', { class: 'muted small' }, `${hint}${kind === 'rx' ? ' · “total” = the projection, retakes stacked' : kind === 'mg' ? ' · stacked = views' : ''} · click a bar to find it in the table`)),
+    h('div', { class: 'panel-body' }, chart));
+}
+
 function ctColumns() {
   return [
     { key: 'no', label: '#', align: 'right', width: '40px' },
@@ -345,7 +461,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
         hisPanel(s),
         alerts.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Alerts')), ...alerts) : null,
         findings.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Data quality')), ...findings) : null),
-      h('div', { class: 'main' }, timelinePanel(kind, shown, grid), grid, adminGrid,
+      h('div', { class: 'main' }, kind === 'nm' ? timelinePanel(kind, shown, grid) : drlPanel(kind, shown, grid, dapUnit), grid, adminGrid,
         h('p', { class: 'muted small' }, ct
           ? 'DRL per series: national OMS 838/2025 DLP for the exam and age group, else RP 185; CTDIvol from RP 185 (head by age, body by weight). Localizers excluded.'
           : kind === 'nm' ? 'Administered activity per injection; a delayed scan of the same injection counts it once, on the first study.'

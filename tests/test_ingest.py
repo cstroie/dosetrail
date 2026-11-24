@@ -427,6 +427,19 @@ def test_failed_derive_is_repaired_once_the_fault_is_gone(session, monkeypatch):
 # ------------------------------------------------------------ vendors that differ from the standard
 
 
+def test_ct_header_records_the_contrast_agent():
+    ds = f.ct_series_image()
+    assert parse(ds).events[0]["extra_json"]["contrast"] is None  # nothing said: not "native"
+    ds.ContrastBolusAgent = "IOMERON 350"
+    ds.ContrastBolusRoute = "IV"
+    ds.ContrastBolusVolume = 80
+    c = parse(ds).events[0]["extra_json"]["contrast"]
+    assert c == {"agent": "IOMERON 350", "route": "IV", "volume_ml": 80.0}
+    ds.ContrastBolusAgent, ds.ContrastBolusVolume = "NONE", None
+    del ds.ContrastBolusVolume
+    assert parse(ds).events[0]["extra_json"]["contrast"] is None
+
+
 def test_ct_header_phantom_comes_from_the_code_sequence():
     iec = parse(f.ct_series_image(phantom=("113691", "IEC Body Dosimetry Phantom"))).events[0]
     assert iec["ct_phantom_cm"] == 32

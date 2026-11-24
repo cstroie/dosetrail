@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from dozimetrix import classify
-from dozimetrix.classify import Rules, normalise, view_code
+from dozimetrix.classify import default_rules, Rules, normalise, view_code
 from dozimetrix.db.models import (
     Classification,
     ClassificationStatus,
@@ -62,6 +62,28 @@ def test_contrast_modes():
     assert r.contrast_mode([normalise("Abdomen_contrast")]) == "C"
     assert r.contrast_mode([normalise("cap nativ"), normalise("cap contrast")]) == "NC"
     assert r.contrast_mode([normalise("ficat trifazic")]) == "MF"
+    # local abbreviations: SC / SDC (substanță de contrast), K (Kontrast), IV
+    assert r.contrast_mode([normalise("Head^CAP_SPIRAL_NATIV"), normalise("TAP nativ"),
+                            normalise("TAP SC"), normalise("CER K")]) == "NC"
+    assert r.contrast_mode([normalise("ABD K PORT")]) == "C"
+    assert r.contrast_mode([normalise("cerebral sdc")]) == "C"
+    assert r.contrast_mode([normalise("CAP IV")]) == "C"
+    # a children's age band, not contrast
+    assert r.contrast_mode([normalise("CEREBRAL NATIV K 0-3 ani")]) == "N"
+
+
+def test_header_contrast_agent_makes_the_series_post_contrast(session):
+    load_all(session)
+    st = Study(study_uid="c.hc", modality="CT", study_datetime=T, source_kind="test",
+               study_description="Head^CAP_SPIRAL_NATIV (Adult)")
+    st.events = [Event(protocol="Topogram", is_localizer=True), Event(protocol="TAP 1"),
+                 Event(protocol="TAP 2", extra_json={"source": "header",
+                                                     "contrast": {"agent": "IOMERON 350"}})]
+    session.add(st)
+    session.flush()
+    classify.run(session, study_ids=[st.id])
+    session.refresh(st)
+    assert st.contrast_mode == "NC"  # "NATIV" in the text, an agent in a header
 
 
 def _codes(session, study_id, event_id="any"):
