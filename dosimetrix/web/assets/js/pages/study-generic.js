@@ -96,6 +96,9 @@ function nmColumns() {
     { key: 'route', label: 'Route' },
     { key: 'activity_mbq', label: 'Activity', unit: 'MBq', align: 'right', render: (e) => (e.activity_mbq == null ? '—' : h('strong', {}, num(e.activity_mbq, 0))) },
     { key: 'per_kg', label: 'MBq/kg', align: 'right', sortable: false, render: (e) => (e.activity_mbq != null && e._kg ? num(e.activity_mbq / e._kg, 2) : '') },
+    { key: 'e_msv', label: 'E (est.)', unit: 'mSv', align: 'right', render: (e) => (e.e_msv == null
+      ? h('span', { class: 'muted', title: 'No coefficient entered for this nuclide and radiopharmaceutical (dosimetrix effective-dose set)' }, '—')
+      : h('span', { title: `${e.e_coefficient} mSv/MBq × ${num(e.activity_mbq, 0)} MBq` }, num(e.e_msv, 2))) },
     { key: 'same_administration_as', label: 'Counted', render: (e) => (e.same_administration_as ? h('a', { href: studyHref({ id: e.same_administration_as }) }, 'on an earlier study') : 'here') },
   ];
 }
@@ -117,14 +120,14 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
   const ct = s.modality === 'CT' || hybrid;
   const ev = s.events;
   const identity = h('span', { class: 'mono' }, p.pseudo_id || '—');
-  const series = ev.filter((e) => !e.localizer);
+  const series = ev.filter((e) => !e.localizer && e.agent === undefined);
   const views = [...new Set(ev.map((e) => e.projection).filter(Boolean))];
   const placeholder = !s.description || /^[-\s.0/]*$/.test(s.description);
   const examName = (s.exams || []).find((x) => x.system.startsWith('ro-nom'))?.meaning;
   const title = placeholder ? (examName || `${s.modality_label || s.modality} study`) : s.description;
   const ro = ct ? [
     ...(T.activity_mbq != null ? [readout('Administered activity', num(T.activity_mbq, 0), 'MBq')] : []),
-    readout('Total DLP', num(T.dlp_mgycm, 1), 'mGy·cm', `${series.length} series + ${ev.length - series.length} localizer`),
+    readout('Total DLP', num(T.dlp_mgycm, 1), 'mGy·cm', `${series.length} series + ${ev.filter((e) => e.localizer).length} localizer`),
     readout('Highest CTDIvol', num(T.ctdivol_max, 2), 'mGy', [...new Set(series.map((e) => e.phantom_cm).filter(Boolean))].map((x) => `${x} cm phantom`).join(' · ')),
     readout('Contrast', { N: 'native', C: 'contrast', NC: 'native + contrast', MF: 'multiphase' }[s.contrast] || '—'),
   ] : s.modality === 'MG' ? [
@@ -143,14 +146,25 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
   const kind = ct ? 'ct' : ['PT', 'NM'].includes(s.modality) ? 'nm' : s.modality === 'MG' ? 'mg' : 'rx';
   const KIND = { ct: ['CT series', 'series', 'grid.ct-series', ctColumns], nm: ['Administrations', 'administrations', 'grid.nm-admin', nmColumns],
     mg: ['Views', 'views', 'grid.mg-views', mgColumns], rx: ['Exposures', 'exposures', 'grid.rx-exposures', rxColumns] }[kind];
-  if (kind === 'nm') ev.forEach((e) => { e._kg = p.weight_kg; });
+  ev.forEach((e) => { e._kg = p.weight_kg; });
+  // PET/CT, SPECT/CT: the CT series above, the administrations in their own table below
+  const admins = ev.filter((e) => e.agent !== undefined);
+  let adminGrid = null;
+  if (kind === 'ct' && admins.length) {
+    adminGrid = h('dx-data-grid', { class: 'study-events', label: 'Administrations', noun: 'administrations', 'storage-key': 'grid.nm-admin' });
+    adminGrid.columns = nmColumns();
+    adminGrid.rowId = (e) => e.no;
+    adminGrid.setState({ sort: 'no', dir: 'asc', page: 1, size: 500 });
+    adminGrid.fetcher = async () => ({ total: admins.length, rows: admins });
+  }
+  const shown = kind === 'ct' ? ev.filter((e) => e.agent === undefined) : ev;
   const grid = h('dx-data-grid', { class: 'study-events', label: KIND[0], noun: KIND[1], 'storage-key': KIND[2] },
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows(s, kind) }, 'CSV'));
   grid.columns = KIND[3]();
   grid.rowId = (e) => e.no;
   grid.setState({ sort: 'no', dir: 'asc', page: 1, size: 500 });
   grid.fetcher = async ({ sort, dir }) => {
-    const rows = [...ev].sort((a, b) => (a[sort] < b[sort] ? -1 : a[sort] > b[sort] ? 1 : 0) * (dir === 'asc' ? 1 : -1));
+    const rows = [...shown].sort((a, b) => (a[sort] < b[sort] ? -1 : a[sort] > b[sort] ? 1 : 0) * (dir === 'asc' ? 1 : -1));
     return { total: rows.length, rows };
   };
 
@@ -192,13 +206,14 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
         hisPanel(s),
         alerts.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Alerts')), ...alerts) : null,
         findings.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Data quality')), ...findings) : null),
-      h('div', { class: 'main' }, grid,
+      h('div', { class: 'main' }, grid, adminGrid,
         h('p', { class: 'muted small' }, ct
           ? 'DRL per series: national OMS 838/2025 DLP for the exam and age group, else RP 185; CTDIvol from RP 185 (head by age, body by weight). Localizers excluded.'
           : kind === 'nm' ? 'Administered activity per injection; a delayed scan of the same injection counts it once, on the first study.'
             : kind === 'mg' ? 'AGD per view as reported by the unit; the per-breast AGD sums the views of that breast (the MGD DRL applies per breast).'
               : 'DRL per projection (OMS 838/2025, by age group). Retakes of the same projection add up to the projection dose.'))));
   grid.reload();  // the grid fetches once it is in the document
+  adminGrid?.reload();
   document.title = `${s.accession || s.id} · Dosimetrix`;
 }
 

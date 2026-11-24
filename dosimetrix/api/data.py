@@ -374,8 +374,8 @@ def study(session: Session, study_id: int) -> dict | None:
         "his": his_summary(session, s.id),
         "exams": _exams(session, s.id),
         "previous": _previous(session, s) if p else [],
-        "events": _with_references(session, s, events,
-                                   [_event(i + 1, e) for i, e in enumerate(events)]),
+        "events": _effective_doses(session, s, _with_references(
+            session, s, events, [_event(i + 1, e) for i, e in enumerate(events)])),
     }
 
 
@@ -466,6 +466,24 @@ def _with_references(session: Session, s: Study, events: list, rows: list[dict])
             value = drl.get((nat, band, "dap")) if nat else None
             r["drl"] = {"dap": value, "source": {"dap": f"OMS 838/2025 {nat}"} if value else {},
                         "code": nat}
+    return rows
+
+
+def _effective_doses(session: Session, s: Study, rows: list[dict]) -> list[dict]:
+    """Per administration: activity x the coefficient the physicist entered for its nuclide
+    and radiopharmaceutical (``dosimetrix effective-dose``) at the patient's age. None where
+    no coefficient applies (none ship); a repeat of an earlier administration adds nothing."""
+    adm = [r for r in rows if "agent" in r]
+    if not adm:
+        return rows
+    from ..effdose import load
+
+    coef = load(session)
+    for r in adm:
+        c = coef(r["nuclide"] or "", r["agent"] or "", s.age_days) if coef else None
+        r["e_msv"] = (_r(r["activity_mbq"] * c, 2)
+                      if c is not None and r["activity_mbq"] is not None else None)
+        r["e_coefficient"] = c
     return rows
 
 

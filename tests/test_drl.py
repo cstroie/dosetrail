@@ -114,6 +114,14 @@ def test_activity_per_study_and_mammography_per_breast(session, data):
     (adm,) = [e for e in d["events"] if e.get("agent")]
     assert adm["agent"] == "FDG" and adm["activity_mbq"] == 420.0
     assert adm["same_administration_as"] == 1
+    assert adm["e_msv"] is None  # no coefficient entered: no effective dose invented
+    from dosimetrix.db.models import EffectiveDoseCoefficient
+
+    session.add(EffectiveDoseCoefficient(nuclide="", form="FDG", age_to_years=None,
+                                         msv_per_mbq=0.019, source="test"))
+    session.flush()
+    (adm,) = [e for e in api_data.study(session, late.id)["events"] if e.get("agent")]
+    assert adm["e_msv"] == pytest.approx(7.98)
     d = api_data.study(session, mg.id)
     assert {"agd_left_mgy", "agd_right_mgy"} <= d["totals"].keys()
     assert sorted(e["agd_mgy"] for e in d["events"]) == [1.0, 1.2, 1.4, 1.5]
