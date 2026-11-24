@@ -168,7 +168,7 @@ dx-chart { display: block; min-width: 0; }
 .cum { display: grid; grid-template-columns: 76px 1fr 64px 48px; gap: 4px 8px; padding: 10px 12px; font-size: var(--fs-sm); align-items: center; }
 .cum .h { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .cum .bar { height: 10px; background: var(--m-rf); border-radius: 1px; }
-.cum .tot { font-weight: 700; border-top: 1px solid var(--line-2); padding-top: 4px; }
+.cum .tot { font-weight: 700; border-top: 1px solid var(--line-2); padding-top: 4px; align-self: start; }  /* start: the empty bar cell would centre its border lower than the others */
 .skin { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; }
 .skin div { flex: 1 1 160px; height: 140px; border: 1px dashed var(--line-2); border-radius: var(--r-lg); display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-size: var(--fs-sm); padding: 10px; }
 .study-events table.grid { min-width: 1180px; }
