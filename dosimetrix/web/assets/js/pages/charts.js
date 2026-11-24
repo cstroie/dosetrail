@@ -10,7 +10,7 @@ import '../components/dx-chart.js';
 import { baseOption } from '../components/dx-chart.js';
 import { h, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
-import { num, smart } from '../core/format.js';
+import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
 import { groupRows, physicalDevices, drl, isSample, getPref, putPref } from '../core/api.js';
 import { summary, groupBy, histogram } from '../core/stats.js';
 import { prefs } from '../core/prefs.js';
@@ -21,14 +21,25 @@ const page = document.getElementById('page');
 // every browser-panel metric (field names are unique across groups); GROUPS says which a group offers
 const METRICS = {
   ctdivol: { label: 'CTDIvol', unit: 'mGy' }, dlp: { label: 'DLP', unit: 'mGy·cm' },
-  dap: { label: 'DAP per exposure', unit: 'Gy·cm²' }, kvp: { label: 'kVp', unit: 'kV' }, mas: { label: 'mAs', unit: 'mA·s' },
+  dap: { label: 'DAP per exposure', get unit() { return dapUnit(); } }, kvp: { label: 'kVp', unit: 'kV' }, mas: { label: 'mAs', unit: 'mA·s' },
   ei: { label: 'Exposure index', unit: '' }, di: { label: 'Deviation index', unit: '' },
   agd: { label: 'AGD per view', unit: 'mGy' }, thickness: { label: 'Compressed thickness', unit: 'mm' },
-  dap_total: { label: 'DAP total', unit: 'Gy·cm²' }, kar_total: { label: 'Ka,r total', unit: 'mGy' },
+  dap_total: { label: 'DAP total', get unit() { return dapUnit(); } }, kar_total: { label: 'Ka,r total', unit: 'mGy' },
   fluoro_time: { label: 'Fluoroscopy time', unit: 's' }, psd: { label: 'Peak skin dose', unit: 'mGy' },
   activity: { label: 'Administered activity', unit: 'MBq' }, activity_kg: { label: 'Activity per kg', unit: 'MBq/kg' },
 };
 for (const [k, m] of Object.entries(METRICS)) m.field = k;
+// rows arrive with DAP in Gy·cm² (stored unit); shown in the user's DAP unit, DRLs included
+const DAP_FIELDS = ['dap', 'dap_total'];
+function toShown(r) {
+  const f = DAP_UNITS[dapUnit()].factor;
+  const out = { ...r, drl: r.drl ? { ...r.drl } : r.drl };
+  for (const k of DAP_FIELDS) {
+    if (typeof out[k] === 'number') out[k] *= f;
+    if (out.drl && typeof out.drl[k] === 'number') out.drl[k] *= f;
+  }
+  return out;
+}
 // per group: metrics, scatter axes (x: size of the patient, y: dose), what one row is
 const GROUPS = {
   CT: { label: 'CT', metrics: ['ctdivol', 'dlp'], scatter: ['weight', 'dlp'], unit: 'acquisitions' },
@@ -559,7 +570,7 @@ async function loadRows() {
   const groups = [...new Set(ws.panels.filter((p) => !(p.type in SERVER_TYPES)).map(groupOf))];
   for (const k of Object.keys(rowsBy)) delete rowsBy[k];
   const got = await Promise.all(groups.map((k) => groupRows(k, ws.q).catch(() => [])));
-  groups.forEach((k, i) => { rowsBy[k] = got[i]; });
+  groups.forEach((k, i) => { rowsBy[k] = got[i].map(toShown); });
   renderAll();
 }
 

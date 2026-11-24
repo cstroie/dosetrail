@@ -4,7 +4,7 @@
 
 import '../components/dx-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
-import { num, smart } from '../core/format.js';
+import { num, smart, dap, dapUnit, mgy } from '../core/format.js';
 import { alertList, alertStudies, alertSummary, ackAlerts, studyHref } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
@@ -44,7 +44,7 @@ async function toggleStudies(tr, a) {
   try {
     const list = (await alertStudies(a.id)).sort((x, y) => (x.time < y.time) - (x.time > y.time));  // most recent first
     const dose = (x) => [x.dlp != null ? `DLP ${num(x.dlp, 0)} mGy·cm` : null, x.ctdivol_max != null ? `CTDIvol ${num(x.ctdivol_max, 1)} mGy` : null,
-      x.dap != null ? `DAP ${smart(x.dap)} Gy·cm²` : null, x.kar != null ? `Ka,r ${num(x.kar, 2)} Gy` : null].filter(Boolean).join(' · ');
+      x.dap != null ? `DAP ${dap(x.dap)} ${dapUnit()}` : null, x.kar != null ? `Ka,r ${mgy(x.kar * 1000)} mGy` : null].filter(Boolean).join(' · ');
     cell.replaceChildren(h('div', { class: 'panel-scroll' }, h('table', { class: 'grid' }, h('tbody', {}, list.map((x) => h('tr', { class: x.current ? 'hot' : '' },
       h('td', { class: 'mono small' }, x.time.replace('T', ' ')), h('td', { class: 'mono' }, x.modality || ''),
       h('td', {}, h('a', { href: studyHref({ id: x.id }) }, x.description || x.modality), h('span', { class: 'muted small' }, x.device ? ` · ${x.device}` : '')),

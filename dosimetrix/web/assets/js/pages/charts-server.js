@@ -5,7 +5,7 @@
 
 import { baseOption } from '../components/dx-chart.js';
 import { h } from '../core/dom.js';
-import { num, smart } from '../core/format.js';
+import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
 import { stats, drlCompare } from '../core/api.js';
 
 export const SERVER_TYPES = {
@@ -68,7 +68,29 @@ function query(cfg, q) {
 }
 
 function unitLabel(u) {
-  return { 'mGy.cm': 'mGy·cm', 'Gy.cm2': 'Gy·cm²', 'mA.s': 'mAs', 1: '' }[u] ?? u;
+  return { 'mGy.cm': 'mGy·cm', 'Gy.cm2': 'Gy·cm²', 'mGy.cm2': 'mGy·cm²', 'µGy.m2': 'µGy·m²', 'mA.s': 'mAs', 1: '' }[u] ?? u;
+}
+
+/** Stored units → shown units: DAP in the user's unit (mGy·cm² by default), Ka,r in mGy.
+ *  [factor, shown unit code] for a stored unit code, or null when shown as stored. */
+function shownUnit(u) {
+  if (u === 'Gy') return [1000, 'mGy'];
+  if (u === 'Gy.cm2') { const d = dapUnit(); return [DAP_UNITS[d].factor, d.replace('·', '.').replace('²', '2')]; }
+  return null;
+}
+const scaleKeys = (o, keys, f) => { for (const k of keys) if (typeof o[k] === 'number') o[k] *= f; };
+const STAT_KEYS = ['mean', 'sd', 'p25', 'median', 'p75', 'min', 'max'];
+
+/** /api/stats: every dose value (and the histogram edges) in the shown unit, at one place. */
+function toShown(res) {
+  const s = shownUnit(res.unit);
+  if (!s) return res;
+  const [f, unit] = s;
+  for (const g of res.groups) scaleKeys(g, STAT_KEYS, f);
+  if (res.overall) scaleKeys(res.overall, STAT_KEYS, f);
+  if (res.bins) res.bins = res.bins.map((v) => v * f);
+  res.unit = unit;
+  return res;
 }
 
 /** Fetch and build: resolves to { title, option(th), csv, summary } */
@@ -77,8 +99,8 @@ export async function buildServer(cfg, q, devColor) {
   const mod = cfg.modality || 'CT';
   const metric = METRICS[mod][cfg.metric] ? cfg.metric : Object.keys(METRICS[mod])[0];
   const dims = cfg.type === 'shist' ? [cfg.series].filter(Boolean) : [cfg.by || 'exam', cfg.series].filter(Boolean);
-  const res = await stats({ q: query(cfg, q), metric, by: [...new Set(dims)].join(','), system: cfg.system || undefined,
-    age_scheme: cfg.age_scheme || 'ro-drl-age', bins: cfg.type === 'shist' ? 24 : 0, min_n: cfg.min_n ?? 5 });
+  const res = toShown(await stats({ q: query(cfg, q), metric, by: [...new Set(dims)].join(','), system: cfg.system || undefined,
+    age_scheme: cfg.age_scheme || 'ro-drl-age', bins: cfg.type === 'shist' ? 24 : 0, min_n: cfg.min_n ?? 5 }));
   const unit = unitLabel(res.unit);
   const [d1, d2] = res.group_by;
   const lab = (g, d) => (d ? (g.label[d] ?? g.key[d] ?? '—') : 'all');
@@ -152,6 +174,13 @@ export async function buildServer(cfg, q, devColor) {
 
 async function buildDrl(cfg, q) {
   const res = await drlCompare({ q: query(cfg, q), set: cfg.set || 'ro-ms838-2025', min_n: 1 });
+  for (const r of res.rows) {  // DAP rows in the shown unit; the ratios do not change
+    const s = shownUnit(r.unit);
+    if (!s) continue;
+    if (typeof r.reference === 'number') r.reference *= s[0];
+    for (const g of r.groups) scaleKeys(g, STAT_KEYS, s[0]);
+    r.unit = unitLabel(s[1]);
+  }
   const all = res.rows.filter((r) => r.groups.length && r.groups[0].ratio != null);
   const lim = topOf(cfg, DEFAULT_TOP);  // the highest median / DRL ratios, kept in the server's order
   const keep = all.length > lim ? new Set([...all].sort((a, b) => b.groups[0].ratio - a.groups[0].ratio).slice(0, lim)) : null;

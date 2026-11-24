@@ -12,7 +12,7 @@ import { baseOption } from '../components/dx-chart.js';
 import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
-import { num, dap, dapUnit, mmss, clock, DAP_UNITS } from '../core/format.js';
+import { num, dap, dapUnit, mgy, mmss, clock, DAP_UNITS } from '../core/format.js';
 import { rdsrUrl, doseStatementHref, study, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
 import { renderStudy } from './study-generic.js';
 import { prefs } from '../core/prefs.js';
@@ -43,13 +43,13 @@ function readouts(s) {
     opts.gauge || null, opts.sub ? h('span', { class: 'sub' }, opts.sub) : null);
   return [
     row('Total DAP', dap(T.dap_gycm2), { unit: u, hot: T.dap_gycm2 >= th.dap_gycm2, gauge: gauge(T.dap_gycm2, th.dap_gycm2), sub: `trigger ${dap(th.dap_gycm2)} ${u}` }),
-    row('Total Ka,r', num(T.kar_gy, 2), { unit: 'Gy', hot: T.kar_gy >= th.kar_gy, gauge: gauge(T.kar_gy, th.kar_gy), sub: `alert ${num(th.kar_gy, 2)} Gy · notify ${num(th.kar_notify_gy, 2)} Gy` }),
+    row('Total Ka,r', mgy(T.kar_gy * 1000), { unit: 'mGy', hot: T.kar_gy >= th.kar_gy, gauge: gauge(T.kar_gy, th.kar_gy), sub: `alert ${mgy(th.kar_gy * 1000)} mGy · notify ${mgy(th.kar_notify_gy * 1000)} mGy` }),
     row('Fluoro time', mmss(T.fluoro_s), { unit: 'mm:ss', sub: `${ev.filter((e) => e.type === 'fluoro').length} fluoro events` }),
     row('Acquisitions', num(T.acquisitions), { unit: 'runs', sub: `${num(T.frames)} frames` }),
     row('Fluoro / acq. DAP', `${dap(dapF)} / ${dap(T.dap_gycm2 - dapF)}`, { sm: true, sub: `${Math.round((dapF / T.dap_gycm2) * 100)}% / ${100 - Math.round((dapF / T.dap_gycm2) * 100)}% · ${u}` }),
     row('Plane A / B DAP', `${dap(sum((e) => e.plane === 'A', 'dap_gycm2'))} / ${dap(sum((e) => e.plane === 'B', 'dap_gycm2'))}`, { sm: true,
-      sub: `Ka,r ${num(sum((e) => e.plane === 'A', 'kar_mgy') / 1000, 2)} / ${num(sum((e) => e.plane === 'B', 'kar_mgy') / 1000, 2)} Gy` }),
-    row('Peak skin dose', T.peak_skin_mgy != null ? num(T.peak_skin_mgy / 1000, 2) : '—', { unit: T.peak_skin_mgy != null ? 'Gy' : '',
+      sub: `Ka,r ${mgy(sum((e) => e.plane === 'A', 'kar_mgy'))} / ${mgy(sum((e) => e.plane === 'B', 'kar_mgy'))} mGy` }),
+    row('Peak skin dose', T.peak_skin_mgy != null ? mgy(T.peak_skin_mgy) : '—', { unit: T.peak_skin_mgy != null ? 'mGy' : '',
       hot: T.peak_skin_mgy >= 2000, sub: T.peak_skin_mgy != null ? 'model estimate · see the skin dose map' : 'no Ka,r per event' }),
   ];
 }
@@ -62,30 +62,31 @@ function cumulative(s) {
   const over = sumKar >= s.thresholds.cum_kar_gy;
   return h('section', { class: 'panel', 'aria-labelledby': 'h-cu' },
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-cu' }, t('study.cumulative')),
-      over ? h('span', { class: 'tag alert' }, `Σ Ka,r ${num(sumKar, 2)} Gy`) : null),
+      over ? h('span', { class: 'tag alert' }, `Σ Ka,r ${mgy(sumKar * 1000)} mGy`) : null),
     h('div', { class: 'cum', role: 'table', 'aria-label': 'Studies in the last 12 weeks' },
       h('span', { class: 'h', role: 'columnheader' }, 'Date'), h('span', { class: 'h', role: 'columnheader' }, 'DAP'),
-      h('span', { class: 'h r', role: 'columnheader' }, dapUnit()), h('span', { class: 'h r', role: 'columnheader' }, 'Ka,r Gy'),
+      h('span', { class: 'h r', role: 'columnheader' }, dapUnit()), h('span', { class: 'h r', role: 'columnheader' }, 'Ka,r mGy'),
       items.map((x) => [
         h('span', { class: 'mono', title: x.description }, x.date.slice(5)),
         h('i', { class: 'bar', style: { width: `${(x.dap_gycm2 / max) * 100}%` }, 'aria-hidden': 'true' }),
         h('span', { class: 'mono r' }, dap(x.dap_gycm2)),
-        h('span', { class: 'mono r' }, num(x.kar_gy, 2))]),
+        h('span', { class: 'mono r' }, mgy(x.kar_gy * 1000))]),
       h('span', { class: 'tot' }, `Σ ${items.length}`), h('span', { class: 'tot' }),
       h('span', { class: 'mono tot r' }, dap(sumDap)),
-      h('span', { class: 'mono tot', style: { 'text-align': 'right', color: over ? 'var(--alert)' : 'inherit' } }, num(sumKar, 2))),
+      h('span', { class: 'mono tot', style: { 'text-align': 'right', color: over ? 'var(--alert)' : 'inherit' } }, mgy(sumKar * 1000))),
     h('p', { class: 'muted', style: { 'font-size': '11px', padding: '0 12px 10px' } },
-      `Alert levels over ${s.thresholds.cum_weeks} weeks: Σ Ka,r ${num(s.thresholds.cum_kar_gy, 2)} Gy, Σ DAP ${dap(s.thresholds.cum_dap_gycm2)} ${dapUnit()}.`));
+      `Alert levels over ${s.thresholds.cum_weeks} weeks: Σ Ka,r ${mgy(s.thresholds.cum_kar_gy * 1000)} mGy, Σ DAP ${dap(s.thresholds.cum_dap_gycm2)} ${dapUnit()}.`));
 }
 
-/** Ka,r axis: the thresholds are drawn only when the curve comes within half of them, so a
- *  few-mGy paediatric study is not flattened against a 0-4 Gy axis; below that, mGy. */
-function karScale(totalGy, th) {
+/** Ka,r axis (mGy): the thresholds are drawn only when the curve comes within half of them,
+ *  so a few-mGy paediatric study is not flattened against a 0-4000 mGy axis. */
+function karScale(totalMgy, th) {
   const lines = [['alert', th.kar_gy, 'alert'], ['notify', th.kar_notify_gy, 'warn']]
-    .filter(([, v]) => v != null && v <= 2 * totalGy);
-  if (!lines.length) return { unit: 'mGy', k: 1000, max: null, lines };
-  const top = Math.max(totalGy, ...lines.map(([, v]) => v)) * 1.15;
-  return { unit: 'Gy', k: 1, max: Math.ceil(top * 2) / 2, lines };
+    .filter(([, v]) => v != null).map(([n, v, c]) => [n, v * 1000, c])
+    .filter(([, v]) => v <= 2 * totalMgy);
+  if (!lines.length) return { max: null, lines };
+  const top = Math.max(totalMgy, ...lines.map(([, v]) => v)) * 1.15;
+  return { max: Math.ceil(top / 500) * 500, lines };
 }
 
 function curveOption(s, selected) {
@@ -103,13 +104,11 @@ function curveOption(s, selected) {
       const a = mins(e.time);
       const b = a + (e.duration_s || 0) / 60;
       karPts.push([a, kar]); dapPts.push([a, dapSum]);
-      kar += (e.kar_mgy ?? 0) / 1000;
+      kar += e.kar_mgy ?? 0;
       dapSum += (e.dap_gycm2 ?? 0) * f;
       karPts.push([b, kar]); dapPts.push([b, dapSum]);
     }
     const ks = karScale(kar, s.thresholds);
-    const karLine = karPts.map(([x, y]) => [x, y * ks.k]);
-    const karDigits = ks.unit === 'Gy' ? 2 : 1;
     const bar = (type) => s.events.map((e, i) => (e.type === type ? {
       value: [mins(e.time), e.dap_gycm2 * f],
       itemStyle: { color: type === 'fluoro' ? th.devices[0] : th.devices[1], opacity: e.plane === 'B' ? 0.55 : 1,
@@ -124,24 +123,24 @@ function curveOption(s, selected) {
       ...base,
       legend: { ...base.legend, data: ['Σ Ka,r', 'Fluoro', 'Acquisition', 'Σ DAP'], left: 'center' },
       tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => (
-        p.seriesName === 'Σ Ka,r' ? `Σ Ka,r ${num(p.value[1], karDigits)} ${ks.unit}`
+        p.seriesName === 'Σ Ka,r' ? `Σ Ka,r ${mgy(p.value[1])} mGy`
           : p.seriesName === 'Σ DAP' ? `Σ DAP ${dap(p.value[1] / f, 1)} ${dapUnit()}`
             : `#${p.data.eventIndex + 1} ${p.seriesName} · plane ${s.events[p.data.eventIndex].plane}<br>${clock(s.events[p.data.eventIndex].time)} · DAP ${dap(s.events[p.data.eventIndex].dap_gycm2, 1)} ${dapUnit()}`) },
-      grid: [{ left: 60, right: 90, top: 34, height: '38%' }, { left: 60, right: 90, top: '60%', bottom: 28 }],
+      grid: [{ left: 66, right: 100, top: 34, height: '38%' }, { left: 66, right: 100, top: '60%', bottom: 28 }],
       xAxis: [
         { type: 'value', gridIndex: 0, min: 0, max: xMax, ...base._axis, axisLabel: { show: false }, splitLine: { show: false } },
         { type: 'value', gridIndex: 1, min: 0, max: xMax, interval: xMax > 30 ? 15 : 5, ...base._axis, axisLabel: { ...base._axis.axisLabel, formatter: hhmm, hideOverlap: true }, splitLine: { show: false } },
       ],
       yAxis: [
-        { type: 'value', gridIndex: 0, ...yName(`Σ Ka,r ${ks.unit}`), min: 0, max: ks.max ?? undefined, splitNumber: 3, ...base._axis },
+        { type: 'value', gridIndex: 0, ...yName('Σ Ka,r mGy', 46), min: 0, max: ks.max ?? undefined, splitNumber: 3, ...base._axis },
         { type: 'value', gridIndex: 1, ...yName(`DAP ${dapUnit()}`), min: 0, splitNumber: 2, ...base._axis },
         { type: 'value', gridIndex: 1, position: 'right', ...yName(`Σ DAP ${dapUnit()}`, 44), min: 0, splitNumber: 2,
           ...base._axis, splitLine: { show: false } },
       ],
       series: [
-        { name: 'Σ Ka,r', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: karLine, showSymbol: false, lineStyle: { color: th.accent, width: 2.5 }, itemStyle: { color: th.accent },
+        { name: 'Σ Ka,r', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: karPts, showSymbol: false, lineStyle: { color: th.accent, width: 2.5 }, itemStyle: { color: th.accent },
           markLine: ks.lines.length ? { silent: true, symbol: 'none', label: { position: 'end', color: th.muted, fontFamily: th.mono, fontSize: 10, formatter: '{b}' },
-            data: ks.lines.map(([name, v, colour]) => ({ name: `${name} ${num(v, 1)} Gy`, yAxis: v, lineStyle: { color: th[colour], type: 'dashed' } })) } : undefined },
+            data: ks.lines.map(([name, v, colour]) => ({ name: `${name} ${mgy(v)} mGy`, yAxis: v, lineStyle: { color: th[colour], type: 'dashed' } })) } : undefined },
         { name: 'Fluoro', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: bar('fluoro'), barWidth: 5, itemStyle: { color: th.devices[0] } },
         { name: 'Acquisition', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: bar('acquisition'), barWidth: 5, barGap: '-100%', itemStyle: { color: th.devices[1] } },
         { name: 'Σ DAP', type: 'line', xAxisIndex: 1, yAxisIndex: 2, data: dapPts, showSymbol: false, z: 3,
@@ -163,7 +162,7 @@ const EVENT_COLUMNS = [
   { key: 'secondary_angle', label: 'Second.', align: 'right', render: (e) => `${e.secondary_angle < 0 ? 'CAU' : 'CRA'} ${Math.abs(e.secondary_angle)}` },
   { key: 'field_cm', label: 'Field', unit: 'cm', align: 'right' }, { key: 'sid_cm', label: 'SID', unit: 'cm', align: 'right' },
   { key: 'dap_gycm2', label: 'DAP', unit: '', align: 'right', render: (e) => dap(e.dap_gycm2, 1) },
-  { key: 'kar_mgy', label: 'Ka,r', unit: 'mGy', align: 'right', render: (e) => num(e.kar_mgy, 1) },
+  { key: 'kar_mgy', label: 'Ka,r', unit: 'mGy', align: 'right', render: (e) => mgy(e.kar_mgy) },
   { key: 'duration_s', label: 'Dur.', unit: 's', align: 'right', render: (e) => num(e.duration_s, 1) },
 ];
 
@@ -318,8 +317,8 @@ function skinPanel(s) {
     host.replaceChildren(
       h('div', { class: 'row', style: { 'justify-content': 'flex-end', padding: '0 0 6px' } }, seg),
       h('div', { class: 'readout' }, h('span', { class: 'l' }, 'Peak skin dose (estimate)'),
-        h('span', { class: 'v' }, num(r.psd_mgy / 1000, 2), h('span', { class: 'unit' }, ' Gy')),
-        h('span', { class: 'sub' }, `${side(at.theta)} (${at.theta}°) · ${at.z_cm >= 0 ? '+' : ''}${at.z_cm} cm from the isocentre · ${num(r.psd_over_kar, 2)} × Ka,r total · area ≥ 2 Gy ${num(r.area_cm2_over_2gy)} cm², ≥ 3 Gy ${num(r.area_cm2_over_3gy)} cm²`)),
+        h('span', { class: 'v' }, mgy(r.psd_mgy), h('span', { class: 'unit' }, ' mGy')),
+        h('span', { class: 'sub' }, `${side(at.theta)} (${at.theta}°) · ${at.z_cm >= 0 ? '+' : ''}${at.z_cm} cm from the isocentre · ${num(r.psd_over_kar, 2)} × Ka,r total · area ≥ 2000 mGy ${num(r.area_cm2_over_2gy)} cm², ≥ 3000 mGy ${num(r.area_cm2_over_3gy)} cm²`)),
       views,
       h('details', {}, h('summary', { class: 'muted small', style: { cursor: 'pointer' } }, `Model and assumptions · ${r.events_used} events in ${r.geometries} geometries${r.events_skipped ? `, ${r.events_skipped} without Ka,r` : ''}`),
         h('ul', { class: 'muted small' }, [A.phantom, A.factors, `isocentre ${A.isocentre}`, ...A.notes].map((x) => h('li', {}, x)),
@@ -330,11 +329,12 @@ function skinPanel(s) {
 }
 
 function exportEvents(s) {
-  const cols = ['no', 'time', 'protocol', 'type', 'plane', 'kvp', 'ma', 'pulse_rate', 'cu_mm', 'primary_angle', 'secondary_angle', 'field_cm', 'sid_cm', 'dap_gycm2', 'kar_mgy', 'duration_s'];
-  const text = [cols.join(',')].concat(s.events.map((e) => cols.map((c) => e[c]).join(','))).join('\r\n');
+  const cols = ['no', 'time', 'protocol', 'type', 'plane', 'kvp', 'ma', 'pulse_rate', 'cu_mm', 'primary_angle', 'secondary_angle', 'field_cm', 'sid_cm', 'dap_mgycm2', 'kar_mgy', 'duration_s'];
+  const val = (e, c) => (c === 'dap_mgycm2' ? (e.dap_gycm2 == null ? '' : +(e.dap_gycm2 * 1000).toPrecision(6)) : e[c]);
+  const text = [cols.join(',')].concat(s.events.map((e) => cols.map((c) => val(e, c)).join(','))).join('\r\n');
   const href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
   h('a', { href, download: `${s.accession}-events.csv` }).click();
-  toast('Exported events (DAP in Gy·cm², Ka,r in mGy)');
+  toast('Exported events (DAP in mGy·cm², Ka,r in mGy)');
 }
 
 render().catch((err) => page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'), h('span', { class: 'muted mono' }, err.message))));

@@ -207,7 +207,7 @@ export async function lookup(text, limit = 6) {
   if (t.length < 3) return [];
   if (!isSample) return remote('/api/lookup', { q: t, limit });
   const [all, devs, xa] = await Promise.all([sample('ct-studies.json'), deviceMap(), study('A2026112100123')]);
-  const list = [{ accession: xa.accession, modality: 'XA', description: xa.description, device_name: xa.device.name, date: xa.start, dose: `${xa.totals.dap_gycm2} Gy·cm²` }];
+  const list = [{ accession: xa.accession, modality: 'XA', description: xa.description, device_name: xa.device.name, date: xa.start, dose: `${Math.round(xa.totals.dap_gycm2 * 1000)} mGy·cm²` }];
   for (const s of all) list.push({ accession: s.accession, modality: 'CT', description: s.description, device_name: devs.get(s.device_id)?.display_name, date: s.date, dose: `${s.dlp_total} mGy·cm` });
   return list.filter((s) => s.accession.startsWith(t)).slice(0, limit);
 }

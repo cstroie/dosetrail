@@ -61,7 +61,7 @@ function rxColumns() {
     { key: 'deviation_index', label: 'DI', align: 'right', render: diCell },
     { key: 'sid_cm', label: 'SID', unit: 'cm', align: 'right' },
     { key: 'exam', label: 'Exam', render: (e) => e.exam || '' },
-    { key: 'drl', label: 'DAP / DRL', align: 'right', render: (e) => (e.drl?.dap ? h('span', { title: `${e.drl.code}: DRL ${e.drl.dap} Gy·cm² per projection (retakes add up)` }, ratioTag(e.dap_gycm2, e.drl.dap)) : '') },
+    { key: 'drl', label: 'DAP / DRL', align: 'right', render: (e) => (e.drl?.dap ? h('span', { title: `${e.drl.code}: DRL ${dap(e.drl.dap)} ${dapUnit()} per projection (retakes add up)` }, ratioTag(e.dap_gycm2, e.drl.dap)) : '') },
   ];
 }
 

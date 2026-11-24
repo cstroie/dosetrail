@@ -1,5 +1,6 @@
 // Number, unit and time formatting. Values are stored in fixed units
 // (DAP Gy·cm², DLP mGy·cm, CTDIvol mGy, Ka,r mGy/Gy) and converted only here, at display time.
+// Shown in mGy-based units by default: DAP mGy·cm² (the user may switch), Ka,r always mGy.
 
 import { locale } from './i18n.js';
 import { prefs } from './prefs.js';
@@ -24,13 +25,22 @@ export function smart(value) {
 }
 
 export function dapUnit() {
-  return prefs.get('dapUnit') in DAP_UNITS ? prefs.get('dapUnit') : 'Gy·cm²';
+  return prefs.get('dapUnit') in DAP_UNITS ? prefs.get('dapUnit') : 'mGy·cm²';
 }
 
-/** DAP stored in Gy·cm², shown in the user's unit. `extraDigits` for per-event values. */
+/** DAP stored in Gy·cm², shown in the user's unit. Totals use the unit's fixed digits;
+ *  per-event values (`extraDigits` > 0) and anything under 10 keep significant decimals. */
 export function dap(gycm2, extraDigits = 0) {
+  if (gycm2 === null || gycm2 === undefined) return '—';
   const u = DAP_UNITS[dapUnit()];
-  return num(gycm2 * u.factor, Math.max(0, u.digits + extraDigits));
+  const v = gycm2 * u.factor;
+  return extraDigits > 0 || Math.abs(v) < 10 ? smart(v) : num(v, u.digits);
+}
+
+/** Air kerma (Ka,r, skin dose) in mGy: whole mGy from 10 up, decimals below. */
+export function mgy(value) {
+  if (value === null || value === undefined) return '—';
+  return Math.abs(value) >= 10 ? num(value, 0) : smart(value);
 }
 
 export function mmss(seconds) {
