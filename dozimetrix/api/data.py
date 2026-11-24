@@ -108,9 +108,12 @@ def overview(session: Session, now: dt.datetime, specs_dir=None) -> dict:
 
     marked = session.get(AppSetting, deadlines.DONE_KEY)
     return {"generated": iso_min(now), "modalities": modalities,
-            "deadlines": deadlines.upcoming(
-                now.date(), (marked.value if marked else None) or [],
-                list(loader.discover(specs_dir).specs.values())),
+            "deadlines": sorted([
+                *deadlines.upcoming(now.date(), (marked.value if marked else None) or [],
+                                    list(loader.discover(specs_dir).specs.values())),
+                *deadlines.drl_reviews(session, now.date(),
+                                       (marked.value if marked else None) or [])],
+                key=lambda d: d["due"]),
             "alerts": alerts.listing(session, "open", 10, names=device_names(session)),
             "alerts_open": alerts.open_count(session),
             "feeds": feeds(session, now)}

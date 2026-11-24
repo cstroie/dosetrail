@@ -58,6 +58,7 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "rules.html": "rules.html", "integration.html": "integration.html",
          "users.html": "users.html", "audit.html": "audit.html",
          "alerts.html": "alerts.html", "local-drl.html": "local-drl.html",
+         "protocols.html": "protocols.html",
          "indications.html": "indications.html", "survey-central.html": "survey-central.html",
          "dose-statement.html": "dose-statement.html"}
 OLD_PAGES = {"dicom.html": "integration.html"}
@@ -787,6 +788,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         known = {d["id"] for d in deadlines.upcoming(
             clock().date(), (), list(_loader.discover(settings.specs_dir).specs.values()))}
+        known |= {d["id"] for d in deadlines.drl_reviews(session, clock().date())}
         if deadline_id not in known:
             raise HTTPException(404, "no such deadline in its window")
         row = session.get(AppSetting, deadlines.DONE_KEY) or AppSetting(key=deadlines.DONE_KEY)

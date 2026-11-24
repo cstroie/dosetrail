@@ -101,3 +101,26 @@ def test_a_spec_without_a_deadline_adds_nothing_and_a_bad_one_is_refused(tmp_pat
         _spec(tmp_path, "b", "range", 'id = "b"\nday = 3\nmonths_after_period = 1', "t-bad")
     with pytest.raises(loader.SpecError, match="deadline"):
         _spec(tmp_path, "c", "year", 'id = "c"\nday = 3', "t-bad2")
+
+
+def test_local_drl_review_is_due_a_year_after_adoption(session):
+    from dozimetrix.db.models import ReferenceSet
+
+    def adopt(key, day):
+        session.add(ReferenceSet(key=key, name=key, valid_from=D(day), source="t", notes=""))
+        session.flush()
+
+    adopt("local-national-20251201-100000", "2025-12-01")
+    assert deadlines.drl_reviews(session, D("2026-10-01")) == []  # 61 days before: too early
+    (d,) = deadlines.drl_reviews(session, D("2026-11-25"))  # 6 days before
+    assert d["id"] == "drl-review:local-national-20251201-100000"
+    assert d["due"] == "2026-12-01" and d["days_left"] == 6 and d["level"] == "warn"
+    assert deadlines.drl_reviews(session, D("2026-12-05"))[0]["level"] == "alert"  # late
+    assert deadlines.drl_reviews(session, D("2026-11-25"), [d["id"]]) == []  # marked done
+    assert deadlines.drl_reviews(session, D("2027-07-01")) == []  # long past: dropped
+    # a newer set of the same grid is the review: the old one stops being due
+    adopt("local-national-20261120-100000", "2026-11-20")
+    assert deadlines.drl_reviews(session, D("2026-12-05")) == []
+    adopt("local-icrp-20251101-100000", "2025-11-01")  # another grid is independent
+    assert [x["set"] for x in deadlines.drl_reviews(session, D("2026-11-25"))] == [
+        "local-icrp-20251101-100000"]

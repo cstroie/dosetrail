@@ -141,6 +141,8 @@ ro-nom-ct,CT-COLO,*,ro-insp-1255-ct,CV
 ro-nom-ct,CT-ENTR,*,ro-insp-1255-ct,ENT
 ro-nom-ct,CT-MSUB,*,ro-insp-1255-ct,E
 ro-nom-ct,CT-MSHM,*,ro-insp-1255-ct,E
+ro-nom-ct,CT-MBS,*,ro-insp-1255-ct,E
+ro-nom-ct,CT-MBI,*,ro-insp-1255-ct,E
 ro-nom-ct,CT-MSCT,*,ro-insp-1255-ct,E
 ro-nom-ct,CT-MSPN,*,ro-insp-1255-ct,E
 ro-nom-ct,CT-MSMN,*,ro-insp-1255-ct,E

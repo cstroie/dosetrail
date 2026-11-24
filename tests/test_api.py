@@ -853,3 +853,15 @@ def test_his_waiting_breakdown(client):
     wt = client.get("/api/his/status").json()["waiting"]
     assert set(wt) == {"due", "retry", "next_retry", "history", "backfill_hours"}
     assert wt["due"] >= 0 and wt["retry"] >= 0 and wt["history"] >= 0
+
+
+def test_protocol_comparison_endpoint(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/protocols/compare", params={"region": "CT-CAP", "min_n": 1})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["region"] == "CT-CAP" and body["parameter"] == "age" and "rows" in body
+    assert client.get("/api/protocols/compare", params={"region": "NOPE"}).status_code == 400
+    assert client.get("/api/protocols/compare",
+                      params={"region": "CT-CAP", "by": "x"}).status_code == 400
+    assert client.get("/protocols.html").status_code == 200

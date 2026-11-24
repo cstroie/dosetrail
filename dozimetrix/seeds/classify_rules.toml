@@ -378,6 +378,14 @@ match = '\bfoot|picior'
 [[ct]]
 code = "CT-MIGM"
 match = 'gamba|tibi'
+# a limb the text does not narrow down ("Lower Extremities^ExtrCombi", "MEMBRU_SUP"):
+# the generic upper / lower limb code, after every specific segment above
+[[ct]]
+code = "CT-MBS"
+match = 'upper extrem|membr\w* sup|\bmsup\b'
+[[ct]]
+code = "CT-MBI"
+match = 'lower extrem|membr\w* inf|\bminf\b'
 
 # CT contrast mode (ro-nom-ct-contrast) from the description and series protocols.
 [contrast]

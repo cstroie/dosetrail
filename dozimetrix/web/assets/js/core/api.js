@@ -319,6 +319,11 @@ export function surveyNationalUrl(params) {
 /** PUT /api/me/password {current, new}: one's own password. */
 export const changePassword = (current, next) => send('PUT', '/api/me/password', { current, new: next });
 
+/** GET /api/protocols/compare (protocols.py): the protocols of one CT region side by side. */
+export function protocolsCompare(params) {
+  return isSample ? serverOnly('Protocol comparison') : remote('/api/protocols/compare', params);
+}
+
 /** Local DRLs (localdrl.py): proposal, adoption (admin), review (json / xlsx), deletion. */
 export function localDrlPropose(params) {
   return isSample ? serverOnly('Local DRLs') : remote('/api/drl/local/propose', params);

@@ -82,3 +82,40 @@ def upcoming(today: dt.date, done: set[str] | list[str] = (), specs=None) -> lis
                         "days_left": left,
                         "level": "alert" if left < 0 else "warn" if left <= 7 else "info"})
     return sorted(out, key=lambda x: x["due"])
+
+
+DRL_REVIEW_DAYS = 365  # Directive 2013/59/Euratom art. 56: DRLs are reviewed regularly
+DRL_REVIEW_LEAD = 30
+DRL_REVIEW_GRACE = 180
+
+
+def drl_reviews(session, today: dt.date, done: set[str] | list[str] = ()) -> list[dict]:
+    """Adopted local DRL sets a year old: due for review (the page "Local DRLs" reviews a set
+    against a new period). A set stops being due when a newer local set of the same grid
+    exists (the review was adopted) or a person marks it done. Same shape as ``upcoming``."""
+    from sqlalchemy import select
+
+    from .db.models import ReferenceSet
+    from .localdrl import LOCAL_PREFIX
+
+    done = set(done)
+    sets = list(session.scalars(select(ReferenceSet).where(
+        ReferenceSet.key.like(f"{LOCAL_PREFIX}%"), ReferenceSet.valid_from.is_not(None))
+        .order_by(ReferenceSet.valid_from, ReferenceSet.key)))
+    out = []
+    for i, rs in enumerate(sets):
+        grid = rs.key.split("-")[1] if "-" in rs.key else ""
+        if any(o.key.split("-")[1:2] == [grid] for o in sets[i + 1:]):
+            continue  # superseded by a newer set of the same grid
+        due = rs.valid_from + dt.timedelta(days=DRL_REVIEW_DAYS)
+        left = (due - today).days
+        id_ = f"drl-review:{rs.key}"
+        if id_ in done or left > DRL_REVIEW_LEAD or left < -DRL_REVIEW_GRACE:
+            continue
+        out.append({"id": id_, "kind": "drl-review", "spec": None, "set": rs.key,
+                    "title": {"en": f"Review local DRLs: {rs.name}",
+                              "ro": f"Revizuirea NRD locale: {rs.name}"},
+                    "legal": "Directive 2013/59/Euratom art. 56", "due": due.isoformat(),
+                    "days_left": left, "year": due.year,
+                    "level": "alert" if left < 0 else "warn" if left <= 7 else "info"})
+    return out

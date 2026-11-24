@@ -277,3 +277,13 @@ def test_run_mammography_nm_and_pet(session):
     assert ids == [unknown.id]
     classify.run(session, ids)
     assert _codes(session, unknown.id) == {"ro-insp-1255-nm:SO2"}
+
+
+def test_generic_limb_ct():
+    from dozimetrix import classify
+
+    rules = classify.default_rules()
+    assert rules.match("ct", classify.normalise("Lower Extremities^ExtrCombi (Adult)")) == "CT-MBI"
+    assert rules.match("ct", classify.normalise("Upper Extremities^MEMBRU_SUP (Child)")) == "CT-MBS"
+    knee = classify.normalise("Lower Extremities^Knee")
+    assert rules.match("ct", knee) == "CT-MIGN"  # a specific segment wins
