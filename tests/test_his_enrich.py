@@ -214,7 +214,7 @@ def test_whoami_404_alone_does_not_stop_the_worker(session, stub, his):
     assert session.get(HisLookup, st.id).his_patient_id == "77"
 
 
-def test_listings_ask_for_the_exam_year_and_in_background(session, stub, his):
+def test_listings_ask_day_by_day_and_in_background(session, stub, his):
     stub.patients[GIRL] = his_stub.patient("77", GIRL)
     stub.requests["77"] = [his_stub.request("R-NY", "2024-12-31T20:00:00", national_id=GIRL)]
     st = _ingest(session, "1.9.88")
@@ -222,7 +222,8 @@ def test_listings_ask_for_the_exam_year_and_in_background(session, stub, his):
     session.get(HisLookup, st.id).next_try_at = None
     enrich.run_batch(session, SECRET, now=dt.datetime(2025, 1, 1, 12), sleep=lambda s: None)
     assert session.get(HisLookup, st.id).request_id == "R-NY"
-    assert sorted(d[:4] for d in stub.dts) == ["2024", "2025"]
+    # the exam's day first, then back day by day until an earlier order turns up
+    assert [d[:10] for d in stub.dts] == ["2025-01-01", "2024-12-31"]
     assert set(stub.background) == {"1"}
 
 def test_outputs_study_summary_quality_and_survey(session, stub, his):

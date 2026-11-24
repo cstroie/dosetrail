@@ -105,8 +105,8 @@ class Stub:
                     if "type" not in q:
                         return self._send(400, {"error": "type required in tests"})
                     rs = stub.requests.get(q.get("patient", ""), [])
-                    if q.get("dt"):  # like the gateway: that year only
-                        rs = [r for r in rs if r["authoredOn"][:4] == q["dt"][:4]]
+                    if q.get("dt"):  # like the gateway: that day only
+                        rs = [r for r in rs if r["authoredOn"][:10] == q["dt"][:10]]
                     stub.dts.append(q.get("dt"))
                     return self._send(200, {"resourceType": "Bundle", "total": len(rs),
                                             "entry": [{"resource": r} for r in rs]})

@@ -254,17 +254,22 @@ def process(session: Session, lookup: HisLookup, server: HisServer, client, ctx:
     req: HisRequest | None = None
     if policy == "full" and study.study_datetime is not None:
         when = study.study_datetime
-        years = sorted({(when - dt.timedelta(hours=server.window_before_h)).year,
-                        (when + dt.timedelta(hours=server.window_after_h)).year})
+        first = (when - dt.timedelta(hours=server.window_before_h)).date()
+        last = (when + dt.timedelta(hours=server.window_after_h)).date()
+        days = [first + dt.timedelta(days=i) for i in range((last - first).days + 1)]
+        days.sort(key=lambda d: abs((d - when.date()).days))  # the exam's day first
         for kind in kinds_for(modality):
-            stubs = []
-            for year in years:  # the gateway lists one year at a time
-                key = (hp.id, kind, year)
+            stubs: list = []
+            stub = score = None
+            for day in days:  # one day per call, the exam's first: stop at an earlier order
+                key = (hp.id, kind, day)
                 if key not in ctx.listings:
-                    ctx.listings[key] = client.list_requests(hp.id, kind, year)
+                    ctx.listings[key] = client.list_requests(hp.id, kind, day)
                 stubs += ctx.listings[key]
-            stub, score = choose_request(stubs, when, server.window_before_h,
-                                         server.window_after_h)
+                stub, score = choose_request(stubs, when, server.window_before_h,
+                                             server.window_after_h)
+                if stub is not None and stub.authored_on <= when:
+                    break
             if stub is not None:
                 req = client.get_request(stub.id)
                 lookup.request_id, lookup.match_score = stub.id[:32], score
