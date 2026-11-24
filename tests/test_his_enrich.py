@@ -293,3 +293,38 @@ def test_request_written_days_before_the_exam_is_found(session, stub, his):
     enrich.run_batch(session, SECRET, now=dt.datetime(2025, 11, 6, 12), sleep=lambda s: None)
     lk = session.get(HisLookup, st.id)
     assert lk.request_id == "R-WEEK" and lk.status == "matched"
+
+
+def test_accession_number_is_the_request_id(session, stub, his):
+    stub.patients[GIRL] = his_stub.patient("77", GIRL)
+    stub.requests["77"] = [his_stub.request("1797869", "2025-09-01T10:00:00", national_id=GIRL,
+                                            indication="Hidrocefalie")]
+    st = _ingest(session, "1.9.98")
+    st.accession = "1797869"  # far outside the window: found by the accession alone
+    _run(session)
+    lk = session.get(HisLookup, st.id)
+    assert lk.request_id == "1797869" and lk.match_score == 1.0
+    assert lk.detail["type"] == "accession" and stub.dts == []  # no listing needed
+    assert session.get(StudyRequest, st.id).indication == "Hidrocefalie"
+
+
+def test_accession_of_another_patient_falls_back_to_the_listing(session, stub, his):
+    stub.patients[GIRL] = his_stub.patient("77", GIRL)
+    stub.requests["77"] = [his_stub.request("R1", "2025-11-06T09:30:00", national_id=GIRL)]
+    stub.requests["88"] = [his_stub.request("999", "2025-11-06T09:30:00", national_id="2990101")]
+    st = _ingest(session, "1.9.99")
+    st.accession = "999"
+    _run(session)
+    lk = session.get(HisLookup, st.id)
+    assert lk.request_id == "R1" and lk.detail["accession_other_patient"] == "999"
+    assert st.accession == "999"  # never overwritten
+
+
+def test_matched_request_id_is_saved_as_the_missing_accession(session, stub, his):
+    stub.patients[GIRL] = his_stub.patient("77", GIRL)
+    stub.requests["77"] = [his_stub.request("R1", "2025-11-06T09:30:00", national_id=GIRL)]
+    st = _ingest(session, "1.9.100")
+    st.accession = None
+    _run(session)
+    assert st.accession == "R1" and not st.accession_is_hashed
+    assert session.get(HisLookup, st.id).detail["accession_saved"] == "R1"

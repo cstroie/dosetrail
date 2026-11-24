@@ -252,7 +252,17 @@ def process(session: Session, lookup: HisLookup, server: HisServer, client, ctx:
         detail["demographics"] = pat.demo_conflict
 
     req: HisRequest | None = None
-    if policy == "full" and study.study_datetime is not None:
+    acc = (study.accession or "").strip()
+    if policy == "full" and acc.isdigit() and not study.accession_is_hashed:
+        # the accession number is the HIS request id: ask for it directly
+        r = client.get_request(acc)
+        if r is not None and r.national_id == pat.patient_id:
+            req = r
+            lookup.request_id, lookup.match_score = acc[:32], 1.0
+            detail["type"] = "accession"
+        elif r is not None:
+            detail["accession_other_patient"] = acc[:32]
+    if req is None and policy == "full" and study.study_datetime is not None:
         when = study.study_datetime
         for kind in kinds_for(modality):
             key = (hp.id, kind)  # one listing per patient and type: every year, one HIS page
@@ -268,6 +278,10 @@ def process(session: Session, lookup: HisLookup, server: HisServer, client, ctx:
     if req is not None and req.national_id and req.national_id != pat.patient_id:
         detail["rejected_request"] = "the order form names another patient"
         req = None
+    if req is not None and not acc and req.id:
+        # the request id is the accession number: keep it, later lookups go straight to it
+        study.accession, study.accession_is_hashed = req.id[:64], False
+        detail["accession_saved"] = req.id[:64]
 
     offers = []
     if req is not None:
