@@ -25,6 +25,9 @@ bind = "0.0.0.0"
 allowed_aets = []                            # e.g. ["CT1", "PACS"]; empty = any caller
 spool_dir = "/var/lib/dozimetrix/spool"
 keep_received = false
+# max_object_mb = 2048                       # larger objects are refused
+# min_free_mb = 1024                         # refuse objects when the spool disk is this full
+# retention_days = 90                        # spool failed/ and archive/ older than this are removed (0 keeps)
 
 [pacs]
 host = "pacs.example.org"

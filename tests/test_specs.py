@@ -432,3 +432,14 @@ def test_the_documented_examples_stay_valid():
     plugin = (root / "plugin-site-fields.py").read_text()
     assert "registry import field, transform" in plugin  # the documented import still exists
     assert hasattr(registry, "field") and hasattr(registry, "transform")
+
+
+def test_a_world_writable_plugin_is_not_loaded(tmp_path):
+    from dozimetrix.specs import plugins
+
+    plug = tmp_path / "plug"
+    plug.mkdir()
+    (plug / "evil.py").write_text("x = 1\n")
+    (plug / "evil.py").chmod(0o666)
+    got = plugins.load(plug)
+    assert got[0]["error"].startswith("not loaded")

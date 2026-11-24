@@ -988,7 +988,8 @@ def _cmd_receive(args: argparse.Namespace) -> int:
     from .notify import NotifySettings
 
     worker = SpoolWorker(spool, maker, _secret(), keep=s.keep_received,
-                         notify=NotifySettings.from_dict(s.notify), device_alerts=True)
+                         notify=NotifySettings.from_dict(s.notify), device_alerts=True,
+                         retention_days=s.spool_retention_days)
     from .net import nodes
 
     with maker() as session:
@@ -996,7 +997,8 @@ def _cmd_receive(args: argparse.Namespace) -> int:
         allowed = nodes.allowed_senders(session, s.dicom_allowed_aets)
         session.commit()
     rx = Receiver(spool, args.aet or s.dicom_aet, args.port or s.dicom_port,
-                  args.bind or s.dicom_bind, allowed)
+                  args.bind or s.dicom_bind, allowed, max_object_mb=s.dicom_max_object_mb,
+                  min_free_mb=s.spool_min_free_mb)
     worker.start()
     rx.start()
     done = threading.Event()
@@ -1109,7 +1111,8 @@ def _cmd_qr(args: argparse.Namespace) -> int:
         from .net.scp import Receiver
 
         receiver = Receiver(worker.spool, s.dicom_aet, s.dicom_port, s.dicom_bind,
-                            s.dicom_allowed_aets)
+                            s.dicom_allowed_aets, max_object_mb=s.dicom_max_object_mb,
+                            min_free_mb=s.spool_min_free_mb)
         receiver.start()
         print(f"C-MOVE: started a receiver on port {s.dicom_port} for this run")
     with maker() as session:

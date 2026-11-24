@@ -192,6 +192,22 @@ def parse_request(r: dict) -> HisRequest:
 # ------------------------------------------------------------------------------- client
 
 
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to the same host, and never from https down to http, so the
+    Basic credentials and patient queries do not leave the configured server."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        old, new = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
+        if new.netloc.lower() != old.netloc.lower() or (old.scheme == "https"
+                                                        and new.scheme != "https"):
+            raise urllib.error.HTTPError(newurl, code, f"redirect to {new.netloc} refused",
+                                         headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SafeRedirect)
+
+
 class Client:
     def __init__(self, base_url: str, username: str | None, password: str | None,
                  timeout: float = 120, opener=None):
@@ -204,7 +220,7 @@ class Client:
         if username:
             token = base64.b64encode(f"{username}:{password or ''}".encode()).decode()
             self.headers["Authorization"] = f"Basic {token}"
-        self._open = opener or urllib.request.urlopen
+        self._open = opener or _OPENER.open
         self.calls = 0
 
     def _get(self, path: str, params: dict | None = None) -> dict | None:

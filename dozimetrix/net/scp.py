@@ -8,7 +8,9 @@ modalities often send compressed images and only the headers are needed.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
+import shutil
 
 from pynetdicom import AE, ALL_TRANSFER_SYNTAXES, AllStoragePresentationContexts, evt
 from pynetdicom.sop_class import Verification
@@ -16,6 +18,13 @@ from pynetdicom.sop_class import Verification
 from .spool import Spool
 
 log = logging.getLogger("dozimetrix.scp")
+
+
+def _loopback(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host == "localhost"
 
 
 def build_ae(aet: str, allowed_aets: list[str] | None = None) -> AE:
@@ -33,8 +42,11 @@ def build_ae(aet: str, allowed_aets: list[str] | None = None) -> AE:
 
 class Receiver:
     def __init__(self, spool: Spool, aet: str, port: int, bind: str = "0.0.0.0",
-                 allowed_aets: list[str] | None = None):
+                 allowed_aets: list[str] | None = None, max_object_mb: float = 2048.0,
+                 min_free_mb: float = 1024.0):
         self.spool, self.aet, self.port, self.bind = spool, aet, port, bind
+        self.max_bytes = int(max_object_mb * 1024 * 1024)
+        self.min_free = int(min_free_mb * 1024 * 1024)
         self.ae = build_ae(aet, allowed_aets)
         self.server = None
         self.received = 0
@@ -52,10 +64,17 @@ class Receiver:
         except Exception:  # noqa: BLE001 – statistics only
             caller = "?"
         try:
+            if self.min_free and shutil.disk_usage(self.spool.incoming).free < self.min_free:
+                log.error("spool disk almost full: refusing objects from %s", caller)
+                return 0xA700  # Out of resources
             data = event.encoded_dataset()
+            if self.max_bytes and len(data) > self.max_bytes:
+                log.warning("object from %s refused: %d MB is over the limit", caller,
+                            len(data) // 2**20)
+                return 0xA700
             self.spool.write(uid, lambda p: p.write_bytes(data))
-        except Exception:
-            log.exception("cannot spool %s", uid)
+        except Exception as e:
+            log.error("cannot spool an object from %s: %s", caller, type(e).__name__)
             return 0xA700  # Out of resources
         self.received += 1
         import datetime as dt
@@ -69,6 +88,9 @@ class Receiver:
         return 0x0000
 
     def start(self) -> None:
+        if not self.ae.require_calling_aet and not _loopback(self.bind):
+            log.warning("DICOM receiver on %s accepts any calling AE title: list the senders "
+                        "on the DICOM page or in [dicom] allowed_aets", self.bind)
         handlers = [(evt.EVT_C_STORE, self._on_store), (evt.EVT_C_ECHO, self._on_echo)]
         self.server = self.ae.start_server((self.bind, self.port), block=False,
                                            evt_handlers=handlers)

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import logging
 import os
 import shutil
@@ -40,6 +41,8 @@ class Spool:
     def write(self, sop_instance_uid: str, write_fn) -> Path:
         """write_fn(path) writes the object; the rename makes it visible atomically."""
         safe = "".join(c for c in sop_instance_uid if c.isdigit() or c == ".")[:64] or "obj"
+        if safe != sop_instance_uid:  # cut or cleaned: keep different UIDs apart
+            safe += "-" + hashlib.sha256(sop_instance_uid.encode()).hexdigest()[:12]
         final = self.incoming / f"{safe}.dcm"
         part = final.with_suffix(".part")
         write_fn(part)
@@ -84,7 +87,7 @@ class SpoolWorker(threading.Thread):
 
     def __init__(self, spool: Spool, maker: sessionmaker[Session], secret: bytes,
                  keep: bool = False, interval: float = 1.0, batch: int = 100,
-                 notify=None, device_alerts: bool = False):
+                 notify=None, device_alerts: bool = False, retention_days: int = 0):
         super().__init__(name="dozimetrix-spool", daemon=True)
         self.spool, self.maker, self.secret = spool, maker, secret
         self.keep, self.interval, self.batch = keep, interval, batch
@@ -96,6 +99,8 @@ class SpoolWorker(threading.Thread):
         self._last_repair = float("-inf")
         self.stop_event = threading.Event()
         self.stats: dict[str, int] = {}
+        self.retention_days = retention_days  # failed/ and archive/: 0 keeps everything
+        self._last_prune = float("-inf")
 
     def run(self) -> None:
         while not self.stop_event.is_set():
@@ -103,6 +108,7 @@ class SpoolWorker(threading.Thread):
                 if not self.drain():
                     self.device_alerts()
                     self.repair_derived()
+                    self.prune()
                     self.dispatch()
                     self.stop_event.wait(self.interval)
             except Exception:  # keep the worker alive; the object stays in incoming/
@@ -177,6 +183,27 @@ class SpoolWorker(threading.Thread):
         except Exception:  # noqa: BLE001 – notifications must never stop the importer
             log.exception("notification dispatch failed")
 
+    def prune(self) -> int:
+        """Hourly: remove failed and archived objects (patient data) past the retention."""
+        if self.retention_days <= 0 or time.monotonic() - self._last_prune < 3600:
+            return 0
+        self._last_prune = time.monotonic()
+        cutoff = time.time() - self.retention_days * 86400
+        removed = 0
+        for root in (self.spool.failed, self.spool.archive):
+            for p in sorted(root.rglob("*"), reverse=True):  # files before their folders
+                try:
+                    if p.is_file() and p.stat().st_mtime < cutoff:
+                        p.unlink()
+                        removed += 1
+                    elif p.is_dir() and p != root and not any(p.iterdir()):
+                        p.rmdir()
+                except OSError:
+                    continue
+        if removed:
+            log.info("removed %d spool files older than %d days", removed, self.retention_days)
+        return removed
+
     def drain(self) -> int:
         """Import what is pending now; return the number of files handled."""
         self.spool.recover()
@@ -194,7 +221,8 @@ class SpoolWorker(threading.Thread):
                 if status == "retry":  # put it back and try the batch again later
                     work.rename(work.with_suffix(".dcm"))
                     self.stats["retried"] = self.stats.get("retried", 0) + 1
-                    log.warning("database error, will retry %s: %s", path.name, message)
+                    log.warning("database error, will retry %s: %s", path.name,
+                                message.split(":", 1)[0])
                     session.rollback()
                     break
                 self.stats[status] = self.stats.get(status, 0) + 1
@@ -228,7 +256,8 @@ class SpoolWorker(threading.Thread):
             target = self.spool.failed / name
             shutil.move(path, target)
             target.with_suffix(".reason").write_text(message + "\n")
-            log.warning("failed %s: %s", path.name, message)
+            # the message may quote header values: it stays in the .reason file (0700 folder)
+            log.warning("failed %s: %s", path.name, message.split(":", 1)[0][:80])
         elif self.keep:
             day = self.spool.archive / dt.date.today().strftime("%Y%m%d")
             day.mkdir(exist_ok=True)

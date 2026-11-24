@@ -38,6 +38,9 @@ class Settings:
     dicom_allowed_aets: list[str] = field(default_factory=list)  # empty = accept any caller
     spool_dir: Path = field(default_factory=lambda: Path("var/spool"))
     keep_received: bool = False  # keep imported objects under spool/archive/YYYYMMDD
+    dicom_max_object_mb: float = 2048.0  # larger objects are refused (Out of resources)
+    spool_min_free_mb: float = 1024.0  # refuse objects when the spool disk has less free
+    spool_retention_days: int = 90  # failed/ and archive/ files older than this go; 0 keeps
     # PACS for query/retrieve (C-FIND + C-GET)
     pacs_host: str | None = None
     pacs_port: int = 104
@@ -103,6 +106,9 @@ def load_settings() -> Settings:
             if "spool_dir" in dcm:
                 s.spool_dir = Path(dcm["spool_dir"]).expanduser()
             s.keep_received = bool(dcm.get("keep_received", s.keep_received))
+            s.dicom_max_object_mb = float(dcm.get("max_object_mb", s.dicom_max_object_mb))
+            s.spool_min_free_mb = float(dcm.get("min_free_mb", s.spool_min_free_mb))
+            s.spool_retention_days = int(dcm.get("retention_days", s.spool_retention_days))
             pacs = raw.get("pacs", {})
             s.pacs_host = pacs.get("host", s.pacs_host)
             s.pacs_port = int(pacs.get("port", s.pacs_port))
