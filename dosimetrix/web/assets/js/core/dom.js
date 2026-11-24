@@ -39,7 +39,7 @@ export function clear(el) {
 
 /** Inline SVG icon from a small hand-drawn set (stroke icons, 24×24 grid). */
 const ICONS = {
-  logo: 'M5 4h5.5a8 8 0 0 1 0 16H5z M8 16c1.5 0 2-6 3.5-6s2 4 3.5 4',  // the D-curve mark (docs/branding)
+  logo: 'M5 4h5.5a8 8 0 0 1 0 16H5z M8.5 16.5C11 16.5 11.5 10 15 9.5',  // the D-curve mark (docs/branding)
   overview: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
   studies: 'M4 6h16M4 12h16M4 18h16',
   charts: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
