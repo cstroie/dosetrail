@@ -815,7 +815,7 @@ def test_live_stream_sends_current_state_per_topic(client, monkeypatch):
     assert "event: his" in r.text and "bogus" not in r.text
     data = r.text.split("event: his\ndata: ", 1)[1].split("\n", 1)[0]
     import json
-    assert set(json.loads(data)) == {"worker", "queue", "recent"}
+    assert set(json.loads(data)) == {"worker", "queue", "waiting", "recent"}
     r = client.get("/api/live")  # default: the pulse
     pulse = json.loads(r.text.split("event: pulse\ndata: ", 1)[1].split("\n", 1)[0])
     assert set(pulse) == {"study", "alert", "alerts_open"} and pulse["study"]
@@ -839,3 +839,10 @@ def test_live_study_topic_stamps_one_study(client, monkeypatch):
     r = client.get(f"/api/live?topics=study:{sid},study:x1")
     assert f"event: study:{sid}" in r.text and '"events": [' in r.text
     assert "study:x1" not in r.text
+
+
+def test_his_waiting_breakdown(client):
+    login(client, "boss", "boss-pass-123")
+    wt = client.get("/api/his/status").json()["waiting"]
+    assert set(wt) == {"due", "retry", "next_retry", "history", "backfill_hours"}
+    assert wt["due"] >= 0 and wt["retry"] >= 0 and wt["history"] >= 0

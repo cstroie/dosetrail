@@ -138,12 +138,22 @@ function hisSection(his) {
     h('h2', { class: 'section-title m0' }, 'HIS / RIS servers'), h('span', { class: 'spacer' }),
     his.error ? null : h('button', { class: 'btn primary', type: 'button', onclick: () => editHis(null) }, 'Add server'));
   if (his.error) return [head, h('p', { class: 'muted' }, his.error)];
-  drawHis({ worker: his.worker, queue: his.queue, recent: lastHis?.recent || [] });
+  drawHis({ worker: his.worker, queue: his.queue, waiting: his.waiting, recent: lastHis?.recent || [] });
   return [head, hisBox,
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, hisTable(his.servers)))];
 }
 
 const LOOKUP_TAG = { matched: 'ok', patient_only: 'info', pending: 'warn', no_patient: 'warn', error: 'alert' };
+
+// why the waiting lookups wait, so a quiet queue does not look stuck
+function waitingNote(wt) {
+  if (!wt) return '';
+  const parts = [];
+  if (wt.due) parts.push(`${num(wt.due)} due now`);
+  if (wt.retry) parts.push(`${num(wt.retry)} retry later${wt.next_retry ? ` (next at ${wt.next_retry.slice(11)})` : ''}`);
+  if (wt.history) parts.push(`${num(wt.history)} history, waiting for backfill hours (${wt.backfill_hours})`);
+  return parts.length ? h('span', { style: { display: 'block' } }, `Waiting: ${parts.join(' · ')}`) : '';
+}
 
 function drawHis(v) {
   lastHis = v;
@@ -156,7 +166,8 @@ function drawHis(v) {
       w ? [h('span', { class: `tag ${w.stale ? 'warn' : 'ok'}` }, w.stale ? 'worker: not running' : 'worker: running'),
         ` last batch ${w.at.replace('T', ' ')}${w.message ? ` · ${w.message}` : ''}`]
         : 'Worker never seen: run dozimetrix his run (or its service).',
-      queue.length ? ` · Studies: ${queue.map(([k, n]) => `${QUEUE_LABELS[k] || k} ${num(n)}`).join(' · ')}` : ''),
+      queue.length ? ` · Studies: ${queue.map(([k, n]) => `${QUEUE_LABELS[k] || k} ${num(n)}`).join(' · ')}` : '',
+      waitingNote(v.waiting)),
     recent.length ? h('details', { class: 'mb-3' },
       h('summary', { class: 'muted small', style: { cursor: 'pointer' } }, `Recent lookups · latest ${recent[0].at.replace('T', ' ')}`),
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },

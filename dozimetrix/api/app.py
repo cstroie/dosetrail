@@ -1099,7 +1099,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             worker["stale"] = age > 600
         queue = dict(session.execute(select(HisLookup.status, func.count())
                                      .group_by(HisLookup.status)).all())
-        return {"worker": worker, "queue": queue,
+        return {"worker": worker, "queue": queue, "waiting": his_waiting(session),
                 "servers": [servers.as_dict(s) for s in session.scalars(
                     select(HisServer).order_by(HisServer.name))]}
 
@@ -1124,6 +1124,33 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return {"at": st.updated_at, "events": list(ev), "alerts": [list(a) for a in al],
                 "his": [his.status, his.fetched_at] if his else None,
                 "patient": pat.updated_at if pat else None}
+
+    def his_waiting(session) -> dict:
+        """Why pending HIS lookups wait: due now, a retry later (forms come late) or history
+        held for the server's backfill hours (the same rules as the worker's queue)."""
+        from ..db.models import HisLookup, Study
+        from ..his import enrich, servers
+
+        now = dt.datetime.now()  # the worker's clock
+        active = servers.active(session)
+        hours = active[0].backfill_hours if active else None
+        open_hours = enrich._in_hours(hours, now)
+        pend = HisLookup.status == "pending"
+        later = HisLookup.next_try_at > now
+        retry, next_at = session.execute(
+            select(func.count(), func.min(HisLookup.next_try_at)).where(pend, later)).one()
+        history = 0
+        if not open_hours:
+            history = session.scalar(
+                select(func.count()).select_from(HisLookup)
+                .join(Study, Study.id == HisLookup.study_id)
+                .where(pend, ~later | HisLookup.next_try_at.is_(None),
+                       (Study.study_datetime < now - enrich.RECENT)
+                       | Study.study_datetime.is_(None))) or 0
+        total = session.scalar(select(func.count()).select_from(HisLookup).where(pend)) or 0
+        return {"due": total - retry - history, "retry": retry,
+                "next_retry": next_at.isoformat(timespec="minutes") if next_at else None,
+                "history": history, "backfill_hours": hours}
 
     def live_snapshot(topics: set[str]) -> dict:
         from ..db.models import AppSetting, HisLookup, Study
@@ -1179,7 +1206,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                     .join(Study, Study.id == HisLookup.study_id)
                     .where(HisLookup.fetched_at.is_not(None))
                     .order_by(HisLookup.fetched_at.desc()).limit(20)).all()
-                out["his"] = {"worker": worker, "queue": queue, "recent": [{
+                out["his"] = {"worker": worker, "queue": queue, "waiting": his_waiting(session),
+                              "recent": [{
                     "study_id": lk.study_id, "status": lk.status,
                     "at": lk.fetched_at.isoformat(timespec="seconds"),
                     "study_at": when.isoformat(timespec="minutes") if when else None,
@@ -1219,12 +1247,15 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             w = dict(row.value or {}) if row else {}
             age = int((clock() - dt.datetime.fromisoformat(w["at"])).total_seconds()) \
                 if w.get("at") else None
-            waiting = session.scalar(select(func.count()).select_from(HisLookup)
-                                     .where(HisLookup.status == "pending")) or 0
+            wt = his_waiting(session)
+            parts = [f"{wt['due']} due" if wt["due"] else "",
+                     f"{wt['retry']} retry later" if wt["retry"] else "",
+                     f"{wt['history']} wait for {wt['backfill_hours']}" if wt["history"] else ""]
+            waiting = " · ".join(p for p in parts if p)
             out.append({"key": "his", "name": "HIS worker",
                         "state": "alert" if w.get("error") or age is None or age > 600 else "ok",
                         "at": w.get("at"), "age_s": age,
-                        "detail": w.get("error") or (f"{waiting} waiting" if waiting else "queue empty")})
+                        "detail": w.get("error") or (waiting or "queue empty")})
         else:
             out.append({"key": "his", "name": "HIS worker", "state": "idle",
                         "detail": "no HIS server enabled"})

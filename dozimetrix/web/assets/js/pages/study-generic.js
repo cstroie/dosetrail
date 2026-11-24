@@ -399,7 +399,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
     ...(T.activity_mbq != null ? [readout('Administered activity', num(T.activity_mbq, 0), 'MBq')] : []),
     readout('Total DLP', num(T.dlp_mgycm, 1), 'mGy·cm', `${series.length} series + ${ev.filter((e) => e.localizer).length} localizer`),
     readout('Highest CTDIvol', num(T.ctdivol_max, 2), 'mGy', [...new Set(series.map((e) => e.phantom_cm).filter(Boolean))].map((x) => `${x} cm phantom`).join(' · ')),
-    readout('Highest SSDE', ssde.length ? num(Math.max(...ssde), 2) : '—', ssde.length ? 'mGy' : '', ssde.length ? 'size-specific dose estimate' : 'no patient size (SSDE needs it)'),
+    readout('Highest SSDE', ssde.length ? num(Math.max(...ssde), 2) : '—', ssde.length ? 'mGy' : '', ssde.length ? 'size-specific dose estimate' : 'the scanner reported no water-equivalent diameter (Dw): SSDE needs it, weight and height do not give it'),
     drlReadout(topRatio(series, (e) => e.dlp, (e) => e.drl?.dlp), 'DLP'),
     readout('Scan length', lengthCm ? num(lengthCm, 1) : '—', lengthCm ? 'cm' : '', `kV ${range(series, 'kvp') || '—'} · pitch ${range(series, 'pitch', 2) || '—'}`, { sm: true }),
     readout('Contrast', { N: 'native', C: 'contrast', NC: 'native + contrast', MF: 'multiphase' }[s.contrast] || '—'),
