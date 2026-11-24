@@ -58,10 +58,45 @@ function rxColumns() {
     { key: 'mas', label: 'mAs', align: 'right' },
     { key: 'dap_gycm2', label: 'DAP', unit: dapUnit(), align: 'right', render: (e) => (e.dap_gycm2 == null ? '' : dap(e.dap_gycm2, 3)) },
     { key: 'exposure_index', label: 'EI', align: 'right' },
-    { key: 'deviation_index', label: 'DI', align: 'right' },
+    { key: 'deviation_index', label: 'DI', align: 'right', render: diCell },
     { key: 'sid_cm', label: 'SID', unit: 'cm', align: 'right' },
     { key: 'exam', label: 'Exam', render: (e) => e.exam || '' },
     { key: 'drl', label: 'DAP / DRL', align: 'right', render: (e) => (e.drl?.dap ? h('span', { title: `${e.drl.code}: DRL ${e.drl.dap} Gy·cm² per projection (retakes add up)` }, ratioTag(e.dap_gycm2, e.drl.dap)) : '') },
+  ];
+}
+
+// |DI| > 3: the detector dose is outside the target (IEC 62494-1); flagged, not alarmed
+function diCell(e) {
+  if (e.deviation_index == null) return '';
+  return Math.abs(e.deviation_index) > 3 ? h('span', { class: 'tag warn', title: '|DI| > 3: exposure outside the target' }, num(e.deviation_index, 1)) : num(e.deviation_index, 1);
+}
+
+function mgColumns() {
+  return [
+    { key: 'no', label: '#', align: 'right', width: '40px' },
+    { key: 'time', label: 'Time', width: '80px', render: (e) => (e.time ? clock(e.time) : '') },
+    { key: 'laterality', label: 'Side', width: '50px' },
+    { key: 'view', label: 'View', render: (e) => e.projection || e.view || '' },
+    { key: 'kvp', label: 'kV', align: 'right' },
+    { key: 'mas', label: 'mAs', align: 'right' },
+    { key: 'target', label: 'Target / filter', render: (e) => [e.target, e.filter].filter(Boolean).join(' / ') },
+    { key: 'thickness_mm', label: 'Thickness', unit: 'mm', align: 'right' },
+    { key: 'force_n', label: 'Force', unit: 'N', align: 'right' },
+    { key: 'esd_mgy', label: 'ESD', unit: 'mGy', align: 'right', render: (e) => (e.esd_mgy == null ? '' : num(e.esd_mgy, 2)) },
+    { key: 'agd_mgy', label: 'AGD', unit: 'mGy', align: 'right', render: (e) => (e.agd_mgy == null ? '' : h('strong', {}, num(e.agd_mgy, 2))) },
+  ];
+}
+
+function nmColumns() {
+  return [
+    { key: 'no', label: '#', align: 'right', width: '40px' },
+    { key: 'time', label: 'Injection', width: '80px', render: (e) => (e.time ? clock(e.time) : '') },
+    { key: 'agent', label: 'Radiopharmaceutical', render: (e) => h('span', { class: 'sans' }, e.agent || '—') },
+    { key: 'nuclide', label: 'Nuclide' },
+    { key: 'route', label: 'Route' },
+    { key: 'activity_mbq', label: 'Activity', unit: 'MBq', align: 'right', render: (e) => (e.activity_mbq == null ? '—' : h('strong', {}, num(e.activity_mbq, 0))) },
+    { key: 'per_kg', label: 'MBq/kg', align: 'right', sortable: false, render: (e) => (e.activity_mbq != null && e._kg ? num(e.activity_mbq / e._kg, 2) : '') },
+    { key: 'same_administration_as', label: 'Counted', render: (e) => (e.same_administration_as ? h('a', { href: studyHref({ id: e.same_administration_as }) }, 'on an earlier study') : 'here') },
   ];
 }
 
@@ -92,6 +127,11 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
     readout('Total DLP', num(T.dlp_mgycm, 1), 'mGy·cm', `${series.length} series + ${ev.length - series.length} localizer`),
     readout('Highest CTDIvol', num(T.ctdivol_max, 2), 'mGy', [...new Set(series.map((e) => e.phantom_cm).filter(Boolean))].map((x) => `${x} cm phantom`).join(' · ')),
     readout('Contrast', { N: 'native', C: 'contrast', NC: 'native + contrast', MF: 'multiphase' }[s.contrast] || '—'),
+  ] : s.modality === 'MG' ? [
+    readout('AGD left', T.agd_left_mgy != null ? num(T.agd_left_mgy, 2) : '—', 'mGy', 'per breast: the sum of its views'),
+    readout('AGD right', T.agd_right_mgy != null ? num(T.agd_right_mgy, 2) : '—', 'mGy'),
+    readout('Views', views.length ? views.join(', ') : `${ev.length}`, '', `${ev.length} exposures`),
+    readout('Thickness', (() => { const x = ev.map((e) => e.thickness_mm).filter((v) => v != null); return x.length ? `${num(Math.min(...x))}–${num(Math.max(...x))}` : '—'; })(), 'mm'),
   ] : ['PT', 'NM'].includes(s.modality) ? [
     readout('Administered activity', T.activity_mbq != null ? num(T.activity_mbq, 0) : '—', 'MBq', T.activity_counted_on ? h('a', { href: studyHref({ id: T.activity_counted_on }) }, 'same administration: counted on the earlier study') : `${ev.length} administration${ev.length === 1 ? '' : 's'}`),
   ] : [
@@ -99,9 +139,14 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
     readout('Projections', views.length ? views.join(', ') : '—'),
     readout('Highest kV', num(Math.max(0, ...ev.map((e) => e.kvp || 0)), 0), 'kV'),
   ];
-  const grid = h('dx-data-grid', { class: 'study-events', label: ct ? 'CT series' : 'Exposures', noun: ct ? 'series' : 'exposures', 'storage-key': ct ? 'grid.ct-series' : 'grid.rx-exposures' },
-    h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows(s, ct) }, 'CSV'));
-  grid.columns = ct ? ctColumns() : rxColumns();
+  // which events this page lists: CT series; NM/PET administrations; MG views; DX/CR exposures
+  const kind = ct ? 'ct' : ['PT', 'NM'].includes(s.modality) ? 'nm' : s.modality === 'MG' ? 'mg' : 'rx';
+  const KIND = { ct: ['CT series', 'series', 'grid.ct-series', ctColumns], nm: ['Administrations', 'administrations', 'grid.nm-admin', nmColumns],
+    mg: ['Views', 'views', 'grid.mg-views', mgColumns], rx: ['Exposures', 'exposures', 'grid.rx-exposures', rxColumns] }[kind];
+  if (kind === 'nm') ev.forEach((e) => { e._kg = p.weight_kg; });
+  const grid = h('dx-data-grid', { class: 'study-events', label: KIND[0], noun: KIND[1], 'storage-key': KIND[2] },
+    h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows(s, kind) }, 'CSV'));
+  grid.columns = KIND[3]();
   grid.rowId = (e) => e.no;
   grid.setState({ sort: 'no', dir: 'asc', page: 1, size: 500 });
   grid.fetcher = async ({ sort, dir }) => {
@@ -150,16 +195,23 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
       h('div', { class: 'main' }, grid,
         h('p', { class: 'muted small' }, ct
           ? 'DRL per series: national OMS 838/2025 DLP for the exam and age group, else RP 185; CTDIvol from RP 185 (head by age, body by weight). Localizers excluded.'
-          : 'DRL per projection (OMS 838/2025, by age group). Retakes of the same projection add up to the projection dose.'))));
+          : kind === 'nm' ? 'Administered activity per injection; a delayed scan of the same injection counts it once, on the first study.'
+            : kind === 'mg' ? 'AGD per view as reported by the unit; the per-breast AGD sums the views of that breast (the MGD DRL applies per breast).'
+              : 'DRL per projection (OMS 838/2025, by age group). Retakes of the same projection add up to the projection dose.'))));
   grid.reload();  // the grid fetches once it is in the document
   document.title = `${s.accession || s.id} · Dosimetrix`;
 }
 
-function exportRows(s, ct) {
-  const cols = ct ? ['no', 'protocol', 'type', 'ctdivol', 'phantom_cm', 'dlp', 'ssde_mgy', 'scan_length_mm', 'pitch', 'kvp', 'mas', 'exam']
-    : ['no', 'time', 'protocol', 'anatomy', 'view', 'kvp', 'mas', 'dap_gycm2', 'exposure_index', 'deviation_index', 'sid_cm', 'exam'];
+function exportRows(s, kind) {
+  const cols = {
+    ct: ['no', 'protocol', 'type', 'ctdivol', 'phantom_cm', 'dlp', 'ssde_mgy', 'scan_length_mm', 'pitch', 'kvp', 'mas', 'exam'],
+    nm: ['no', 'time', 'agent', 'nuclide', 'route', 'activity_mbq', 'same_administration_as'],
+    mg: ['no', 'time', 'laterality', 'view', 'kvp', 'mas', 'target', 'filter', 'thickness_mm', 'force_n', 'esd_mgy', 'agd_mgy'],
+    rx: ['no', 'time', 'protocol', 'anatomy', 'view', 'kvp', 'mas', 'dap_gycm2', 'exposure_index', 'deviation_index', 'sid_cm', 'exam'],
+  }[kind];
+  const ct = kind === 'ct';
   const esc = (v) => (v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v).replace(/^([=+\-@])/, "'$1"));
   const text = [cols.join(',')].concat(s.events.map((e) => cols.map((c) => esc(e[c])).join(','))).join('\r\n');
-  h('a', { href: URL.createObjectURL(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' })), download: `${s.accession || s.id}-${ct ? 'series' : 'exposures'}.csv` }).click();
+  h('a', { href: URL.createObjectURL(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' })), download: `${s.accession || s.id}-${ct ? 'series' : kind === 'nm' ? 'administrations' : 'exposures'}.csv` }).click();
 }
 

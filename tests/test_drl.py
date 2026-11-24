@@ -107,6 +107,14 @@ def test_activity_per_study_and_mammography_per_breast(session, data):
     assert len(mg_rows) == 4 and {r["agd"] for r in mg_rows} == {1.0, 1.5, 1.2, 1.4}
     pt_rows = api_data.group_rows(session, "", T, "PT")
     assert sorted(r["activity"] or 0 for r in pt_rows) == [0, 300.0, 420.0]
+    # the detail page: per-administration rows and per-breast AGD
+    d = api_data.study(session, late.id)
+    (adm,) = [e for e in d["events"] if e.get("agent")]
+    assert adm["agent"] == "FDG" and adm["activity_mbq"] == 420.0
+    assert adm["same_administration_as"] == 1
+    d = api_data.study(session, mg.id)
+    assert {"agd_left_mgy", "agd_right_mgy"} <= d["totals"].keys()
+    assert sorted(e["agd_mgy"] for e in d["events"]) == [1.0, 1.2, 1.4, 1.5]
 
 
 def test_european_set_units_bands_and_devices(session, data):

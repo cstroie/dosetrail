@@ -364,6 +364,7 @@ def study(session: Session, study_id: int) -> dict | None:
             "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": _r(s.psd_mgy, 1),
             "dlp_mgycm": _r(s.total_dlp, 1), "ctdivol_max": _r(s.ctdivol_max, 2),
             "n_events": s.n_events, "activity_mbq": _r(s.admin_activity_mbq, 1),
+            "agd_left_mgy": _r(s.agd_left, 2), "agd_right_mgy": _r(s.agd_right, 2),
             # the administration this study shares, counted on that earlier study
             "activity_counted_on": next((x for e in events if (x := (e.extra_json or {})
                                          .get("same_administration_as"))), None),
@@ -490,6 +491,16 @@ def _event(no: int, e: Event) -> dict:
         "scan_length_mm": _r(e.scan_length_mm, 1), "pitch": _r(e.pitch, 3),
         "localizer": e.is_localizer, "exposure_index": _r(e.exposure_index, 1),
         "deviation_index": _r(e.deviation_index, 2), "agd_mgy": _r(e.agd, 3),
+        # mammography
+        "esd_mgy": _r(e.esd, 3), "thickness_mm": _r(e.compression_thickness_mm, 0),
+        "force_n": _r(e.compression_force_n, 0), "target": e.target_material,
+        "filter": e.filter_material,
+        # radiopharmaceutical administration (NM/PET): agent in protocol, nuclide in comment
+        **({"agent": e.protocol, "nuclide": e.comment,
+            "activity_mbq": _r((e.extra_json or {}).get("activity_mbq"), 1),
+            "route": (e.extra_json or {}).get("route"),
+            "same_administration_as": (e.extra_json or {}).get("same_administration_as")}
+           if e.event_type == "radiopharmaceutical" else {}),
     }
 
 
