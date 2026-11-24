@@ -1,6 +1,6 @@
 # UI hand-over: findings from running the Console UI on real data
 
-The UI now runs against the live API (`dosimetrix serve`, then log in). The pages receive the same shapes as `data/sample/`, plus these fields:
+The UI now runs against the live API (`dozimetrix serve`, then log in). The pages receive the same shapes as `data/sample/`, plus these fields:
 - `id` on studies, lookup results and previous studies;
 - `accession_hashed`;
 - `patient.age_days`, `patient.age_precision`, `patient.weight_source`;

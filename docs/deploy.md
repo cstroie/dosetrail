@@ -5,9 +5,9 @@ query/retrieve job. Docker images will follow; this guide uses systemd only.
 
 ## 1. System
 - Python ≥ 3.12 with the `sqlite3` module (only needed for tests), MariaDB ≥ 10.6.
-- A service account: `useradd --system --home /var/lib/dosimetrix --shell /usr/sbin/nologin dosimetrix`
-- Directories: `/opt/dosimetrix` (code + virtualenv), `/etc/dosimetrix` (config, 0750
-  root:dosimetrix), `/var/lib/dosimetrix` (secret, spool; 0700 dosimetrix).
+- A service account: `useradd --system --home /var/lib/dozimetrix --shell /usr/sbin/nologin dozimetrix`
+- Directories: `/opt/dozimetrix` (code + virtualenv), `/etc/dozimetrix` (config, 0750
+  root:dozimetrix), `/var/lib/dozimetrix` (secret, spool; 0700 dozimetrix).
 
 ## 2. Database
 ```sql
@@ -24,12 +24,12 @@ is the difference between 25 ms and 10 s per page of results.
 **First-run wizard.** On an empty database every page leads to `/setup`. The web service prints a one-time setup token to its log and writes it to `<data_dir>/setup-token` (0600); entering it proves access to the server. The wizard checks the installation, can create the schema and load the seed data, creates the first administrator (all roles, signed in at once), and then asks for the site name, a PACS node (with C-ECHO) and the growth tables. An admin can open `/setup` again later. The manual steps below do the same from the command line.
 
 ```sh
-python3.12 -m venv /opt/dosimetrix/.venv
-/opt/dosimetrix/.venv/bin/pip install dosimetrix        # or: pip install -e <checkout>
-cp deploy/dosimetrix.toml.example /etc/dosimetrix/dosimetrix.toml   # edit it
-sudo -u dosimetrix dosimetrix --config /etc/dosimetrix/dosimetrix.toml migrate
-sudo -u dosimetrix dosimetrix --config /etc/dosimetrix/dosimetrix.toml seed
-sudo -u dosimetrix dosimetrix --config /etc/dosimetrix/dosimetrix.toml user set admin --roles viewer,exporter,pid,importer,admin
+python3.12 -m venv /opt/dozimetrix/.venv
+/opt/dozimetrix/.venv/bin/pip install dozimetrix        # or: pip install -e <checkout>
+cp deploy/dozimetrix.toml.example /etc/dozimetrix/dozimetrix.toml   # edit it
+sudo -u dozimetrix dozimetrix --config /etc/dozimetrix/dozimetrix.toml migrate
+sudo -u dozimetrix dozimetrix --config /etc/dozimetrix/dozimetrix.toml seed
+sudo -u dozimetrix dozimetrix --config /etc/dozimetrix/dozimetrix.toml user set admin --roles viewer,exporter,pid,importer,admin
 ```
 The site secret (`secret_file`) is created on first use. Back it up: pseudonyms and
 sessions depend on it.
@@ -38,48 +38,48 @@ sessions depend on it.
 ```sh
 cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now dosimetrix-web dosimetrix-receive dosimetrix-qr.timer
-systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
+systemctl enable --now dozimetrix-web dozimetrix-receive dozimetrix-qr.timer
+systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
 ```
-- `dosimetrix-web` listens on `[web] host:port` (default 127.0.0.1:8104); publish it through an HTTPS reverse proxy
+- `dozimetrix-web` listens on `[web] host:port` (default 127.0.0.1:8104); publish it through an HTTPS reverse proxy
   (nginx, Apache) and set `secure_cookies = true`.
-- `dosimetrix-receive` listens for DICOM on `[dicom] port` (11112). Register
-  `AE DOSIMETRIX / host / 11112` on the modalities and the PACS that should send dose
+- `dozimetrix-receive` listens for DICOM on `[dicom] port` (11112). Register
+  `AE DOZIMETRIX / host / 11112` on the modalities and the PACS that should send dose
   objects; restrict callers with `allowed_aets`.
-- `dosimetrix-qr.timer` queries the PACS every hour for the last two days, one day and one
+- `dozimetrix-qr.timer` queries the PACS every hour for the last two days, one day and one
   modality at a time (many PACS cap the number of studies a query returns; set
   `max_results` and capped days are split into time windows).
 - Three ways to get data in:
   - **C-GET** (`retrieve = "get"`, default) – nothing to configure on the PACS;
-  - **C-MOVE** (`retrieve = "move"`) – register `DOSIMETRIX` (host, port 11112) on the PACS;
-    objects arrive at the receiver; `dosimetrix qr` starts a temporary receiver if the
+  - **C-MOVE** (`retrieve = "move"`) – register `DOZIMETRIX` (host, port 11112) on the PACS;
+    objects arrive at the receiver; `dozimetrix qr` starts a temporary receiver if the
     service is not running;
   - **push** – configure modalities or the PACS to send dose objects to the receiver.
 
 ## 5. Importing history
-- OpenREM: `dosimetrix openrem-dump --ssh root@openrem-host` then `dosimetrix openrem-import`
+- OpenREM: `dozimetrix openrem-dump --ssh root@openrem-host` then `dozimetrix openrem-import`
   (see the reconciliation report it prints).
-- Back-fill from the PACS: `dosimetrix qr --from 2026-08-01 --to 2026-11-21` (resumable;
+- Back-fill from the PACS: `dozimetrix qr --from 2026-08-01 --to 2026-11-21` (resumable;
   finished days are remembered).
 - New devices start as *external*; mark your own rooms local on Admin → Devices.
 
 ## Alerts and notifications
-- Default alert rules are seeded by `dosimetrix seed`; edit them in the UI (Admin → Alert rules) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
-- New studies are evaluated as they are imported. To evaluate history, run `dosimetrix alerts evaluate --since 2026-01-01`.
-- Notifications are sent by the receiver service when it is idle, at most every 30 s. They can also be sent with `dosimetrix alerts notify`. Only alerts on studies from the last 48 h are sent.
-- Configure `[notify]` (see `dosimetrix.toml.example`), then check it with `dosimetrix alerts test-notify`.
+- Default alert rules are seeded by `dozimetrix seed`; edit them in the UI (Admin → Alert rules) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
+- New studies are evaluated as they are imported. To evaluate history, run `dozimetrix alerts evaluate --since 2026-01-01`.
+- Notifications are sent by the receiver service when it is idle, at most every 30 s. They can also be sent with `dozimetrix alerts notify`. Only alerts on studies from the last 48 h are sent.
+- Configure `[notify]` (see `dozimetrix.toml.example`), then check it with `dozimetrix alerts test-notify`.
 
 ## Growth tables (setup step)
-- Run `dosimetrix growth install` once; it downloads the weight-for-age tables into `<data_dir>/growth`:
+- Run `dozimetrix growth install` once; it downloads the weight-for-age tables into `<data_dir>/growth`:
   - the WHO Child Growth Standards for 0–5 years;
   - the WHO 2007 Growth Reference for 5–10 years;
   - the CDC 2000 growth charts (2–20 years), used only beyond 10 years, where WHO has no weight-for-age reference. Rerun `install` on older setups to add it.
-- They are WHO and CDC data under their publishers' terms (see `SOURCE.txt` there), so they are not shipped with Dozimetrix. `dosimetrix growth status` shows whether they are installed.
-- With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Missing or implausible weights (outside P1–P99) are replaced by the median weight for age and sex (`weight_source = estimated_reference`; an implausible reported value is kept in `weight_reported_kg` and still reported by data quality). Estimates are marked on the study page, in exports and in the second-grid report; patients over 20 years, or without age or sex, keep no weight. Run `dosimetrix growth check` after importing weights, e.g. from the RIS (a reported weight replaces an estimate); new studies are estimated and checked as they arrive.
+- They are WHO and CDC data under their publishers' terms (see `SOURCE.txt` there), so they are not shipped with Dozimetrix. `dozimetrix growth status` shows whether they are installed.
+- With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Missing or implausible weights (outside P1–P99) are replaced by the median weight for age and sex (`weight_source = estimated_reference`; an implausible reported value is kept in `weight_reported_kg` and still reported by data quality). Estimates are marked on the study page, in exports and in the second-grid report; patients over 20 years, or without age or sex, keep no weight. Run `dozimetrix growth check` after importing weights, e.g. from the RIS (a reported weight replaces an estimate); new studies are estimated and checked as they arrive.
 
 ## Weight / height from a CSV file
 
-`dosimetrix sizes FILE.csv` reads weights and heights from any export (RIS, ward records, a spreadsheet) and prints what it would change; `--apply` writes them (audited), then recomputes estimates, DRL exclusions and alerts for the changed studies. Admins can do the same on Admin → Data quality ("Import weight / height").
+`dozimetrix sizes FILE.csv` reads weights and heights from any export (RIS, ward records, a spreadsheet) and prints what it would change; `--apply` writes them (audited), then recomputes estimates, DRL exclusions and alerts for the changed studies. Admins can do the same on Admin → Data quality ("Import weight / height").
 
 - Key per row: `study_uid`, or `accession` (also matches the hashed accessions of legacy imports), or `patient_id` + `date` (every study of the patient that day; add `modality` to narrow it).
 - Values: `weight_kg`, `height_m` or `height_cm`. `,` or `;` separated; decimal commas are accepted.
@@ -89,27 +89,27 @@ systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
 
 ## Dose SR export (IHE REM)
 
-`dosimetrix rdsr --study ID --out DIR` (or `--query 'modality:CT date:30d'`) writes one X-Ray Radiation Dose SR per study: TID 10011 for CT, TID 10001 for radiography, fluoroscopy and mammography, built from the stored values. Files are pseudonymised unless `--identified`: pseudonymous patient ID; no name, birth date, accession or physicians; derived study, series, SOP and event UIDs. They still carry the exact study date and time, age, sex, the study description and the free-text protocol names and comments, so treat them as personal data (the survey export, which cuts dates to the month, is the anonymised product). Estimated weights are not written. Users with the exporter role can download a study's file from the study page ("Dose SR"; `GET /api/studies/{id}/rdsr`). Dozimetrix only writes files: it does not send dose SRs to a PACS or registry.
+`dozimetrix rdsr --study ID --out DIR` (or `--query 'modality:CT date:30d'`) writes one X-Ray Radiation Dose SR per study: TID 10011 for CT, TID 10001 for radiography, fluoroscopy and mammography, built from the stored values. Files are pseudonymised unless `--identified`: pseudonymous patient ID; no name, birth date, accession or physicians; derived study, series, SOP and event UIDs. They still carry the exact study date and time, age, sex, the study description and the free-text protocol names and comments, so treat them as personal data (the survey export, which cuts dates to the month, is the anonymised product). Estimated weights are not written. Users with the exporter role can download a study's file from the study page ("Dose SR"; `GET /api/studies/{id}/rdsr`). Dozimetrix only writes files: it does not send dose SRs to a PACS or registry.
 
 ## DICOM nodes
 - Remote AEs are managed in Admin → Integration:
-  - **query/retrieve** nodes are the PACS that `dosimetrix qr` pulls from;
+  - **query/retrieve** nodes are the PACS that `dozimetrix qr` pulls from;
   - **sends** nodes are modalities or PACS allowed to send to the receiver.
   The receiver re-reads the allowed list every minute. Changes are audit-logged, and each node has a C-ECHO test.
-- `[pacs]` in `dosimetrix.toml` is imported once as a node named "PACS". After that, the database is used. `dosimetrix qr --node NAME` picks a node. `--host/--aec` still overrides for one run.
+- `[pacs]` in `dozimetrix.toml` is imported once as a node named "PACS". After that, the database is used. `dozimetrix qr --node NAME` picks a node. `--host/--aec` still overrides for one run.
 - The receiver and `qr` write a heartbeat that the page shows (running/stopped, objects per sending AE, sync progress). It also shows a 120-day coverage strip of fully retrieved days.
 - Stop the receiver with SIGTERM (systemd does), not Ctrl-C.
 
 ## HIS / RIS (patient, weight, height, request, indication)
 - Add the server in Admin → Integration → HIS / RIS servers, then press **Test** (or run
-  `dosimetrix his check`). Supported: a HippoBridge FHIR gateway. Use a HIS account with read
+  `dozimetrix his check`). Supported: a HippoBridge FHIR gateway. Use a HIS account with read
   access. The password is stored encrypted with a key derived from the site secret, and is
   never shown again; if the site secret changes, enter the password again.
 - With an enabled server, every new study whose exam is at most 7 days old is queued.
   Older exams arriving now (a PACS or legacy backfill) are history: they get the CNP
   (sex, birth date, exact age) and growth-chart weight estimates, not HIS lookups. Use
-  `dosimetrix his backfill` for them, if ever. The `dosimetrix-his` service
-  (`dosimetrix his run`) works through the queue one study at a time, pausing between calls
+  `dozimetrix his backfill` for them, if ever. The `dozimetrix-his` service
+  (`dozimetrix his run`) works through the queue one study at a time, pausing between calls
   (`min_interval_s`):
   1. it finds the patient by the patient ID (a national ID such as the CNP, or a HIS code);
   2. sex and birth date follow CNP > HIS > DICOM, and the exact age is recomputed;
@@ -125,8 +125,8 @@ systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
 - A HIS record or national ID whose birth date is 12 or more years from a real header birth
   date is treated as another person's (for example, a baby registered under a parent's ID)
   and not used.
-- Try it without writing: `dosimetrix his run --dry-run --limit 20`.
-- History: `dosimetrix his backfill --since 2026-01-01 [--until …] [--device ID]` shows how
+- Try it without writing: `dozimetrix his run --dry-run --limit 20`.
+- History: `dozimetrix his backfill --since 2026-01-01 [--until …] [--device ID]` shows how
   many studies would be queued and roughly how long it takes; `--apply` queues them. The
   worker runs history only within the server's backfill hours (e.g. 22-06), children first,
   after the day's new studies.
@@ -137,7 +137,7 @@ systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
   request's indication as free text (`indication_text`): review it before sending.
 - Use a HIS account of its own for Dozimetrix, not one another service already uses (for
   example the modality worklist's): the HIS may keep a single session per account.
-- National IDs alone (offline, no HIS): `dosimetrix cnp backfill` shows what would change;
+- National IDs alone (offline, no HIS): `dozimetrix cnp backfill` shows what would change;
   add `--apply` to write it.
 
 ## Docker
@@ -145,7 +145,7 @@ systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
 An alternative to the plain install: one image for every role, plus MariaDB.
 
 ```sh
-cp deploy/docker/dosimetrix.toml deploy/docker/dosimetrix.local.toml   # edit: password, [pacs]
+cp deploy/docker/dozimetrix.toml deploy/docker/dozimetrix.local.toml   # edit: password, [pacs]
 printf 'MARIADB_PASSWORD=...\nMARIADB_ROOT_PASSWORD=...\n' > .env         # same password as the toml
 docker compose up -d db web receive
 docker compose logs web | grep 'setup token'   # then open /setup (first-run wizard)
@@ -164,13 +164,13 @@ Chosen values (editable) are adopted as a reference set `local-…`, which can b
 
 ## Clinical indications
 
-Each study gets a clinical indication code (`ro-nom-indications`) when its request text is known: from the HIS request (the referral-guideline item, else the free text), the DICOM "reason for the requested procedure" (also Reason for Study / Admitting Diagnoses), or a CSV import (`indication`, `indication_code` columns of `dosimetrix sizes`). Clear matches are coded automatically, a child gets the paediatric variant of an item, and weak matches are only suggested. Admin → Indications lists the texts still to code, most frequent first; one decision codes every study with that text, now and later. Single studies can be changed on the study page.
+Each study gets a clinical indication code (`ro-nom-indications`) when its request text is known: from the HIS request (the referral-guideline item, else the free text), the DICOM "reason for the requested procedure" (also Reason for Study / Admitting Diagnoses), or a CSV import (`indication`, `indication_code` columns of `dozimetrix sizes`). Clear matches are coded automatically, a child gets the paediatric variant of an item, and weak matches are only suggested. Admin → Indications lists the texts still to code, most frequent first; one decision codes every study with that text, now and later. Single studies can be changed on the study page.
 
 Use the code anywhere a query is accepted: `ind:PED-TCE,TRM-TCE`, or `ind:TRM-*` for a chapter. For example, local DRLs for head trauma CT: Admin → Local DRLs with the selection `origin:local ind:PED-TCE,NEU-TCE,TRM-TCE`. Charts can group by "Clinical indication", and the survey export fills its `indication` column. Only automatic matches, mapped texts and codes set by hand count; unconfirmed suggestions do not.
 
 ## Central collection (national survey)
 
-The same installation can act as the survey's central platform. Each site exports one month from Reports → "Studiul național" (anonymised: pseudonymous institution, device and patient codes; month only) and sends the file. At the centre, Reports → "Central collection" (or `dosimetrix survey-import FILE...`) loads the files (CSV or JSON). Each file is checked: one institution and one month, the survey columns, numbers and plausible ranges. Rows that fail are listed and left out. A new file for the same institution and month replaces the older one. The central team can name the institution codes; the names stay at the centre.
+The same installation can act as the survey's central platform. Each site exports one month from Reports → "Studiul național" (anonymised: pseudonymous institution, device and patient codes; month only) and sends the file. At the centre, Reports → "Central collection" (or `dozimetrix survey-import FILE...`) loads the files (CSV or JSON). Each file is checked: one institution and one month, the survey columns, numbers and plausible ranges. Rows that fail are listed and left out. A new file for the same institution and month replaces the older one. The central team can name the institution codes; the names stay at the centre.
 
 National statistics, per exam × group × quantity (RP 185 groups: head by age, body by weight; or the national age groups):
 - each institution's median, counted with at least 10 values (fluoroscopy 20);
@@ -187,8 +187,8 @@ until they are entered:
 
 - **Tube output curve (ESAK, art. 5 and annex 2).** For a room without a DAP meter the ESAK is
   calculated from the tube's output: measure the air kerma per mAs at 50 cm for 40 to 140 kVp,
-  then `dosimetrix esak-curve set --device ID --file curve.csv` (two columns: `kvp,mgy_per_mas`),
-  `esak-curve show` to check, and `dosimetrix recompute` to calculate. The device id is the
+  then `dozimetrix esak-curve set --device ID --file curve.csv` (two columns: `kvp,mgy_per_mas`),
+  `esak-curve show` to check, and `dozimetrix recompute` to calculate. The device id is the
   physical device's (not an alias). The result is `event.esak_calc`; a device's own entrance dose
   is never replaced.
 - **Effective dose coefficients (nuclear medicine, art. 3).** See the dose statement and
@@ -199,16 +199,16 @@ until they are entered:
 ## Report specs and plugins
 
 Every report and export is a spec file (`docs/specs.md`). The ones that ship are in
-`dosimetrix/seeds/specs/`; a site adds its own by dropping a `.toml` file in the specs folder, with no
+`dozimetrix/seeds/specs/`; a site adds its own by dropping a `.toml` file in the specs folder, with no
 restart:
 
 ```toml
 [specs]
-dir = "/etc/dosimetrix/specs"            # default: <config dir>/specs
-plugins_dir = "/etc/dosimetrix/plugins"  # default: <config dir>/plugins
+dir = "/etc/dozimetrix/specs"            # default: <config dir>/specs
+plugins_dir = "/etc/dozimetrix/plugins"  # default: <config dir>/plugins
 ```
 
-`dosimetrix specs list` shows what is registered and any file that failed to load. **Plugins** (`.py`
+`dozimetrix specs list` shows what is registered and any file that failed to load. **Plugins** (`.py`
 files that register fields, transforms or kinds) run with the server's rights: make `plugins_dir`
 writable by the administrator only. The name and SHA-256 of every plugin loaded are in the audit log.
 The reporting deadlines on the overview come from the specs' `[deadline]` blocks.

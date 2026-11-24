@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from dosimetrix import effdose
-from dosimetrix.db.models import EffectiveDoseCoefficient as C
+from dozimetrix import effdose
+from dozimetrix.db.models import EffectiveDoseCoefficient as C
 
 
 def test_the_row_for_the_age_is_the_smallest_limit_at_or_above_it():
@@ -20,12 +20,12 @@ def test_the_row_for_the_age_is_the_smallest_limit_at_or_above_it():
 
 
 def test_effective_dose_command_needs_a_source_for_every_row(tmp_path, capsys):
-    from dosimetrix import cli
-    from dosimetrix.db.migrate import upgrade
+    from dozimetrix import cli
+    from dozimetrix.db.migrate import upgrade
 
     url = f"sqlite:///{tmp_path / 'e.sqlite3'}"
     upgrade(url)
-    cfg = tmp_path / "dosimetrix.toml"
+    cfg = tmp_path / "dozimetrix.toml"
     cfg.write_text(f'[security]\nsecret_file = "{tmp_path / "secret"}"\n')
     base = ["--config", str(cfg), "effective-dose", "--url", url]
     good = tmp_path / "good.csv"
@@ -50,11 +50,11 @@ def test_none_ship_with_the_program(session):
 def test_art12_fills_the_effective_dose_only_with_a_coefficient(session):
     import datetime as dt
 
-    from dosimetrix import classify
-    from dosimetrix.db.models import Device, Patient, Study
-    from dosimetrix.db.models import Event as Ev
-    from dosimetrix.reports import art12
-    from dosimetrix.seeds.loader import load_all
+    from dozimetrix import classify
+    from dozimetrix.db.models import Device, Patient, Study
+    from dozimetrix.db.models import Event as Ev
+    from dozimetrix.reports import art12
+    from dozimetrix.seeds.loader import load_all
 
     load_all(session)
     dev = Device(display_name="Gamma", identity_key="g", is_local=True)

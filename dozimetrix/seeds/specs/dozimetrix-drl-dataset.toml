@@ -1,0 +1,226 @@
+# The Dozimetrix DRL dataset (versioned): one row per study x DRL exam, the core for local DRL work
+# and national surveys. The period is reduced to the month; patients, devices and the facility are
+# keyed pseudonymous codes (HMAC with the site secret). Each dose has a fixed UCUM unit; the data
+# dictionary ships with every file. Radiography rows group the exposures of one projection
+# (retakes included); CT rows cover the study's non-localiser series; fluoroscopy a whole study.
+
+[spec]
+id = "dozimetrix-drl-dataset"
+kind = "records"
+version = "1.0"
+title = { en = "DRL dataset (pseudonymised)", ro = "Set de date NRD (pseudonimizat)" }
+authority = "Dozimetrix"
+country = ""
+legal = "ICRP 135 / RP 185"
+formats = ["csv", "xlsx", "json"]
+access = ["exporter"]
+
+[params]
+period = { type = "range" }
+q = { type = "query", default = "origin:local" }
+facility = { type = "str", default = "DEFAULT" }
+
+[unit]
+level = "extract"
+extractor = "drl_dataset_rows"
+
+[dictionary]
+sheet = "Dictionary"
+
+[[column]]
+header = "dataset_version"
+value = "dataset_version"
+unit = ""
+doc = "Version of this dataset layout"
+
+[[column]]
+header = "facility"
+value = "facility"
+unit = ""
+doc = "Facility code (keyed pseudonym)"
+
+[[column]]
+header = "device"
+value = "device"
+unit = ""
+doc = "Device code (keyed pseudonym of the physical device)"
+
+[[column]]
+header = "modality"
+value = "modality"
+unit = ""
+doc = "DICOM modality"
+
+[[column]]
+header = "manufacturer"
+value = "manufacturer"
+unit = ""
+doc = "Device manufacturer"
+
+[[column]]
+header = "model"
+value = "model"
+unit = ""
+doc = "Device model"
+
+[[column]]
+header = "period"
+value = "period"
+unit = ""
+doc = "Month of the examination, YYYY-MM"
+
+[[column]]
+header = "patient"
+value = "patient"
+unit = ""
+doc = "Patient code (keyed pseudonym; equal codes = same patient)"
+
+[[column]]
+header = "sex"
+value = "sex"
+unit = ""
+doc = "M / F / O"
+
+[[column]]
+header = "age_days"
+value = "age_days"
+unit = "d"
+doc = "Age in completed days, below 1 year only"
+
+[[column]]
+header = "age_months"
+value = "age_months"
+unit = "mo"
+doc = "Age in completed months, below 24 months only"
+
+[[column]]
+header = "age_years"
+value = "age_years"
+unit = "a"
+doc = "Age in completed years"
+
+[[column]]
+header = "age_group"
+value = "age_group"
+unit = ""
+doc = "National DRL age group (OMS 838/2025): 1-4y, 5-9y, 10-14y, 15y+"
+
+[[column]]
+header = "weight_kg"
+value = "weight_kg"
+unit = "kg"
+doc = "Patient weight"
+
+[[column]]
+header = "weight_source"
+value = "weight_source"
+unit = ""
+doc = "measured / chart_same_day / chart_72h / dicom_unknown / imported / estimated_reference (median for age and sex)"
+
+[[column]]
+header = "weight_reported_kg"
+value = "weight_reported_kg"
+unit = "kg"
+doc = "Reported weight replaced by the estimate (outside P1-P99)"
+
+[[column]]
+header = "height_m"
+value = "height_m"
+unit = "m"
+doc = "Patient height"
+
+[[column]]
+header = "local_exam"
+value = "local_exam"
+unit = ""
+doc = "Local study description"
+
+[[column]]
+header = "exam_code"
+value = "exam_code"
+unit = ""
+doc = "Local nomenclator code (ro-nom-ct / ro-nom-rx)"
+
+[[column]]
+header = "drl_exam_national"
+value = "drl_exam_national"
+unit = ""
+doc = "Exam code of the national DRL list (OMS 838/2025)"
+
+[[column]]
+header = "drl_exam_european"
+value = "drl_exam_european"
+unit = ""
+doc = "Exam code of the European paediatric DRLs (RP 185)"
+
+[[column]]
+header = "projection"
+value = "projection"
+unit = ""
+doc = "Projection for radiography: AP, PA, LL, OBL…"
+
+[[column]]
+header = "contrast"
+value = "contrast"
+unit = ""
+doc = "CT contrast: N, C, NC, MF"
+
+[[column]]
+header = "events"
+value = "events"
+unit = "1"
+doc = "Irradiation events in this row (series, exposures)"
+
+[[column]]
+header = "dlp"
+value = "dlp"
+unit = "mGy.cm"
+doc = "Sum of DLP of the CT series (localisers excluded)"
+
+[[column]]
+header = "ctdivol_mean"
+value = "ctdivol_mean"
+unit = "mGy"
+doc = "Mean CTDIvol of the CT series"
+
+[[column]]
+header = "ctdivol_max"
+value = "ctdivol_max"
+unit = "mGy"
+doc = "Highest CTDIvol of the CT series"
+
+[[column]]
+header = "phantom"
+value = "phantom"
+unit = "cm"
+doc = "CTDI phantom of the series: 16 or 32"
+
+[[column]]
+header = "dap"
+value = "dap"
+unit = "Gy.cm2"
+doc = "Sum of dose-area product"
+
+[[column]]
+header = "kar"
+value = "kar"
+unit = "Gy"
+doc = "Sum of air kerma at the patient entrance reference point"
+
+[[column]]
+header = "fluoro_time"
+value = "fluoro_time"
+unit = "s"
+doc = "Fluoroscopy time"
+
+[[column]]
+header = "kvp_mean"
+value = "kvp_mean"
+unit = "kV"
+doc = "Mean tube voltage"
+
+[[column]]
+header = "mas_total"
+value = "mas_total"
+unit = "mA.s"
+doc = "Sum of tube current-time product"

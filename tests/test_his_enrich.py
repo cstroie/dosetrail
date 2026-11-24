@@ -4,12 +4,12 @@ import datetime as dt
 
 import pytest
 
-from dosimetrix.db.models import Device, HisLookup, SizeSource, Study, StudyRequest
-from dosimetrix.his import enrich, servers
-from dosimetrix.his.hippobridge import HisError, HisRequestStub
-from dosimetrix.ingest.parse import parse
-from dosimetrix.ingest.store import Store
-from dosimetrix.nationalid import ro_cnp_check_digit
+from dozimetrix.db.models import Device, HisLookup, SizeSource, Study, StudyRequest
+from dozimetrix.his import enrich, servers
+from dozimetrix.his.hippobridge import HisError, HisRequestStub
+from dozimetrix.ingest.parse import parse
+from dozimetrix.ingest.store import Store
+from dozimetrix.nationalid import ro_cnp_check_digit
 from tests import dicom_factory as f
 from tests import his_stub
 
@@ -22,7 +22,7 @@ GIRL += str(ro_cnp_check_digit(GIRL))
 @pytest.fixture(autouse=True)
 def exams_count_as_new(monkeypatch):
     """The factory's exams are from 2025: treat them as new imports here."""
-    from dosimetrix.ingest import store
+    from dozimetrix.ingest import store
 
     monkeypatch.setattr(store, "HIS_NEW_DAYS", 10 ** 5)
 
@@ -64,7 +64,7 @@ def test_new_studies_are_queued_only_with_a_server_and_policy(session, stub):
 
 
 def test_old_exams_are_history_and_not_queued(session, stub, his, monkeypatch):
-    from dosimetrix.ingest import store
+    from dozimetrix.ingest import store
 
     monkeypatch.setattr(store, "HIS_NEW_DAYS", 7)
     st = _ingest(session, "1.9.5")  # an exam from 2025 arriving now (PACS backfill)
@@ -226,10 +226,10 @@ def test_listings_ask_for_the_exam_year_and_in_background(session, stub, his):
     assert set(stub.background) == {"1"}
 
 def test_outputs_study_summary_quality_and_survey(session, stub, his):
-    from dosimetrix import quality
-    from dosimetrix.api import data
-    from dosimetrix.export import survey
-    from dosimetrix.seeds.loader import load_all
+    from dozimetrix import quality
+    from dozimetrix.api import data
+    from dozimetrix.export import survey
+    from dozimetrix.seeds.loader import load_all
 
     load_all(session)
     stub.patients[GIRL] = his_stub.patient("77", GIRL)

@@ -2,11 +2,11 @@
 
 import pytest
 
-from dosimetrix import indications
-from dosimetrix.db.models import Code, CodeSystem, Study, StudyIndication, StudyRequest
-from dosimetrix.ingest.parse import parse
-from dosimetrix.ingest.store import Store
-from dosimetrix.seeds.loader import load_all
+from dozimetrix import indications
+from dozimetrix.db.models import Code, CodeSystem, Study, StudyIndication, StudyRequest
+from dozimetrix.ingest.parse import parse
+from dozimetrix.ingest.store import Store
+from dozimetrix.seeds.loader import load_all
 from tests import dicom_factory as f
 
 SECRET = b"i" * 32
@@ -91,9 +91,9 @@ def test_dicom_reason_is_read(session, m):
 def test_stats_dimension_and_query(session, m):
     import datetime as dt
 
-    from dosimetrix import stats
-    from dosimetrix.api.query import conditions, parse
-    from dosimetrix.db.models import Event
+    from dozimetrix import stats
+    from dozimetrix.api.query import conditions, parse
+    from dozimetrix.db.models import Event
 
     for i, (t, dap) in enumerate([("pneumonie", 0.1), ("pneumonie", 0.3), ("apendicita", 0.5)]):
         st = _study(session, f"s.{i}", indication=t)
@@ -112,7 +112,7 @@ TEXTS = ["pneumonie", "apendicita acuta", "dureri toracice suspiciune pneumonie"
 
 
 def test_best_is_remembered_and_unchanged(m):
-    from dosimetrix.classify import normalise
+    from dozimetrix.classify import normalise
 
     for raw in TEXTS:
         for child in (True, False, None):

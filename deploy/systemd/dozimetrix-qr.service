@@ -1,0 +1,16 @@
+[Unit]
+Description=Dozimetrix PACS query/retrieve (last two days)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=dozimetrix
+Group=dozimetrix
+WorkingDirectory=/opt/dozimetrix
+ExecStart=/opt/dozimetrix/.venv/bin/dozimetrix qr --days 2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/dozimetrix

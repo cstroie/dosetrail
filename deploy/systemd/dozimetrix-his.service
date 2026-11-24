@@ -1,0 +1,21 @@
+[Unit]
+Description=Dozimetrix HIS lookups (patient, weight, height, imaging request)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dozimetrix
+Group=dozimetrix
+WorkingDirectory=/opt/dozimetrix
+ExecStart=/opt/dozimetrix/.venv/bin/dozimetrix his run
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/dozimetrix
+
+[Install]
+WantedBy=multi-user.target

@@ -7,9 +7,9 @@ import math
 
 import pytest
 
-from dosimetrix import esak
-from dosimetrix.db.models import Device, DeviceOutput, Study
-from dosimetrix.db.models import Event as Ev
+from dozimetrix import esak
+from dozimetrix.db.models import Device, DeviceOutput, Study
+from dozimetrix.db.models import Event as Ev
 
 CURVE = [(60.0, 0.03), (80.0, 0.06), (100.0, 0.09)]  # mGy/mAs at 50 cm
 
@@ -71,9 +71,9 @@ def test_update_only_where_there_is_no_dap_meter_and_keeps_the_device_value(sess
 
 
 def test_esak_curve_command_sets_shows_and_clears(tmp_path, capsys):
-    from dosimetrix import cli
-    from dosimetrix.db.migrate import upgrade
-    from dosimetrix.db.session import make_engine, make_sessionmaker
+    from dozimetrix import cli
+    from dozimetrix.db.migrate import upgrade
+    from dozimetrix.db.session import make_engine, make_sessionmaker
 
     url = f"sqlite:///{tmp_path / 'c.sqlite3'}"
     upgrade(url)
@@ -82,7 +82,7 @@ def test_esak_curve_command_sets_shows_and_clears(tmp_path, capsys):
         s.commit()
     f = tmp_path / "curve.csv"
     f.write_text("kvp,mgy_per_mas\n60,0.03\n80,0.06\n100,0.09\n")
-    cfg = tmp_path / "dosimetrix.toml"
+    cfg = tmp_path / "dozimetrix.toml"
     cfg.write_text(f'[security]\nsecret_file = "{tmp_path / "secret"}"\n')
     base = ["--config", str(cfg), "esak-curve", "--url", url]
     assert cli.main([*base, "set", "--device", "1", "--file", str(f)]) == 0
@@ -118,16 +118,16 @@ def test_update_loads_nothing_when_there_is_no_curve_and_no_calculated_value(ses
 
 
 def test_esak_curve_rejects_a_malformed_line_but_allows_header_and_blanks(tmp_path, capsys):
-    from dosimetrix import cli
-    from dosimetrix.db.migrate import upgrade
-    from dosimetrix.db.session import make_engine, make_sessionmaker
+    from dozimetrix import cli
+    from dozimetrix.db.migrate import upgrade
+    from dozimetrix.db.session import make_engine, make_sessionmaker
 
     url = f"sqlite:///{tmp_path / 'm.sqlite3'}"
     upgrade(url)
     with make_sessionmaker(make_engine(url))() as s:
         s.add(Device(display_name="Mobile", identity_key="m", is_local=True))
         s.commit()
-    cfg = tmp_path / "dosimetrix.toml"
+    cfg = tmp_path / "dozimetrix.toml"
     cfg.write_text(f'[security]\nsecret_file = "{tmp_path / "secret"}"\n')
     base = ["--config", str(cfg), "esak-curve", "--url", url, "set", "--device", "1", "--file"]
     ok = tmp_path / "ok.csv"
@@ -140,12 +140,12 @@ def test_esak_curve_rejects_a_malformed_line_but_allows_header_and_blanks(tmp_pa
 
 
 def test_cli_export_refuses_a_query_that_does_not_parse(tmp_path, capsys):
-    from dosimetrix import cli
-    from dosimetrix.db.migrate import upgrade
+    from dozimetrix import cli
+    from dozimetrix.db.migrate import upgrade
 
     url = f"sqlite:///{tmp_path / 'q.sqlite3'}"
     upgrade(url)
-    cfg = tmp_path / "dosimetrix.toml"
+    cfg = tmp_path / "dozimetrix.toml"
     cfg.write_text(f'[security]\nsecret_file = "{tmp_path / "secret"}"\n')
     out = tmp_path / "x.csv"
     base = ["--config", str(cfg), "export", "--url", url, "-o", str(out)]

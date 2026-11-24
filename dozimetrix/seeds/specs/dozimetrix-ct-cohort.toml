@@ -1,0 +1,66 @@
+# A cohort extract: one row per study of a typed query (default: CT in the period). The model of a
+# spec for "another hospital, another authority": change the query, the columns and the title.
+# Needs no identifying field, so the exporter role is enough.
+
+[spec]
+id = "dozimetrix-cohort"
+kind = "records"
+version = "1"
+title = { en = "Cohort extract (studies of a query)", ro = "Extras de cohortă (studii după interogare)" }
+authority = "Dozimetrix"
+country = ""
+legal = ""
+formats = ["xlsx", "csv", "json"]
+access = ["exporter"]
+
+[params]
+period = { type = "range" }
+q = { type = "query", default = "modality:CT origin:local" }
+
+[rules]
+max_rows = { value = 200000, article = "guard against a runaway query" }
+
+[unit]
+level = "study"
+limit = "${rules.max_rows}"
+
+[[sheet]]
+name = "Studies"
+
+[[sheet.column]]
+header = "Study"
+field = "study.id"
+[[sheet.column]]
+header = "Date"
+field = "study.date"
+transform = "datetime"
+[[sheet.column]]
+header = "Modality"
+field = "study.modality"
+[[sheet.column]]
+header = "Patient (pseudonym)"
+field = "patient.pseudo_id"
+[[sheet.column]]
+header = "Sex"
+field = "patient.sex"
+[[sheet.column]]
+header = "Age"
+field = "age.display"
+[[sheet.column]]
+header = "Weight [kg]"
+field = "study.weight_kg"
+transform = "round:1"
+[[sheet.column]]
+header = "Description"
+field = "study.description"
+[[sheet.column]]
+header = "Device"
+field = "device.name"
+[[sheet.column]]
+header = "DLP [mGy.cm]"
+field = "study.total_dlp"
+transform = "round:1"
+[[sheet.column]]
+header = "DAP [Gy.cm2]"
+field = "study.total_dap"
+transform = "round:4"

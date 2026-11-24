@@ -1,4 +1,4 @@
-from dosimetrix.ingest.identity import device_key, real_serial
+from dozimetrix.ingest.identity import device_key, real_serial
 
 
 def test_placeholder_serials_are_not_serials():

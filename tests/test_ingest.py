@@ -5,10 +5,10 @@ import hashlib
 import pytest
 from sqlalchemy import func, select
 
-from dosimetrix.db.models import Device, Event, IngestedObject, Patient, Study
-from dosimetrix.ingest.identity import device_key
-from dosimetrix.ingest.parse import parse
-from dosimetrix.ingest.store import Store
+from dozimetrix.db.models import Device, Event, IngestedObject, Patient, Study
+from dozimetrix.ingest.identity import device_key
+from dozimetrix.ingest.parse import parse
+from dozimetrix.ingest.store import Store
 from tests import dicom_factory as f
 
 SECRET = b"t" * 32
@@ -143,7 +143,7 @@ def test_ignored_objects_are_recorded_once(session):
 
 
 def test_glued_vendor_dose_units():
-    from dosimetrix.dicom.units import convert, normalise_unit
+    from dozimetrix.dicom.units import convert, normalise_unit
 
     # Siemens Ysio writes the DAP unit as 'Gym2' (UCUM: Gy.m2)
     assert normalise_unit("Gym2") == "gy.m2" and normalise_unit("mGycm") == "mgy.cm"
@@ -154,7 +154,7 @@ def test_glued_vendor_dose_units():
 def test_measurement_without_a_number():
     from pydicom.dataset import Dataset
 
-    from dosimetrix.dicom.sr import tree
+    from dozimetrix.dicom.sr import tree
 
     item = Dataset()
     item.ValueType, item.RelationshipType = "NUM", "CONTAINS"
@@ -262,13 +262,13 @@ def test_pet_ct_is_pt_whichever_part_comes_first(session):
     store.store(parse(f.ct_rdsr(study_uid="1.2.3.511", sop_uid="1.2.3.511.2")))
     t = session.scalar(select(Study).filter_by(study_uid="1.2.3.511"))
     assert t.modality == "PT" and t.total_dlp
-    from dosimetrix.hybrid import label
+    from dozimetrix.hybrid import label
 
     assert label(s.modality, s.total_dlp) == "PET/CT" and label("PT", None) == "PT"
 
 
 def test_recompute_relabels_pet_ct_filed_as_ct(session):
-    from dosimetrix.maintenance import relabel_hybrid
+    from dozimetrix.maintenance import relabel_hybrid
 
     store = Store(session, SECRET)
     store.store(parse(f.ct_rdsr(study_uid="1.2.3.520", sop_uid="1.2.3.520.1")))
@@ -305,8 +305,8 @@ def test_one_administration_in_two_studies_counts_once(session):
     c = session.scalar(select(Study).filter_by(study_uid="1.2.3.532"))
     assert c.admin_activity_mbq == pytest.approx(400.0)
 
-    from dosimetrix.maintenance import settle_administrations
-    from dosimetrix.net.qr import needs_activity
+    from dozimetrix.maintenance import settle_administrations
+    from dozimetrix.net.qr import needs_activity
 
     assert settle_administrations(session) == 0  # stable
     assert not needs_activity(session, "1.2.3.530")  # not fetched again
@@ -314,7 +314,7 @@ def test_one_administration_in_two_studies_counts_once(session):
 
 def test_lookup_tables_are_built_once_per_store(session, monkeypatch):
     """Classifier / Matcher / Evaluator load whole tables: not once per object."""
-    from dosimetrix import alerts, classify, indications
+    from dozimetrix import alerts, classify, indications
 
     built = {"c": 0, "m": 0, "e": 0}
     for mod, name, key in ((classify, "Classifier", "c"), (indications, "Matcher", "m"),
@@ -373,9 +373,9 @@ def test_ct_headers_import_then_the_dose_report_replaces_them(session):
 
 
 def test_failed_derive_is_marked_retried_and_given_up_visibly(session, monkeypatch):
-    from dosimetrix import maintenance
-    from dosimetrix.db.models import IngestedObject
-    from dosimetrix.ingest import store as store_mod
+    from dozimetrix import maintenance
+    from dozimetrix.db.models import IngestedObject
+    from dozimetrix.ingest import store as store_mod
 
     boom = {"on": True}
     real = store_mod.derive
@@ -403,9 +403,9 @@ def test_failed_derive_is_marked_retried_and_given_up_visibly(session, monkeypat
 
 
 def test_failed_derive_is_repaired_once_the_fault_is_gone(session, monkeypatch):
-    from dosimetrix import maintenance
-    from dosimetrix.db.models import IngestedObject
-    from dosimetrix.ingest import store as store_mod
+    from dozimetrix import maintenance
+    from dozimetrix.db.models import IngestedObject
+    from dozimetrix.ingest import store as store_mod
 
     real, state = store_mod.derive, {"fail": True}
 
@@ -474,7 +474,7 @@ def test_ct_header_scan_type_without_acquisition_type():
 def test_ct_header_dlp_uses_the_z_range_not_count_times_thickness():
     """Aquilion PRIME cardiac CTA: 696 images 0.3 mm apart, 0.5 mm thick, 40 mm beam. The
     console's own DLP for the acquisition is 199.0 mGy.cm (8.4 mGy over 237 mm)."""
-    from dosimetrix.ingest.parse import mark_series_instances, mark_series_last_z
+    from dozimetrix.ingest.parse import mark_series_instances, mark_series_last_z
     ds = f.ct_series_image(ctdivol=8.4, count=None, spacing=0.5)
     ds.TotalCollimationWidth = 40.0
     ds.ImagePositionPatient = [0, 0, -917.5]
@@ -505,7 +505,7 @@ def test_legacy_ge_ct_without_ctdivol_is_kept_as_technique_only():
     (e,) = p.events
     assert e["event_type"] == "axial" and e["kvp"] == 120 and e["ma"] == 100
     assert e["mas"] == pytest.approx(200.0) and e["extra_json"]["mas_per_image"] == 200.0
-    from dosimetrix.ingest.parse import mark_series_instances
+    from dozimetrix.ingest.parse import mark_series_instances
     mark_series_instances(ds, 17)  # 17 images = 17 rotations of 100 mA x 2 s
     assert parse(ds).events[0]["mas"] == pytest.approx(3400.0)
     assert e["extra_json"]["dose_missing"] and "ctdivol" not in e and "dlp" not in e  # no image count
@@ -522,7 +522,7 @@ def test_legacy_ge_ct_without_ctdivol_is_kept_as_technique_only():
 
 
 def test_placeholder_birth_dates_are_not_birth_dates():
-    from dosimetrix.ingest.parse import _birth_date
+    from dozimetrix.ingest.parse import _birth_date
     import datetime as dt
     for v in ("17530101", "19000101", "00000000", "", None, "18580101"):
         assert _birth_date(v) is None
@@ -547,7 +547,7 @@ def test_console_counter_ids_of_the_old_ge_scanner_do_not_collide():
 def test_legacy_ge_dose_is_estimated_from_the_published_nctdiw():
     """17 sequential 3 mm images 5 mm apart, 80 mA x 2 s = 160 mAs, 120 kV: CTDIw = 5.2 x 1.6
     = 8.32 mGy, CTDIvol = CTDIw x 3/5, DLP = CTDIw x 17 x 3 mm = 42.4 mGy.cm (any increment)."""
-    from dosimetrix.ingest.parse import mark_series_instances, mark_series_last_z
+    from dozimetrix.ingest.parse import mark_series_instances, mark_series_last_z
     ds = f.ct_series_image(ctdivol=None, count=None, spacing=3.0, acquisition=None,
                            scan_options="DYNAMIC MODE", pitch=None)
     ds.Manufacturer = "GE MEDICAL SYSTEMS"

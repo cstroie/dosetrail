@@ -4,9 +4,9 @@ import datetime as dt
 
 import pytest
 
-from dosimetrix import secretbox
-from dosimetrix.his import hippobridge as hb
-from dosimetrix.his import servers
+from dozimetrix import secretbox
+from dozimetrix.his import hippobridge as hb
+from dozimetrix.his import servers
 from tests import his_stub
 
 SECRET = b"s" * 32

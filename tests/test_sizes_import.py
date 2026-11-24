@@ -4,10 +4,10 @@ import hashlib
 
 import pytest
 
-from dosimetrix import sizes_import
-from dosimetrix.db.models import SizeSource, Study
-from dosimetrix.ingest.parse import parse
-from dosimetrix.ingest.store import Store
+from dozimetrix import sizes_import
+from dozimetrix.db.models import SizeSource, Study
+from dozimetrix.ingest.parse import parse
+from dozimetrix.ingest.store import Store
 from tests import dicom_factory as f
 
 SECRET = b"t" * 32
@@ -68,8 +68,8 @@ def test_hashed_accession_and_errors(session):
 
 
 def test_indication_columns(session):
-    from dosimetrix.db.models import StudyIndication
-    from dosimetrix.seeds.loader import load_all
+    from dozimetrix.db.models import StudyIndication
+    from dozimetrix.seeds.loader import load_all
 
     load_all(session)
     a = _ingest(session, "1.8.20")

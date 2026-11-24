@@ -1,4 +1,4 @@
-from dosimetrix.ingest import dosepage
+from dozimetrix.ingest import dosepage
 
 PAGE1 = """SPIT. TEST/AQUILION Aquilion PRIME
 Patient ID: 1234567890123
@@ -64,9 +64,9 @@ def test_event_uid_is_stable_and_per_row():
 import pytest  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from dosimetrix.db.models import Study  # noqa: E402
-from dosimetrix.ingest.parse import parse  # noqa: E402
-from dosimetrix.ingest.store import Store  # noqa: E402
+from dozimetrix.db.models import Study  # noqa: E402
+from dozimetrix.ingest.parse import parse  # noqa: E402
+from dozimetrix.ingest.store import Store  # noqa: E402
 from tests import dicom_factory as f  # noqa: E402
 
 

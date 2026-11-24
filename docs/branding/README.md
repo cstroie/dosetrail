@@ -1,6 +1,6 @@
 # Dozimetrix branding
 
-- **Name:** written *Dozimetrix* in text and UI (since 2026-11-24: the Romanian *dozimetrie*, and *-rix*, the Gaulish "king" of Vercingetorix — an Asterix nod in words only, never in imagery); `dosimetrix` for the package, command and repository; `DOSIMETRIX` as the default DICOM AE title.
+- **Name:** written *Dozimetrix* in text and UI (since 2026-11-24: the Romanian *dozimetrie*, and *-rix*, the Gaulish "king" of Vercingetorix — an Asterix nod in words only, never in imagery); `dozimetrix` for the package, command and repository; `DOZIMETRIX` as the default DICOM AE title.
 - **Mark:** the "D-curve": a D whose bowl holds a rising dose curve (the running Ka,r), centred in the bowl (option A of `logo-options-dozimetrix.png`, chosen 2026-11-24; the earlier curve was a single peak). A single stroke on a 24-unit grid (`assets/img/logo-mark.svg`, `currentColor`); the favicon puts it on the dark tile (`assets/img/favicon.svg`). Stroke width 2–2.4 depending on size; it stays legible at 16 px.
 - **Wordmark:** "Dozimet**rix**" with "rix" in the accent colour of the palette in use (Film: #9CB8D6 on dark, #2F5A86 on light); the rest in the text colour.
 - **Palette "Iodine"** (`assets/css/tokens.css`): soft violet accent #AE99D6 on near-neutral graphite (bg #111114, panel #18171B) in the dark theme; #674994 on white / #EEECF1 in the light theme. The favicon uses Film's colours (tile #070B0E, mark #9CB8D6). Status stays green / amber / red (WCAG AA on every panel).

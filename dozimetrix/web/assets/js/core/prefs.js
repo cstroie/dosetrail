@@ -1,0 +1,39 @@
+// Per-browser preferences (theme, language, DAP unit, density, workspace layout).
+// Stored in localStorage when available; everything still works without it.
+
+const KEY = 'dozimetrix.prefs';
+const DEFAULTS = { theme: 'dark', palette: 'film', paletteV: 2, lang: 'en', dapUnit: 'mGy·cm²', unitsV: 2, density: 'compact', origin: 'local' };
+
+function load() {
+  let saved = {};
+  // stored under 'dosimetrix.prefs' before the rename (2026-11-24): read that once
+  try { saved = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem('dosimetrix.prefs') || '{}'); } catch { /* ignore */ }
+  if (saved.palette === 'instrument') saved.palette = 'film';  // renamed 2026-11-22
+  // Film became the default (2026-11-22): a palette stored before then was the old default
+  // written along with other preferences, not a choice
+  if (saved.paletteV !== 2) { saved.palette = 'film'; saved.paletteV = 2; }
+  // mGy·cm² became the default (2026-11-24): a unit stored before then was the old default
+  if (saved.unitsV !== 2) { saved.dapUnit = 'mGy·cm²'; saved.unitsV = 2; }
+  return { ...DEFAULTS, ...saved };
+}
+
+let state = load();
+const listeners = new Set();
+
+export const prefs = {
+  get(name) { return state[name]; },
+  set(name, value) {
+    state = { ...state, [name]: value };
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* private mode: keep in memory */ }
+    for (const fn of listeners) fn(name, value);
+  },
+  /** fn(name, value) is called after every change; returns an unsubscribe function. */
+  subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+};
+
+/** Apply theme and language to <html> before first paint (called from the page head). */
+export function applyDocumentPrefs() {
+  document.documentElement.dataset.theme = state.theme;
+  document.documentElement.dataset.palette = state.palette;
+  document.documentElement.lang = state.lang;
+}

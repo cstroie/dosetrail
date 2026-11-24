@@ -10,9 +10,9 @@ import zipfile
 
 import pytest
 
-from dosimetrix.db.models import Patient, Study
-from dosimetrix.specs import loader, registry, run, writers
-from dosimetrix.specs.loader import SpecError
+from dozimetrix.db.models import Patient, Study
+from dozimetrix.specs import loader, registry, run, writers
+from dozimetrix.specs.loader import SpecError
 
 SPEC = textwrap.dedent("""
     [spec]
@@ -84,14 +84,14 @@ def test_a_bad_file_is_a_problem_not_a_crash_and_a_dropped_file_appears(tmp_path
     put(tmp_path, "bad.toml", "[spec]\nid = 'x'")
     cat = loader.discover(tmp_path)
     assert any("bad.toml" in p["file"] for p in cat.problems)
-    assert "dosimetrix-cohort" in cat.specs  # the bundled one still works
+    assert "dozimetrix-cohort" in cat.specs  # the bundled one still works
     put(tmp_path, "t.toml", SPEC)
     assert "t-cohort" in loader.discover(tmp_path).specs  # no restart needed
 
 
 def test_a_site_spec_replaces_the_bundled_one_with_the_same_id(tmp_path):
-    put(tmp_path, "mine.toml", SPEC.replace("t-cohort", "dosimetrix-cohort"))
-    s = loader.discover(tmp_path).specs["dosimetrix-cohort"]
+    put(tmp_path, "mine.toml", SPEC.replace("t-cohort", "dozimetrix-cohort"))
+    s = loader.discover(tmp_path).specs["dozimetrix-cohort"]
     assert not s.bundled and s.version == "7"
 
 
@@ -138,12 +138,12 @@ def test_identifying_fields_need_pid_whatever_the_spec_says(tmp_path):
 
 
 def test_a_plugin_registers_a_field_a_spec_can_use(tmp_path):
-    from dosimetrix.specs import plugins
+    from dozimetrix.specs import plugins
 
     plug = tmp_path / "plug"
     plug.mkdir()
     (plug / "ok.py").write_text(textwrap.dedent('''
-        from dosimetrix.specs.registry import field, transform
+        from dozimetrix.specs.registry import field, transform
 
         @field("test.constant")
         def constant(row):
@@ -221,9 +221,9 @@ def test_the_query_narrows_the_selection(populated, tmp_path):
 
 
 def _paediatric(session):
-    from dosimetrix import classify
-    from dosimetrix.db.models import Event
-    from dosimetrix.seeds.loader import load_all
+    from dozimetrix import classify
+    from dozimetrix.db.models import Event
+    from dozimetrix.seeds.loader import load_all
 
     load_all(session)
     kid = Patient(pseudo_id="P-K", sex="F")
@@ -243,7 +243,7 @@ def _paediatric(session):
 def test_the_bundled_national_exports_are_specs_with_their_dictionary():
     cat = loader.discover(None)
     assert not cat.problems
-    survey, dataset = cat.specs["ro-sdnp-paediatric-survey"], cat.specs["dosimetrix-drl-dataset"]
+    survey, dataset = cat.specs["ro-sdnp-paediatric-survey"], cat.specs["dozimetrix-drl-dataset"]
     assert survey.version == "2026.1" and survey.rules["max_age_years"] == 18
     assert len(survey.body["column"]) == 47 and len(dataset.body["column"]) == 33
     assert survey.rules_meta["max_age_years"]["article"]  # the number says where it comes from
@@ -251,7 +251,7 @@ def test_the_bundled_national_exports_are_specs_with_their_dictionary():
 
 
 def test_the_survey_spec_runs_to_the_same_rows_as_the_old_function(session):
-    from dosimetrix.export import survey as old
+    from dozimetrix.export import survey as old
 
     _paediatric(session)
     spec = loader.discover(None).specs["ro-sdnp-paediatric-survey"]
@@ -274,7 +274,7 @@ def test_the_survey_spec_runs_to_the_same_rows_as_the_old_function(session):
 
 def test_the_dataset_spec_runs_through_the_engine(session):
     _paediatric(session)
-    spec = loader.discover(None).specs["dosimetrix-drl-dataset"]
+    spec = loader.discover(None).specs["dozimetrix-drl-dataset"]
     ctx = run.build(session, spec, {"from": "2026-10-01", "to": "2026-10-31", "q": "",
                                     "facility": "HOSP"}, secret=b"s" * 32,
                     now=dt.datetime(2026, 11, 1), username="t")
@@ -291,9 +291,9 @@ def test_the_comparison_specs_are_bundled_with_their_rules():
     cat = loader.discover(None)
     assert not cat.problems
     want = {"ro-ms1245-drl-trend": ("series", "quarters", 6),
-            "dosimetrix-operator-doses": ("outliers", "ratio_flag", 1.3),
-            "dosimetrix-icrp135-grid": ("compare", "min_n", 10),
-            "dosimetrix-icrp135-summary": ("compare", "min_n", 20)}
+            "dozimetrix-operator-doses": ("outliers", "ratio_flag", 1.3),
+            "dozimetrix-icrp135-grid": ("compare", "min_n", 10),
+            "dozimetrix-icrp135-summary": ("compare", "min_n", 20)}
     for sid, (kind, rule, value) in want.items():
         s = cat.specs[sid]
         assert s.kind == kind and s.rules[rule] == value and s.rules_meta[rule]["article"]
@@ -302,14 +302,14 @@ def test_the_comparison_specs_are_bundled_with_their_rules():
 
 @pytest.mark.parametrize("sid,params,sheets", [
     ("ro-ms1245-drl-trend", {"year": 2026, "quarter": 3}, ["Tendinte"]),
-    ("dosimetrix-operator-doses", {"year": 2026, "quarter": 3}, ["Operatori", "Acoperire"]),
-    ("dosimetrix-icrp135-grid", {"year": 2026, "quarter": 3, "estimated": "true"},
+    ("dozimetrix-operator-doses", {"year": 2026, "quarter": 3}, ["Operatori", "Acoperire"]),
+    ("dozimetrix-icrp135-grid", {"year": 2026, "quarter": 3, "estimated": "true"},
      ["CT cap (varsta)", "CT corp (greutate)"]),
-    ("dosimetrix-icrp135-summary", {"from": "2026-07-01", "to": "2026-09-30"},
+    ("dozimetrix-icrp135-summary", {"from": "2026-07-01", "to": "2026-09-30"},
      ["ICRP 135 summary"]),
 ])
 def test_each_comparison_spec_runs_through_the_engine(session, sid, params, sheets):
-    from dosimetrix.seeds.loader import load_all
+    from dozimetrix.seeds.loader import load_all
 
     load_all(session)
     spec = loader.discover(None).specs[sid]
@@ -326,11 +326,11 @@ def test_each_comparison_spec_runs_through_the_engine(session, sid, params, shee
 
 
 def test_a_threshold_comes_from_the_spec_not_the_code(session, tmp_path):
-    from dosimetrix.seeds.loader import load_all
+    from dozimetrix.seeds.loader import load_all
 
     load_all(session)
-    text = (loader.BUNDLED / "dosimetrix-operator-doses.toml").read_text()
-    text = text.replace('value = 1.3,', 'value = 2.5,').replace('id = "dosimetrix-operator-doses"',
+    text = (loader.BUNDLED / "dozimetrix-operator-doses.toml").read_text()
+    text = text.replace('value = 1.3,', 'value = 2.5,').replace('id = "dozimetrix-operator-doses"',
                                                                'id = "strict-operators"')
     spec = loader.parse(put(tmp_path, "strict.toml", text))
     assert spec.rules["ratio_flag"] == 2.5 and spec.body["outliers"]["ratio_flag"] == 2.5
@@ -346,12 +346,12 @@ def test_a_dropped_plugin_and_spec_become_an_export_in_a_running_app(tmp_path):
     """The whole promise: a site folder with a spec and a plugin, a running app, no code change."""
     from fastapi.testclient import TestClient
 
-    from dosimetrix.api.app import create_app
-    from dosimetrix.config import Settings
-    from dosimetrix.db.migrate import upgrade
-    from dosimetrix.db.models import User
-    from dosimetrix.db.session import make_engine, make_sessionmaker
-    from dosimetrix.security import hash_password
+    from dozimetrix.api.app import create_app
+    from dozimetrix.config import Settings
+    from dozimetrix.db.migrate import upgrade
+    from dozimetrix.db.models import User
+    from dozimetrix.db.session import make_engine, make_sessionmaker
+    from dozimetrix.security import hash_password
 
     url = f"sqlite:///{tmp_path / 'site.sqlite3'}"
     upgrade(url)
@@ -368,7 +368,7 @@ def test_a_dropped_plugin_and_spec_become_an_export_in_a_running_app(tmp_path):
     specs_dir.mkdir()
     plugins_dir.mkdir()
     (plugins_dir / "hospital.py").write_text(textwrap.dedent('''
-        from dosimetrix.specs.registry import field, transform
+        from dozimetrix.specs.registry import field, transform
 
         @field("site.hospital")
         def hospital(row):
@@ -425,7 +425,7 @@ def test_the_documented_examples_stay_valid():
         spec = loader.parse(root / name)
         assert spec.id.startswith("example-") and not run.needs_pid(spec)
     monthly = loader.parse(root / "monthly-return.toml")
-    from dosimetrix import deadlines
+    from dozimetrix import deadlines
 
     got = deadlines.upcoming(dt.date(2026, 11, 1), (), [monthly])
     assert got and got[0]["id"].startswith("ex-monthly:") and got[0]["due"] <= "2026-11-10"

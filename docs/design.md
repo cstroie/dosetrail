@@ -49,14 +49,14 @@ Dozimetrix is an open-source (MIT) patient radiation exposure monitor for CT, ra
 | *(frontend)* **ECharts**: one vendored, pinned JS file | **SR tree walker and RDSR mapping** | |
 | | **Skin dose calculation** (later) | |
 
-**Frontend (decided):** **no npm and no build step.** The frontend is plain HTML, CSS and vanilla JavaScript ES modules, with native web components, served statically by FastAPI. **ECharts** is the only vendored library, kept as one local file. The visual direction is **variant B, "Console"** (chosen 2026-11-21, provisional). It is dark-first, with light as the second theme. Navigation is an icon rail plus a context bar. A command palette (Ctrl K) handles search and commands, and filters are typed `key:value` tokens with autocomplete that are stored in the URL. The study list sits beside a preview pane. Numbers use a monospace font. Charts live on a workspace of drag-and-resize panels that share one query. The mockups are in the design canvas and exported to git-ignored `design-inbox/`; the brief is `frontend-brief.md`. The implementation lives in `dosimetrix/web/` (see its README); until the API exists it runs on synthetic sample data.
+**Frontend (decided):** **no npm and no build step.** The frontend is plain HTML, CSS and vanilla JavaScript ES modules, with native web components, served statically by FastAPI. **ECharts** is the only vendored library, kept as one local file. The visual direction is **variant B, "Console"** (chosen 2026-11-21, provisional). It is dark-first, with light as the second theme. Navigation is an icon rail plus a context bar. A command palette (Ctrl K) handles search and commands, and filters are typed `key:value` tokens with autocomplete that are stored in the URL. The study list sits beside a preview pane. Numbers use a monospace font. Charts live on a workspace of drag-and-resize panels that share one query. The mockups are in the design canvas and exported to git-ignored `design-inbox/`; the brief is `frontend-brief.md`. The implementation lives in `dozimetrix/web/` (see its README); until the API exists it runs on synthetic sample data.
 
 ---
 
 ## 4. Architecture
 
 ```
-            ┌─────────────── dosimetrix (one service) ────────────────┐
+            ┌─────────────── dozimetrix (one service) ────────────────┐
  Modality ─►│ DICOM SCP (C-STORE)  ─► spool/ ─► Ingest worker         │
  PACS  ◄───►│ QR client (C-FIND/MOVE, scheduled) ─┘     │             │
  Files  ───►│ CLI import (files / folders / zip)  ─────┘             │
@@ -71,7 +71,7 @@ Dozimetrix is an open-source (MIT) patient radiation exposure monitor for CT, ra
 
 ### Package layout (proposed)
 ```
-dosimetrix/
+dozimetrix/
   config.py          settings (TOML + env)
   db/                SQLAlchemy models, session, migrations (alembic/)
   dicom/
@@ -92,7 +92,7 @@ dosimetrix/
   api/               FastAPI routers
   web/               static UI (HTML, JS modules, vendored echarts)
   jobs.py            DB-backed job queue and worker
-  cli.py             `dosimetrix` command (serve, import, qr, migrate, user …)
+  cli.py             `dozimetrix` command (serve, import, qr, migrate, user …)
 tests/
   fixtures/          anonymised DICOM samples per vendor and modality
 ```

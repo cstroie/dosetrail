@@ -2,7 +2,7 @@
 
 Where the interface decisions are collected, so a new screen follows them instead of
 rediscovering them. It does not replace the sources: `docs/design.md` is the design draft,
-`dosimetrix/web/README.md` says how the frontend is built and run. Each rule says when it was
+`dozimetrix/web/README.md` says how the frontend is built and run. Each rule says when it was
 decided. **Add a rule when the owner decides one (date it), and fix the rule, not just the
 screen, when the two disagree.** The format follows the Reporion project's rules file; only the
 generic rules were taken over.

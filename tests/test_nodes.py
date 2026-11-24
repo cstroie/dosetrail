@@ -7,11 +7,11 @@ from pydicom.dataset import Dataset
 from pynetdicom import AE
 from pynetdicom.sop_class import Verification
 
-from dosimetrix.config import Settings
-from dosimetrix.db.models import AppSetting
-from dosimetrix.net import nodes
-from dosimetrix.net.scp import Receiver
-from dosimetrix.net.spool import Spool
+from dozimetrix.config import Settings
+from dozimetrix.db.models import AppSetting
+from dozimetrix.net import nodes
+from dozimetrix.net.scp import Receiver
+from dozimetrix.net.spool import Spool
 
 
 def _port():
@@ -60,10 +60,10 @@ def test_allowed_senders(session):
 
 def test_echo_and_receiver_allow_list(session, tmp_path):
     port = _port()
-    rx = Receiver(Spool(tmp_path / "spool"), "DOSIMETRIX", port, "127.0.0.1")
+    rx = Receiver(Spool(tmp_path / "spool"), "DOZIMETRIX", port, "127.0.0.1")
     rx.start()
     try:
-        n = nodes.create(session, {"name": "Self", "aet": "DOSIMETRIX", "host": "127.0.0.1",
+        n = nodes.create(session, {"name": "Self", "aet": "DOZIMETRIX", "host": "127.0.0.1",
                                    "port": port})
         res = nodes.echo(session, n.id, "TESTER", timeout=5)
         assert res["ok"] is True and res["error"] is None and res["ms"] >= 0
@@ -82,13 +82,13 @@ def test_receiver_counts_per_calling_aet(tmp_path):
     from pynetdicom.sop_class import SecondaryCaptureImageStorage
 
     port = _port()
-    rx = Receiver(Spool(tmp_path / "spool"), "DOSIMETRIX", port, "127.0.0.1")
+    rx = Receiver(Spool(tmp_path / "spool"), "DOZIMETRIX", port, "127.0.0.1")
     rx.start()
     try:
         ae = AE(ae_title="MODALITY1")
         ae.add_requested_context(SecondaryCaptureImageStorage, ExplicitVRLittleEndian)
         ae.add_requested_context(Verification)
-        assoc = ae.associate("127.0.0.1", port, ae_title="DOSIMETRIX")
+        assoc = ae.associate("127.0.0.1", port, ae_title="DOZIMETRIX")
         ds = Dataset()
         ds.SOPClassUID, ds.SOPInstanceUID = SecondaryCaptureImageStorage, "1.2.3.4"
         ds.PatientID = "x"

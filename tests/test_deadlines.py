@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from dosimetrix import deadlines
+from dozimetrix import deadlines
 
 
 def D(s):
@@ -51,7 +51,7 @@ def test_most_urgent_first():
 def _spec(tmp_path, name, period, deadline, sid="t-dl"):
     import textwrap
 
-    from dosimetrix.specs import loader
+    from dozimetrix.specs import loader
 
     p = tmp_path / f"{name}.toml"
     p.write_text(textwrap.dedent(f"""
@@ -91,7 +91,7 @@ def test_a_dropped_spec_with_a_deadline_appears_with_no_code(tmp_path):
 def test_a_spec_without_a_deadline_adds_nothing_and_a_bad_one_is_refused(tmp_path):
     import pytest
 
-    from dosimetrix.specs import loader
+    from dozimetrix.specs import loader
 
     p = tmp_path / "x.toml"
     p.write_text("[spec]\nid='x'\nkind='records'\nversion='1'\ntitle='x'\n[[sheet]]\nname='S'\n"

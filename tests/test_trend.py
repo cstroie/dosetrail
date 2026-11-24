@@ -4,10 +4,10 @@ import datetime as dt
 
 import pytest
 
-from dosimetrix import classify
-from dosimetrix.db.models import Event, Study
-from dosimetrix.reports import trend
-from dosimetrix.seeds.loader import load_all
+from dozimetrix import classify
+from dozimetrix.db.models import Event, Study
+from dozimetrix.reports import trend
+from dozimetrix.seeds.loader import load_all
 
 AGE_2Y = int(2 * 365.25) + 30
 

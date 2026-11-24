@@ -5,11 +5,11 @@ import io
 
 import pytest
 
-from dosimetrix import classify
-from dosimetrix.db.models import Event as Ev
-from dosimetrix.db.models import Patient, Study
-from dosimetrix.reports import insp1255
-from dosimetrix.seeds.loader import load_all
+from dozimetrix import classify
+from dozimetrix.db.models import Event as Ev
+from dozimetrix.db.models import Patient, Study
+from dozimetrix.reports import insp1255
+from dozimetrix.seeds.loader import load_all
 
 Y2 = int(2 * 365.25) + 20  # 2 years
 Y7 = int(7 * 365.25) + 20

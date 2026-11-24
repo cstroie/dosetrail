@@ -5,9 +5,9 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from dosimetrix import classify
-from dosimetrix.classify import Rules, normalise, view_code
-from dosimetrix.db.models import (
+from dozimetrix import classify
+from dozimetrix.classify import Rules, normalise, view_code
+from dozimetrix.db.models import (
     Classification,
     ClassificationStatus,
     Code,
@@ -15,7 +15,7 @@ from dosimetrix.db.models import (
     Event,
     Study,
 )
-from dosimetrix.seeds.loader import load_all
+from dozimetrix.seeds.loader import load_all
 
 T = dt.datetime(2026, 3, 2, 10, 0)
 

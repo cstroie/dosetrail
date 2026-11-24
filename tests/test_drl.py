@@ -4,9 +4,9 @@ import datetime as dt
 
 import pytest
 
-from dosimetrix import classify, drl
-from dosimetrix.db.models import Device, Event, Study
-from dosimetrix.seeds.loader import load_all
+from dozimetrix import classify, drl
+from dozimetrix.db.models import Device, Event, Study
+from dozimetrix.seeds.loader import load_all
 
 T = dt.datetime(2026, 6, 1, 9, 0)
 AGE_2Y = int(2 * 365.25) + 30
@@ -93,15 +93,15 @@ def test_activity_per_study_and_mammography_per_breast(session, data):
     assert g["n"] == 2 and sorted([g["min"], g["max"]]) == [pytest.approx(2.5),
                                                              pytest.approx(2.6)]
     # the same studies through the chart metrics of the MG and NM/PT profiles
-    from dosimetrix import stats
-    from dosimetrix.db.models import Study as S
+    from dozimetrix import stats
+    from dozimetrix.db.models import Study as S
 
     agd = stats.compute(session, [S.modality == "MG"], "agd", [])
     assert agd["groups"][0]["n"] == 4
     act = stats.compute(session, [S.modality == "PT"], "activity", [])
     assert act["groups"][0]["n"] == 2 and act["groups"][0]["median"] == pytest.approx(360.0)
     # and through the browser chart rows: MG one row per view, PT one row per study
-    from dosimetrix.api import data as api_data
+    from dozimetrix.api import data as api_data
 
     mg_rows = api_data.group_rows(session, "", T, "MG")
     assert len(mg_rows) == 4 and {r["agd"] for r in mg_rows} == {1.0, 1.5, 1.2, 1.4}
@@ -115,7 +115,7 @@ def test_activity_per_study_and_mammography_per_breast(session, data):
     assert adm["agent"] == "FDG" and adm["activity_mbq"] == 420.0
     assert adm["same_administration_as"] == 1
     assert adm["e_msv"] is None  # no coefficient entered: no effective dose invented
-    from dosimetrix.db.models import EffectiveDoseCoefficient
+    from dozimetrix.db.models import EffectiveDoseCoefficient
 
     session.add(EffectiveDoseCoefficient(nuclide="", form="FDG", age_to_years=None,
                                          msv_per_mbq=0.019, source="test"))

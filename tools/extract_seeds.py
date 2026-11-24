@@ -1,10 +1,10 @@
 """Developer tool: regenerate bundled seed CSVs from the reference spreadsheets.
 
 The spreadsheets live in the git-ignored `reference/` directory; only the extracted,
-versioned CSVs under dosimetrix/seeds/ are committed. Requires openpyxl + xlrd, which
+versioned CSVs under dozimetrix/seeds/ are committed. Requires openpyxl + xlrd, which
 are NOT Dozimetrix dependencies – run with any interpreter that has them:
 
-    python tools/extract_seeds.py reference/ dosimetrix/seeds/codes/
+    python tools/extract_seeds.py reference/ dozimetrix/seeds/codes/
 """
 
 from __future__ import annotations

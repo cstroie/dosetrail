@@ -2,10 +2,10 @@
 
 import datetime as dt
 
-from dosimetrix import classify
-from dosimetrix.db.models import Device, Event, Study
-from dosimetrix.reports import operators
-from dosimetrix.seeds.loader import load_all
+from dozimetrix import classify
+from dozimetrix.db.models import Device, Event, Study
+from dozimetrix.reports import operators
+from dozimetrix.seeds.loader import load_all
 
 AGE_2Y = int(2 * 365.25) + 30
 DAY = dt.datetime(2026, 8, 1)

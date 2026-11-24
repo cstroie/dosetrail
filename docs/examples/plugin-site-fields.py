@@ -2,10 +2,10 @@
 
 It runs once at start-up, with the server's rights: keep that folder for the administrator. It
 registers a field and a transform that a spec can then name, exactly like the built-in ones
-(``dosimetrix specs fields`` lists them).
+(``dozimetrix specs fields`` lists them).
 """
 
-from dosimetrix.specs.registry import field, transform
+from dozimetrix.specs.registry import field, transform
 
 
 @field("site.hospital")

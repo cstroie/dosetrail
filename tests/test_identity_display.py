@@ -1,4 +1,4 @@
-from dosimetrix.ingest.store import display_name
+from dozimetrix.ingest.store import display_name
 
 
 def test_placeholder_station_falls_back_to_model():

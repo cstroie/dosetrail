@@ -6,14 +6,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from dosimetrix import classify
-from dosimetrix.api.app import create_app
-from dosimetrix.config import Settings
-from dosimetrix.db.migrate import upgrade
-from dosimetrix.db.models import AuditLog, Device, Event, Patient, Study, User
-from dosimetrix.db.session import make_engine, make_sessionmaker
-from dosimetrix.security import hash_password
-from dosimetrix.seeds.loader import load_all
+from dozimetrix import classify
+from dozimetrix.api.app import create_app
+from dozimetrix.config import Settings
+from dozimetrix.db.migrate import upgrade
+from dozimetrix.db.models import AuditLog, Device, Event, Patient, Study, User
+from dozimetrix.db.session import make_engine, make_sessionmaker
+from dozimetrix.security import hash_password
+from dozimetrix.seeds.loader import load_all
 
 SECRET = b"s" * 32
 NOW = dt.datetime(2026, 11, 21, 10, 0)
@@ -314,7 +314,7 @@ def test_drl_dataset_and_summary_downloads(client):
     assert client.get("/api/drl/dataset").status_code == 403
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/drl/dataset", params={"q": "", "format": "json"})
-    assert r.status_code == 200 and r.json()["dataset"] == "dosimetrix-drl"
+    assert r.status_code == 200 and r.json()["dataset"] == "dozimetrix-drl"
     s = client.get("/api/drl/summary", params={"q": "", "format": "csv", "min_n": 1})
     assert s.status_code == 200 and s.content.decode("utf-8-sig").startswith("unit,device,")
     assert client.get("/api/drl/summary", params={"set": "x"}).status_code == 400
@@ -367,7 +367,7 @@ def test_art12_needs_exporter_and_pid_for_the_workbooks(client):
 
 
 def test_every_page_in_the_web_folder_is_served(client):
-    from dosimetrix.api.app import PAGES, WEB
+    from dozimetrix.api.app import PAGES, WEB
 
     login(client, "viewer", "viewer-pass-1")
     on_disk = {p.name for p in WEB.glob("*.html")}
@@ -443,35 +443,35 @@ def test_plan_of_measures_crud_and_deadline_marking(client):
 def test_exports_list_run_and_audit_through_one_pair_of_routes(client):
     login(client, "viewer", "viewer-pass-1")
     ls = client.get("/api/exports").json()
-    cohort = next(x for x in ls["specs"] if x["id"] == "dosimetrix-cohort")
+    cohort = next(x for x in ls["specs"] if x["id"] == "dozimetrix-cohort")
     assert cohort["allowed"] is False and ls["problems"] == [] and ls["plugins"] == []
-    assert client.get("/api/exports/dosimetrix-cohort",
+    assert client.get("/api/exports/dozimetrix-cohort",
                       params={"from": "2026-01-01", "to": "2026-12-31"}).status_code == 403
     login(client, "regist", "regist-pass-12")
     assert next(x for x in client.get("/api/exports").json()["specs"]
-                if x["id"] == "dosimetrix-cohort")["allowed"] is True
-    r = client.get("/api/exports/dosimetrix-cohort",
+                if x["id"] == "dozimetrix-cohort")["allowed"] is True
+    r = client.get("/api/exports/dozimetrix-cohort",
                    params={"from": "2026-01-01", "to": "2026-12-31", "q": "modality:XA"})
     assert r.status_code == 200, r.text
     sheet = r.json()["books"][0]["sheets"][0]
     assert sheet["columns"][0] == "Study" and len(sheet["rows"]) == 1  # the one XA study
-    x = client.get("/api/exports/dosimetrix-cohort", params={
+    x = client.get("/api/exports/dozimetrix-cohort", params={
         "from": "2026-01-01", "to": "2026-12-31", "q": "", "format": "xlsx"})
     assert x.status_code == 200 and x.content[:2] == b"PK"
-    assert client.get("/api/exports/dosimetrix-cohort", params={"from": "x"}).status_code == 400
-    assert client.get("/api/exports/dosimetrix-cohort", params={
+    assert client.get("/api/exports/dozimetrix-cohort", params={"from": "x"}).status_code == 400
+    assert client.get("/api/exports/dozimetrix-cohort", params={
         "from": "2026-01-01", "to": "2026-12-31", "format": "zip"}).status_code == 400
     assert client.get("/api/exports/nope").status_code == 404
     login(client, "boss", "boss-pass-123")
     log = client.get("/api/audit", params={"action": "report"}).json()["rows"]
-    assert any(x["target"] == "spec:dosimetrix-cohort@1:json" and x["user"] == "regist"
+    assert any(x["target"] == "spec:dozimetrix-cohort@1:json" and x["user"] == "regist"
                for x in log)
 
 
 def test_survey_export_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/survey/export", params={"month": "2026-11", "q": "", "format": "json"})
-    assert r.status_code == 200 and r.json()["dataset"] == "dosimetrix-paediatric-survey"
+    assert r.status_code == 200 and r.json()["dataset"] == "dozimetrix-paediatric-survey"
     assert client.get("/api/survey/export", params={"month": "nov"}).status_code == 400
 
 
@@ -484,7 +484,7 @@ def test_quality_endpoint_and_study_findings(client):
 
 
 def test_alert_endpoints(client):
-    from dosimetrix import alerts
+    from dozimetrix import alerts
 
     url = str(client.app.state.settings.database_url)
     with make_sessionmaker(make_engine(url))() as s:
@@ -636,7 +636,7 @@ def test_user_rename_and_remove(client):
 
 
 def test_cli_user_rename_and_delete(client):
-    from dosimetrix import cli
+    from dozimetrix import cli
 
     url = str(client.app.state.settings.database_url)
     base = ["user", "--url", url]
@@ -657,7 +657,7 @@ def test_cli_user_rename_and_delete(client):
 
 
 def test_alerts_page_api(client):
-    from dosimetrix import alerts
+    from dozimetrix import alerts
 
     url = str(client.app.state.settings.database_url)
     with make_sessionmaker(make_engine(url))() as s:

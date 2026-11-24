@@ -7,10 +7,10 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
-from dosimetrix.config import load_settings
-from dosimetrix.db.migrate import upgrade
-from dosimetrix.db.models import Base
-from dosimetrix.db.session import make_engine, make_sessionmaker
+from dozimetrix.config import load_settings
+from dozimetrix.db.migrate import upgrade
+from dozimetrix.db.models import Base
+from dozimetrix.db.session import make_engine, make_sessionmaker
 
 BACKENDS = ["sqlite"]
 TEST_URL = load_settings().test_database_url
@@ -56,8 +56,8 @@ def session(engine):
 
 @pytest.fixture(autouse=True)
 def _no_explicit_config():
-    """`dosimetrix --config` sets a process-wide path: never let one test's leak into the next."""
+    """`dozimetrix --config` sets a process-wide path: never let one test's leak into the next."""
     yield
-    from dosimetrix import config
+    from dozimetrix import config
 
     config.set_config_path(None)

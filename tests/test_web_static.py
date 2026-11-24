@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-WEB = Path(__file__).resolve().parent.parent / "dosimetrix" / "web"
+WEB = Path(__file__).resolve().parent.parent / "dozimetrix" / "web"
 PAGES = sorted(WEB.glob("*.html"))
 REF = re.compile(r'(?:href|src)="([^"#?]+)')
 IMPORT = re.compile(r"""^\s*import\s[^'"]*['"]([^'"]+)['"]""", re.M)

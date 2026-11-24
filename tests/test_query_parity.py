@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
-from dosimetrix.api.query import conditions, parse
-from dosimetrix.db.models import Device, Event, Patient, Study, StudyIndication
+from dozimetrix.api.query import conditions, parse
+from dozimetrix.db.models import Device, Event, Patient, Study, StudyIndication
 
 HERE = Path(__file__).parent
 CORPUS = json.loads((HERE / "query_corpus.json").read_text())
@@ -54,7 +54,7 @@ def corpus_db(session):
 def _code(session, code: str) -> int:
     from sqlalchemy import select
 
-    from dosimetrix.db.models import Code, CodeSystem
+    from dozimetrix.db.models import Code, CodeSystem
 
     system = session.scalar(select(CodeSystem).filter_by(key="ro-nom-indications"))
     if system is None:

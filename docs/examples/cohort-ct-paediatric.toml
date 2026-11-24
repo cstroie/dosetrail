@@ -1,6 +1,6 @@
 # EXAMPLE: a cohort extract another hospital could drop into its specs folder.
-# Copy it to <config dir>/specs/ (see [specs] dir in dosimetrix.toml); it shows up on the Reports
-# page and in `dosimetrix specs list` with no restart. Nothing in it names a person (the patient is
+# Copy it to <config dir>/specs/ (see [specs] dir in dozimetrix.toml); it shows up on the Reports
+# page and in `dozimetrix specs list` with no restart. Nothing in it names a person (the patient is
 # the program's own pseudonym, the age is coarse), so the exporter role is enough.
 
 [spec]

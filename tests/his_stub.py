@@ -13,7 +13,7 @@ import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-USER, PASSWORD = "dosimetrix", "s3cret"
+USER, PASSWORD = "dozimetrix", "s3cret"
 VITALS = "http://hl7.org/fhir/us/vitals/StructureDefinition/"
 NS = "http://stub/fhir/NamingSystem/"
 

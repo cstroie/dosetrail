@@ -2,11 +2,11 @@
 
 import datetime as dt
 
-from dosimetrix import demographics, nationalid
-from dosimetrix.db.models import AgePrecision, Patient, Study
-from dosimetrix.ingest.parse import parse
-from dosimetrix.ingest.store import Store
-from dosimetrix.nationalid import ro_cnp, ro_cnp_check_digit
+from dozimetrix import demographics, nationalid
+from dozimetrix.db.models import AgePrecision, Patient, Study
+from dozimetrix.ingest.parse import parse
+from dozimetrix.ingest.store import Store
+from dozimetrix.nationalid import ro_cnp, ro_cnp_check_digit
 from tests import dicom_factory as f
 
 SECRET = b"t" * 32

@@ -1,16 +1,16 @@
-# Dosimetrix with MariaDB. Before the first start:
-#   cp deploy/docker/dosimetrix.toml deploy/docker/dosimetrix.local.toml   # edit it
+# Dozimetrix with MariaDB. Before the first start:
+#   cp deploy/docker/dozimetrix.toml deploy/docker/dozimetrix.local.toml   # edit it
 #   create a .env file with MARIADB_PASSWORD=... and MARIADB_ROOT_PASSWORD=...
 #   docker compose up -d db web receive
 #   docker compose logs web | grep 'setup token'   then open /setup (first-run wizard)
 # Optional: "qr" (query/retrieve from the PACS, needs [pacs]) and "his" (HIS worker).
-x-dosimetrix: &dosimetrix
+x-dozimetrix: &dozimetrix
   build: .
-  image: dosimetrix:latest
+  image: dozimetrix:latest
   restart: unless-stopped
   volumes:
-    - dosimetrix-data:/var/lib/dosimetrix
-    - ./deploy/docker/dosimetrix.local.toml:/etc/dosimetrix/dosimetrix.toml:ro
+    - dosimetrix-data:/var/lib/dozimetrix
+    - ./deploy/docker/dozimetrix.local.toml:/etc/dozimetrix/dozimetrix.toml:ro
   depends_on:
     db:
       condition: service_healthy
@@ -33,13 +33,13 @@ services:
       retries: 10
 
   web:
-    <<: *dosimetrix
+    <<: *dozimetrix
     command: ["serve"]
     ports:
       - "127.0.0.1:8104:8104"   # behind an HTTPS reverse proxy on the host
 
   receive:
-    <<: *dosimetrix
+    <<: *dozimetrix
     command: ["receive"]
     ports:
       - "11112:11112"
@@ -47,15 +47,15 @@ services:
       - web
 
   qr:
-    <<: *dosimetrix
-    command: ["sh", "-c", "while true; do dosimetrix qr --days 2; sleep 3600; done"]
+    <<: *dozimetrix
+    command: ["sh", "-c", "while true; do dozimetrix qr --days 2; sleep 3600; done"]
     entrypoint: []
     depends_on:
       - web
     profiles: ["qr"]
 
   his:
-    <<: *dosimetrix
+    <<: *dozimetrix
     command: ["his", "run"]
     depends_on:
       - web

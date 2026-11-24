@@ -4,7 +4,7 @@ import datetime as dt
 
 from sqlalchemy import select
 
-from dosimetrix.db.models import Device, Event, Patient, Study
+from dozimetrix.db.models import Device, Event, Patient, Study
 
 
 def test_long_event_comment_is_stored(session):

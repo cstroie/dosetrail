@@ -5,7 +5,7 @@ Older imports took a placeholder birth date (1753-01-01, "unknown" in SQL Server
 one, so the study got an "exact" age of 120-270 years. This tool
 
 1. clears every patient birth date before 1901 (a valid national ID has already replaced the
-   ones it could: `dosimetrix cnp backfill --apply`);
+   ones it could: `dozimetrix cnp backfill --apply`);
 2. gives each study older than 120 years the age the legacy OpenREM dump recorded (DICOM
    Patient Age, else the decimal age), when that age is plausible (0-100 years);
 3. sets the age of every other such study to unknown;
@@ -28,11 +28,11 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from dosimetrix import growth
-from dosimetrix.config import load_settings
-from dosimetrix.db.models import AgePrecision, AuditLog, Patient, Study
-from dosimetrix.db.session import make_engine, make_sessionmaker
-from dosimetrix.patient_age import parse_dicom_age
+from dozimetrix import growth
+from dozimetrix.config import load_settings
+from dozimetrix.db.models import AgePrecision, AuditLog, Patient, Study
+from dozimetrix.db.session import make_engine, make_sessionmaker
+from dozimetrix.patient_age import parse_dicom_age
 
 MAX_DAYS = 120 * 365      # the studies to repair: older than this
 PLAUSIBLE_DAYS = 100 * 365  # a recovered age above this is not believed

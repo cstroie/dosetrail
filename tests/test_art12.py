@@ -6,11 +6,11 @@ import zipfile
 
 import pytest
 
-from dosimetrix import classify, nationalid
-from dosimetrix.db.models import Device, Patient, Study
-from dosimetrix.db.models import Event as Ev
-from dosimetrix.reports import art12
-from dosimetrix.seeds.loader import load_all
+from dozimetrix import classify, nationalid
+from dozimetrix.db.models import Device, Patient, Study
+from dozimetrix.db.models import Event as Ev
+from dozimetrix.reports import art12
+from dozimetrix.seeds.loader import load_all
 
 Y2, Y7, ADULT = 730, 2557, 14000
 
@@ -104,7 +104,7 @@ def test_nuclear_medicine_row_and_general_sheet(books):
 def test_every_seeded_code_exists_in_the_national_systems(session):
     from sqlalchemy import select
 
-    from dosimetrix.db.models import Code, CodeSystem
+    from dozimetrix.db.models import Code, CodeSystem
 
     load_all(session)
     for fam in art12.seed():

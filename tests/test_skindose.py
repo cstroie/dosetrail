@@ -4,7 +4,7 @@ from types import SimpleNamespace as E
 
 import pytest
 
-from dosimetrix import skindose as sd
+from dozimetrix import skindose as sd
 
 ADULT = 40 * 366  # days
 
@@ -76,7 +76,7 @@ def test_update_psd_queries_do_not_grow_with_studies(session):
     """The region of every study of a batch comes from one query (no query per study)."""
     from sqlalchemy import event
 
-    from dosimetrix.db.models import Classification, Code, CodeSystem, Event, Study
+    from dozimetrix.db.models import Classification, Code, CodeSystem, Event, Study
 
     sysm = CodeSystem(key="t-sys", name="t")
     head = Code(system=sysm, code="A1", meaning="head")

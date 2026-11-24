@@ -5,7 +5,7 @@ import socket
 
 import pytest
 
-from dosimetrix.ingest.parse import parse as parse_object
+from dozimetrix.ingest.parse import parse as parse_object
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian
 from pynetdicom import AE, evt
@@ -20,11 +20,11 @@ from pynetdicom.sop_class import (
 )
 from sqlalchemy import select
 
-from dosimetrix.db.migrate import upgrade
-from dosimetrix.db.models import Study
-from dosimetrix.db.session import make_engine, make_sessionmaker
-from dosimetrix.net import qr
-from dosimetrix.net.spool import Spool, SpoolWorker
+from dozimetrix.db.migrate import upgrade
+from dozimetrix.db.models import Study
+from dozimetrix.db.session import make_engine, make_sessionmaker
+from dozimetrix.net import qr
+from dozimetrix.net.spool import Spool, SpoolWorker
 from tests import dicom_factory as f
 
 DAY = dt.date(2025, 11, 6)
@@ -164,7 +164,7 @@ def test_backfill_day(env):
     us.Modality = "US"
     pacs = FakePACS([ct_sr, dx, rf_sr, rf_img, us])
     try:
-        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOZIMETRIX", timeout=10)
         stats = qr.QRStats()
         qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None,
                    workers=3)
@@ -204,13 +204,13 @@ def test_dry_run_and_done_days(env):
 
 
 def test_partial_modality_run_does_not_finish_the_day(tmp_path, monkeypatch):
-    from dosimetrix import cli
+    from dozimetrix import cli
 
     calls = []
     monkeypatch.setattr(qr, "run_day", lambda *a, **k: calls.append(a[6]))  # mods
     url = f"sqlite:///{tmp_path / 'p.sqlite3'}"
     upgrade(url)
-    cfg = tmp_path / "dosimetrix.toml"
+    cfg = tmp_path / "dozimetrix.toml"
     cfg.write_text(f'[security]\nsecret_file = "{tmp_path / "secret"}"\n')
     base = ["--config", str(cfg), "qr", "--url", url, "--host", "h", "--aec", "P",
             "--from", "2025-11-06",
@@ -245,16 +245,16 @@ def test_queries_one_modality_at_a_time_and_splits_capped_days(env):
 
 
 def test_retrieve_with_c_move(env):
-    from dosimetrix.net.scp import Receiver
+    from dozimetrix.net.scp import Receiver
 
     maker, spool, worker, drain = env
     rx_port = _free_port()
-    receiver = Receiver(spool, "DOSIMETRIX", rx_port, "127.0.0.1")
+    receiver = Receiver(spool, "DOZIMETRIX", rx_port, "127.0.0.1")
     receiver.start()
     pacs = FakePACS([_date(f.ct_rdsr(study_uid="8.1", sop_uid="8.1.1"))],
-                    move_to={"DOSIMETRIX": ("127.0.0.1", rx_port)})
+                    move_to={"DOZIMETRIX": ("127.0.0.1", rx_port)})
     try:
-        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10,
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOZIMETRIX", timeout=10,
                        retrieve="move")
         stats = qr.QRStats()
         qr.run_day(node, DAY, spool, drain, maker, stats, {"SR"}, pause=0,
@@ -271,8 +271,8 @@ def test_pet_ct_whose_images_came_first_gets_its_ct_dose_report(env):
     maker, spool, worker, drain = env
     pet = _date(f.pet_image(study_uid="5.9", sop_uid="5.9.1"))
     ct_sr = _date(f.ct_rdsr(study_uid="5.9", sop_uid="5.9.2"))
-    from dosimetrix.ingest.parse import parse
-    from dosimetrix.ingest.store import Store
+    from dozimetrix.ingest.parse import parse
+    from dozimetrix.ingest.store import Store
 
     with maker() as s:  # the PET images were imported before the CT dose report existed
         Store(s, b"q" * 32).store(parse(pet))
@@ -283,7 +283,7 @@ def test_pet_ct_whose_images_came_first_gets_its_ct_dose_report(env):
         assert qr.needs_ct_dose(s, "5.9")
     pacs = FakePACS([pet, ct_sr])
     try:
-        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOZIMETRIX", timeout=10)
         stats = qr.QRStats()
         qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None)
         assert stats.counts["ct_dose_studies"] == 1 and stats.counts["sr_objects"] == 1
@@ -314,7 +314,7 @@ def test_ct_without_a_dose_report_falls_back_to_one_image_per_series(env):
         _date(o)
     pacs = FakePACS(imgs)
     try:
-        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOZIMETRIX", timeout=10)
         stats = qr.QRStats()
         qr.run_day(node, DAY, spool, drain, maker, stats, pause=0, progress=lambda _m: None)
         assert stats.counts["ct_header_images"] == 2  # one image per series, not all four
@@ -334,7 +334,7 @@ def test_ct_without_a_dose_report_falls_back_to_one_image_per_series(env):
     sr = _date(f.ct_rdsr(study_uid="6.9", sop_uid="6.9.50"))
     pacs = FakePACS([*imgs, sr])
     try:
-        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOZIMETRIX", timeout=10)
         qr.run_day(node, DAY, spool, drain, maker, qr.QRStats(), pause=0,
                    progress=lambda _m: None)
         with maker() as s:
@@ -370,7 +370,7 @@ def test_old_header_estimates_are_improved_by_a_second_read(env):
         _date(o)
     pacs = FakePACS(imgs)
     try:
-        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOSIMETRIX", timeout=10)
+        node = qr.Node("127.0.0.1", pacs.port, "FAKEPACS", "DOZIMETRIX", timeout=10)
         # the study as an older version stored it: count x thickness (3 x 5 mm = 15 mm)
         old = f.ct_series_image(study_uid="6.8", sop_uid="6.8.0", series_uid="6.8.s1",
                                 ctdivol=10.0, count=3, spacing=5.0, acquisition="SEQUENCED",
@@ -379,7 +379,7 @@ def test_old_header_estimates_are_improved_by_a_second_read(env):
         parsed = parse_object(old)
         parsed.events[0]["extra_json"].pop("dlp_method")
         with maker() as s:
-            from dosimetrix.ingest.store import Store
+            from dozimetrix.ingest.store import Store
             Store(s, b"x" * 32).store(parsed)
             s.commit()
         stats = qr.QRStats()

@@ -2,9 +2,9 @@
 
 from fastapi.testclient import TestClient
 
-from dosimetrix.api.app import create_app
-from dosimetrix.config import Settings
-from dosimetrix.db.session import make_engine
+from dozimetrix.api.app import create_app
+from dozimetrix.config import Settings
+from dozimetrix.db.session import make_engine
 
 SECRET = b"s" * 32
 
@@ -43,7 +43,7 @@ def test_first_run(tmp_path, monkeypatch):
     # signed in now: the later steps are admin calls
     assert c.post("/api/setup/site", json={"name": "Test Hospital", "code": "th1"}).json() \
         == {"name": "Test Hospital", "code": "TH1"}
-    from dosimetrix import setup
+    from dozimetrix import setup
 
     monkeypatch.setattr(setup, "install_growth", lambda settings: ["ok"])
     assert c.post("/api/setup/growth").json() == {"report": ["ok"]}

@@ -5,27 +5,27 @@ audit, a form another hospital or country uses. The program finds it, checks it,
 command line, in the API, on the Reports page and (if it has a deadline) on the overview. There is no
 route, command or page to write for a new one.
 
-Every national report Dozimetrix makes is itself a bundled spec (`dosimetrix/seeds/specs/`), and its
+Every national report Dozimetrix makes is itself a bundled spec (`dozimetrix/seeds/specs/`), and its
 constants (30 patients, 20 patients, February-March, the 20th of the month…) are the spec's `[rules]`,
 each with the article it comes from. An amendment of an order is an edit to a number in a file.
 
 ## Where files go, and how to see them
 
 ```toml
-# dosimetrix.toml (the one configuration file)
+# dozimetrix.toml (the one configuration file)
 [specs]
-dir = "~/.config/dosimetrix/specs"        # the default: <config dir>/specs
-plugins_dir = "~/.config/dosimetrix/plugins"
+dir = "~/.config/dozimetrix/specs"        # the default: <config dir>/specs
+plugins_dir = "~/.config/dozimetrix/plugins"
 ```
 
 Drop `something.toml` into the specs folder. The folder is re-read when a file changes, so the next
 listing shows it, with no restart. A site spec with the same `id` as a bundled one replaces it.
 
 ```sh
-dosimetrix specs list                 # every spec, bundled and site, and any file that failed
-dosimetrix specs fields               # the fields and transforms a spec may name
-dosimetrix specs run <id> -p year=2026 -o out.xlsx     # the extension picks the format
-dosimetrix specs run <id> -p year=2026                 # no file: JSON on the screen
+dozimetrix specs list                 # every spec, bundled and site, and any file that failed
+dozimetrix specs fields               # the fields and transforms a spec may name
+dozimetrix specs run <id> -p year=2026 -o out.xlsx     # the extension picks the format
+dozimetrix specs run <id> -p year=2026                 # no file: JSON on the screen
 ```
 
 A file with an error is **not fatal**: it is listed as a problem (`specs list` prints it; an
@@ -116,7 +116,7 @@ that fails to import is skipped and reported; the file name and SHA-256 of every
 written to the audit log, so a change is visible. A spec itself can never run code.
 
 ```python
-from dosimetrix.specs.registry import field
+from dozimetrix.specs.registry import field
 
 @field("site.hospital")
 def hospital(row):
@@ -126,8 +126,8 @@ def hospital(row):
 
 ## Try it, then keep it
 
-1. Copy `docs/examples/cohort-ct-paediatric.toml` to the specs folder and `dosimetrix specs list`.
-2. `dosimetrix specs run example-ct-under-5 -p from=2026-09-01 -p to=2026-09-30` prints the rows.
+1. Copy `docs/examples/cohort-ct-paediatric.toml` to the specs folder and `dozimetrix specs list`.
+2. `dozimetrix specs run example-ct-under-5 -p from=2026-09-01 -p to=2026-09-30` prints the rows.
 3. Open the Reports page: the spec is in the report selector with its parameters and a preview.
 4. Change a rule's value, run it again: the file's information sheet shows the new number and its
    article.
@@ -142,9 +142,9 @@ form would be. The tests load both, so they cannot drift from the program.
 | `ro-insp-1255-quarterly` | table | Quarterly centralised report, Order 1255/2016 (art. 7(3): 30 patients per device) |
 | `ro-insp-1255-art12` | records | Annual DRL return: 20 patients per exam and device, February-March |
 | `ro-ms1245-drl-trend` | series | Quarterly means against the DRLs over 6 quarters |
-| `dosimetrix-operator-doses` | outliers | Doses per operator against the department |
-| `dosimetrix-icrp135-grid` | compare | ICRP 135 / RP 185 groups beside the national grid |
-| `dosimetrix-icrp135-summary` | compare | Per room and facility, against a reference set |
+| `dozimetrix-operator-doses` | outliers | Doses per operator against the department |
+| `dozimetrix-icrp135-grid` | compare | ICRP 135 / RP 185 groups beside the national grid |
+| `dozimetrix-icrp135-summary` | compare | Per room and facility, against a reference set |
 | `ro-sdnp-paediatric-survey` | records | National paediatric survey, anonymised |
-| `dosimetrix-drl-dataset` | records | The pseudonymised DRL dataset |
-| `dosimetrix-cohort` | records | A cohort of studies by typed query |
+| `dozimetrix-drl-dataset` | records | The pseudonymised DRL dataset |
+| `dozimetrix-cohort` | records | A cohort of studies by typed query |

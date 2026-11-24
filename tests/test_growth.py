@@ -4,8 +4,8 @@ import datetime as dt
 
 import pytest
 
-from dosimetrix import growth
-from dosimetrix.db.models import Patient, Study
+from dozimetrix import growth
+from dozimetrix.db.models import Patient, Study
 
 # real WHO coefficients (boys at birth; girls 12 months; boys 10 y / 120 months)
 HEAD = "sex\tage\tl\tm\ts\n"
@@ -94,7 +94,7 @@ def test_cdc_beyond_ten_years(tmp_path):
 
 
 def test_estimate_weights(session, tables, monkeypatch):
-    from dosimetrix.db.models import SizeSource
+    from dozimetrix.db.models import SizeSource
 
     monkeypatch.setattr(growth, "tables", lambda directory=None: tables)
     boy, nosex = Patient(pseudo_id="P-E1", sex="M"), Patient(pseudo_id="P-E2", sex=None)
@@ -131,7 +131,7 @@ def test_estimate_weights(session, tables, monkeypatch):
 
 
 def test_known_source_weights_are_kept_unless_unrealistic(session, tables, monkeypatch):
-    from dosimetrix.db.models import SizeSource
+    from dozimetrix.db.models import SizeSource
 
     monkeypatch.setattr(growth, "tables", lambda directory=None: tables)
     boy = Patient(pseudo_id="P-K1", sex="M")

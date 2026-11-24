@@ -230,7 +230,7 @@ def ct_series_image(study_uid="1.2.3.600", sop_uid="1.2.3.600.1", series_uid="1.
     ds.TotalCollimationWidth = 20.0
     ds.ProtocolName = "HEAD"
     if count:
-        from dosimetrix.ingest.parse import mark_series_instances
+        from dozimetrix.ingest.parse import mark_series_instances
         mark_series_instances(ds, count)
     return ds
 
