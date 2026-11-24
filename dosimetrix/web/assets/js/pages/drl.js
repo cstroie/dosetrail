@@ -5,12 +5,11 @@
 import '../components/dx-shell.js';
 import '../components/dx-query-bar.js';
 import { h, clear, append, toast } from '../core/dom.js';
-import { num, smart } from '../core/format.js';
+import { num, smart, shown, shownUnit } from '../core/format.js';
 import { drlSets, drlCompare, drlDownloadUrl } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
 const page = document.getElementById('page');
-const UNITS = { 'mGy.cm': 'mGy·cm', 'Gy.cm2': 'Gy·cm²', 'mGy.cm2': 'mGy·cm²', mGy: 'mGy', MBq: 'MBq' };
 const STATUS = {
   well_above: ['alert', '> 1.5× DRL'],
   above: ['warn', 'Above DRL'],
@@ -32,7 +31,6 @@ const state = {
 };
 const GROUP_LABEL = { CT: 'CT', DX: 'DX/CR', RF: 'RF', XA: 'XA', MG: 'MG', NM: 'NM', PT: 'PT' };
 
-function unit(u) { return UNITS[u] || u; }
 
 function tag(status) {
   const [cls, label] = STATUS[status] || ['', status];
@@ -138,12 +136,12 @@ function draw() {
         h('td', { title: r.exam }, i ? '' : r.exam_meaning),
         h('td', {}, i ? '' : (r.band_label || 'all')),
         h('td', {}, i ? '' : `${QUANTITY[r.quantity] || r.quantity} · ${r.applies_to}`),
-        h('td', { class: 'r' }, i ? '' : `${smart(r.reference)} ${unit(r.unit)}`),
+        h('td', { class: 'r' }, i ? '' : `${shown(r.reference, r.unit)} ${shownUnit(r.unit).unit}`),
         h('td', {}, g && g.device_name ? g.device_name : ''),
         h('td', { class: 'r' }, g ? num(g.n) : '—'),
-        h('td', { class: 'r' }, g && g.p25 != null ? smart(g.p25) : ''),
-        h('td', { class: 'r' }, g && g.median != null ? smart(g.median) : ''),
-        h('td', { class: 'r' }, g && g.p75 != null ? smart(g.p75) : ''),
+        h('td', { class: 'r' }, g && g.p25 != null ? shown(g.p25, r.unit) : ''),
+        h('td', { class: 'r' }, g && g.median != null ? shown(g.median, r.unit) : ''),
+        h('td', { class: 'r' }, g && g.p75 != null ? shown(g.p75, r.unit) : ''),
         h('td', {}, g ? ratioBar(g.ratio) : (r.reason || '')),
         h('td', {}, tag(g ? g.status : r.status))));
     });

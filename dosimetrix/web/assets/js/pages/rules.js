@@ -5,6 +5,7 @@ import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
 import { alertRules, updateAlertRule } from '../core/api.js';
+import { shownUnit } from '../core/format.js';
 
 const page = document.getElementById('page');
 const KIND = { threshold: 'Threshold', drl_ratio: '× national DRL', cumulative: 'Cumulative / patient', count: 'Studies / patient', pregnant: 'Pregnant patient', device_silent: 'Silent device', device_drift: 'Device dose drift', drl_sustained: 'Room above DRL, 2 quarters' };
@@ -16,13 +17,14 @@ async function render() {
   const body = h('tbody');
   for (const r of rules) {
     const enabled = h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': 'Enabled' });
-    const threshold = h('input', { class: 'input num-input w-90', type: 'number', step: 'any', value: r.threshold, 'aria-label': 'Threshold' });
+    const su = shownUnit(r.unit);  // entered in mGy / mGy·cm², stored in the rule's unit (Gy, Gy·cm²)
+    const threshold = h('input', { class: 'input num-input w-90', type: 'number', step: 'any', value: r.threshold == null ? '' : +(r.threshold * su.f).toPrecision(6), 'aria-label': 'Threshold' });
     const severity = h('select', { class: 'input', 'aria-label': 'Severity' }, ['warn', 'alert'].map((s) => h('option', { value: s, selected: s === r.severity }, s)));
     const notifyBox = h('input', { type: 'checkbox', checked: r.notify, 'aria-label': 'Notify' });
     const save = h('button', { class: 'btn xs', type: 'button' }, 'Save');
     save.addEventListener('click', async () => {
       try {
-        const res = await updateAlertRule(r.id, { enabled: enabled.checked, threshold: Number(threshold.value), severity: severity.value, notify: notifyBox.checked });
+        const res = await updateAlertRule(r.id, { enabled: enabled.checked, threshold: Number(threshold.value) / su.f, severity: severity.value, notify: notifyBox.checked });
         toast(Object.keys(res.changes).length ? `Saved: ${Object.keys(res.changes).join(', ')}` : 'No change');
       } catch (e) { toast(e.message); }
     });
@@ -30,7 +32,7 @@ async function render() {
     body.append(h('tr', {},
       h('td', {}, enabled), h('td', { title: r.note || '' }, h('div', {}, r.name), h('div', { class: 'muted small' }, r.note || '')),
       h('td', {}, KIND[r.kind] || r.kind), h('td', {}, scope || 'all'),
-      h('td', {}, r.kind === 'pregnant' ? h('span', { class: 'muted' }, '—') : [threshold, ' ', h('span', { class: 'muted small' }, r.unit || (r.kind === 'drl_ratio' ? '× DRL' : r.kind === 'count' ? 'studies' : r.kind === 'device_drift' ? '× usual' : r.kind === 'drl_sustained' ? '× DRL' : ''))]),
+      h('td', {}, r.kind === 'pregnant' ? h('span', { class: 'muted' }, '—') : [threshold, ' ', h('span', { class: 'muted small' }, (r.unit && su.unit) || (r.kind === 'drl_ratio' ? '× DRL' : r.kind === 'count' ? 'studies' : r.kind === 'device_drift' ? '× usual' : r.kind === 'drl_sustained' ? '× DRL' : ''))]),
       h('td', {}, severity), h('td', {}, notifyBox), h('td', {}, save)));
   }
   page.append(h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },

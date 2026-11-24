@@ -6,11 +6,11 @@ import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear } from '../core/dom.js';
 import { drlSets, drlSet } from '../core/api.js';
+import { shownUnit } from '../core/format.js';
 
 const page = document.getElementById('page');
 const QTY = { dlp: 'DLP', ctdivol: 'CTDIvol', dap: 'DAP', kae: 'Ka,e', mgd: 'MGD', activity: 'Activity' };
 const APPLIES = { series: 'per series', study: 'per study', exposure: 'per exposure' };
-const UNIT = { 'mGy.cm': 'mGy·cm', 'Gy.cm2': 'Gy·cm²', 'mGy.cm2': 'mGy·cm²', 'cGy.cm2': 'cGy·cm²' };
 const fmt = (v) => (v >= 100 ? Math.round(v).toString() : Number(v.toPrecision(3)).toString());
 
 async function render() {
@@ -46,8 +46,8 @@ async function render() {
         h('td', {}, first ? (v.modality || '') : ''),
         h('td', {}, v.band_label || 'all patients'),
         h('td', {}, QTY[v.quantity] || v.quantity),
-        h('td', { class: 'num mono' }, fmt(v.value)),
-        h('td', {}, UNIT[v.unit] || v.unit),
+        h('td', { class: 'num mono' }, fmt(v.value * shownUnit(v.unit).f)),
+        h('td', {}, shownUnit(v.unit).unit),
         h('td', { class: 'muted' }, APPLIES[v.applies_to] || v.applies_to)));
     }
     holder.append(h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },

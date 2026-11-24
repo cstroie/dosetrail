@@ -37,6 +37,23 @@ export function dap(gycm2, extraDigits = 0) {
   return extraDigits > 0 || Math.abs(v) < 10 ? smart(v) : num(v, u.digits);
 }
 
+// unit codes as the server sends them (DRL sets, statistics) → Gy·cm² factor
+const TO_GYCM2 = { 'Gy.cm2': 1, 'dGy.cm2': 0.1, 'cGy.cm2': 0.01, 'mGy.cm2': 0.001, 'µGy.m2': 0.01, 'uGy.m2': 0.01, 'Gy.m2': 1e4 };
+const LABELS = { 'mGy.cm': 'mGy·cm', 'mA.s': 'mAs', 1: '' };
+
+/** How a value stored in `code` is shown: DAP in the user's DAP unit, Gy as mGy, the rest as is.
+ *  → { f: multiply the stored value by this, unit: label to print } */
+export function shownUnit(code) {
+  if (code === 'Gy') return { f: 1000, unit: 'mGy' };
+  if (code in TO_GYCM2) return { f: TO_GYCM2[code] * DAP_UNITS[dapUnit()].factor, unit: dapUnit() };
+  return { f: 1, unit: LABELS[code] ?? code ?? '' };
+}
+
+/** A value stored in `code`, in the shown unit, without the unit: "284,600", "0.52". */
+export function shown(value, code) {
+  return value === null || value === undefined ? '—' : smart(value * shownUnit(code).f);
+}
+
 /** Air kerma (Ka,r, skin dose) in mGy: whole mGy from 10 up, decimals below. */
 export function mgy(value) {
   if (value === null || value === undefined) return '—';

@@ -701,7 +701,7 @@ def identify(session: Session, study_id: int) -> dict | None:
 
 def dose_statement(session: Session, study_id: int) -> dict | None:
     """What the patient is told in writing with the result (Order 1255/2016 art. 4): who, which
-    examination and the dose quantities that apply to it, in the units of the norm."""
+    examination and the dose quantities that apply to it (DAP in mGy·cm², as the pages show it)."""
     row = session.execute(select(Study, Patient).outerjoin(Patient, Patient.id == Study.patient_id)
                           .where(Study.id == study_id)).first()
     if row is None:
@@ -715,7 +715,7 @@ def dose_statement(session: Session, study_id: int) -> dict | None:
         if value is not None:
             doses.append({"key": key, "label": label, "value": value, "unit": unit, "note": note})
 
-    add("dap", "DAP", s.total_dap, "Gy·cm²")
+    add("dap", "DAP", s.total_dap * 1000 if s.total_dap is not None else None, "mGy·cm²")
     add("esak", "ESAK", esd if esd is not None else calc, "mGy",
         None if esd is not None else "calculated")
     add("rp", "Reference point dose (Ka,r)", s.total_rp_dose * 1000 if s.total_rp_dose is not None

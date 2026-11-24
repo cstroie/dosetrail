@@ -6,14 +6,13 @@
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
 import { h, clear, toast } from '../core/dom.js';
-import { num, smart } from '../core/format.js';
+import { num, shown, shownUnit } from '../core/format.js';
 import { uploadSurvey, surveyUploads, deleteSurveyUpload, nameInstitution, surveyNational, surveyNationalUrl } from '../core/api.js';
 
 const page = document.getElementById('page');
 const TONE = { below: 'ok', above: 'warn', well_above: 'alert' };
 const IQ = { ok: ['ok', '≤ 1.5'], wide: ['warn', '1.5–2.5'], very_wide: ['alert', '2.5–3'], extreme: ['alert', '> 3'] };
 const QTY = { dlp: 'DLP', ctdivol: 'CTDIvol', dap: 'DAP' };
-const UNIT = { 'mGy.cm': 'mGy·cm', 'Gy.cm2': 'Gy·cm²', mGy: 'mGy' };
 const ym = (d) => d.toISOString().slice(0, 7);
 const now = new Date();
 const state = { start: ym(new Date(now.getFullYear(), now.getMonth() - 12, 1)), end: ym(new Date(now.getFullYear(), now.getMonth() - 1, 1)), grid: 'rp185', estimated: false };
@@ -86,13 +85,13 @@ async function loadNational() {
       h('tbody', {}, r.rows.map((x) => h('tr', {},
         h('td', { title: x.exam }, x.exam_meaning), h('td', {}, x.group), h('td', {}, QTY[x.quantity] || x.quantity),
         h('td', { class: 'r' }, num(x.n)),
-        h('td', { class: 'r', title: x.institutions.map((i) => `${i.name || i.institution}: median ${smart(i.median)} (n ${i.n})${i.counts ? '' : ' — too few'}`).join('\n') }, `${x.n_institutions_counted}/${x.n_institutions}`),
-        h('td', { class: 'r' }, `${smart(x.national_median)} ${UNIT[x.unit] || x.unit}`,
+        h('td', { class: 'r', title: x.institutions.map((i) => `${i.name || i.institution}: median ${shown(i.median, x.unit)} (n ${i.n})${i.counts ? '' : ' — too few'}`).join('\n') }, `${x.n_institutions_counted}/${x.n_institutions}`),
+        h('td', { class: 'r' }, `${shown(x.national_median, x.unit)} ${shownUnit(x.unit).unit}`,
           x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT series reported on the 32 cm (body) phantom (about half the 16 cm value): left out' }, ` 32 cm left out: ${x.n_phantom32}`) : null),
-        h('td', { class: 'r' }, x.ndrl_proposal == null ? '—' : h('b', {}, smart(x.ndrl_proposal))),
+        h('td', { class: 'r' }, x.ndrl_proposal == null ? '—' : h('b', {}, shown(x.ndrl_proposal, x.unit))),
         h('td', {}, x.iq_flag ? h('span', { class: `tag ${IQ[x.iq_flag][0]}`, title: IQ[x.iq_flag][1] }, num(x.iq_factor, 2)) : ''),
-        h('td', { class: 'r' }, x.edrl == null ? '—' : smart(x.edrl)), h('td', {}, tag(x.status_edrl)),
-        h('td', { class: 'r' }, x.ndrl == null ? '—' : smart(x.ndrl)), h('td', {}, tag(x.status_ndrl)))))))));
+        h('td', { class: 'r' }, x.edrl == null ? '—' : shown(x.edrl, x.unit)), h('td', {}, tag(x.status_edrl)),
+        h('td', { class: 'r' }, x.ndrl == null ? '—' : shown(x.ndrl, x.unit)), h('td', {}, tag(x.status_ndrl)))))))));
 }
 
 render();

@@ -6,12 +6,11 @@ import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, toast } from '../core/dom.js';
-import { num, smart } from '../core/format.js';
+import { num, smart, shown, shownUnit } from '../core/format.js';
 import { localDrlPropose, adoptLocalDrl, deleteDrlSet, localDrlReview, localDrlReviewUrl, drlSets } from '../core/api.js';
 
 const page = document.getElementById('page');
 const QTY = { dlp: 'DLP', ctdivol: 'CTDIvol', dap: 'DAP', mgd: 'MGD' };
-const UNIT = { 'mGy.cm': 'mGy·cm', 'Gy.cm2': 'Gy·cm²', mGy: 'mGy' };
 const TONE = { below: 'ok', above: 'warn', well_above: 'alert' };
 const iso = (d) => d.toISOString().slice(0, 10);
 const today = new Date();
@@ -56,25 +55,26 @@ async function propose() {
   const body = h('tbody');
   let last = null;
   for (const x of rows) {
-    const value = h('input', { class: 'input w-90', type: 'number', step: 'any', value: x.value ?? '', disabled: x.value == null });
+    const { f } = shownUnit(x.unit);  // edited in the shown unit, saved in the DRL's own unit
+    const value = h('input', { class: 'input w-90', type: 'number', step: 'any', value: x.value == null ? '' : +(x.value * f).toPrecision(4), disabled: x.value == null });
     const box = h('input', { type: 'checkbox', checked: x.value != null, disabled: x.value == null });
     picks.set(x, { box, value });
-    const rooms = x.rooms.map((d) => `${d.device_name}: median ${smart(d.median)} (n ${d.n})${d.counts ? '' : ' — too few'}`).join('\n');
+    const rooms = x.rooms.map((d) => `${d.device_name}: median ${shown(d.median, x.unit)} (n ${d.n})${d.counts ? '' : ' — too few'}`).join('\n');
     body.append(h('tr', {},
       h('td', {}, box),
       h('td', { title: x.exam }, x.exam === last ? '' : x.exam_meaning),
       h('td', {}, x.band_label), h('td', {}, QTY[x.quantity] || x.quantity),
       h('td', { class: 'r' }, num(x.n)), h('td', { class: 'r', title: rooms }, `${x.n_rooms}/${x.rooms.length}`),
-      h('td', { class: 'r' }, value), h('td', {}, UNIT[x.unit] || x.unit),
+      h('td', { class: 'r' }, value), h('td', {}, shownUnit(x.unit).unit),
       h('td', { class: 'muted small' }, x.method === 'p75_rooms' ? 'P75 rooms' : x.method === 'median_room' ? 'median (1 room)' : 'too few'),
-      h('td', { class: 'r' }, x.reference == null ? '—' : smart(x.reference)),
+      h('td', { class: 'r' }, x.reference == null ? '—' : shown(x.reference, x.unit)),
       h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, `${num(x.ratio, 2)}×`) : '',
         x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT series reported on the 32 cm (body) phantom (about half the 16 cm value): left out of the proposal' }, ` 32 cm left out: ${x.n_phantom32}`) : null)));
     last = x.exam;
   }
   const name = h('input', { class: 'input', value: `Local DRLs ${r.start} – ${r.end}`, style: { width: '320px' } });
   const adopt = async () => {
-    const chosen = rows.filter((x) => picks.get(x).box.checked).map((x) => ({ ...x, value: Number(picks.get(x).value.value) }));
+    const chosen = rows.filter((x) => picks.get(x).box.checked).map((x) => ({ ...x, value: Number(picks.get(x).value.value) / shownUnit(x.unit).f }));
     if (!chosen.length) { toast('Choose at least one value.'); return; }
     if (!(await confirmDialog(`Adopt ${chosen.length} values as "${name.value}"?`, { title: 'Adopt values', label: 'Adopt' }))) return;
     try {
@@ -126,10 +126,10 @@ async function review(set) {
         h('thead', {}, h('tr', {}, ['Exam', 'Group', 'Qty', 'Local DRL', 'Now', 'Change', 'n', 'Rooms above', 'Reference', 'Now vs ref.'].map((c) => h('th', {}, c)))),
         h('tbody', {}, r.rows.map((x) => h('tr', { class: x.rooms_above.length ? 'hot' : '' },
           h('td', { title: x.exam }, x.exam_meaning), h('td', {}, x.band_label || 'all'), h('td', {}, QTY[x.quantity] || x.quantity),
-          h('td', { class: 'r' }, `${smart(x.local_drl)} ${UNIT[x.unit] || x.unit}`), h('td', { class: 'r' }, x.new_value == null ? '—' : smart(x.new_value)),
+          h('td', { class: 'r' }, `${shown(x.local_drl, x.unit)} ${shownUnit(x.unit).unit}`), h('td', { class: 'r' }, x.new_value == null ? '—' : shown(x.new_value, x.unit)),
           h('td', { class: 'r' }, change(x.change_pct)), h('td', { class: 'r' }, num(x.n)),
-          h('td', { class: 'small' }, x.rooms_above.map((d) => `${d.device_name} ${smart(d.median)}`).join(', ')),
-          h('td', { class: 'r' }, x.reference == null ? '—' : smart(x.reference)),
+          h('td', { class: 'small' }, x.rooms_above.map((d) => `${d.device_name} ${shown(d.median, x.unit)}`).join(', ')),
+          h('td', { class: 'r' }, x.reference == null ? '—' : shown(x.reference, x.unit)),
           h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, x.status.replace('_', ' ')) : ''))))))));
   };
   const out = h('div');

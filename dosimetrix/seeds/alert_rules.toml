@@ -12,7 +12,7 @@
 
 [[rule]]
 key = "fluoro-kar-5gy"
-name = "Fluoroscopy: Ka,r ≥ 5 Gy (substantial radiation dose level)"
+name = "Fluoroscopy: Ka,r ≥ 5000 mGy (substantial radiation dose level)"
 kind = "threshold"
 modality = "RF,XA"
 metric = "kar_total"
@@ -24,7 +24,7 @@ note = "NCRP Report 168 substantial radiation dose level: patient follow-up for 
 
 [[rule]]
 key = "fluoro-dap-500"
-name = "Fluoroscopy: DAP ≥ 500 Gy·cm² (substantial radiation dose level)"
+name = "Fluoroscopy: DAP ≥ 500,000 mGy·cm² (substantial radiation dose level)"
 kind = "threshold"
 modality = "RF,XA"
 metric = "dap_total"
@@ -48,7 +48,7 @@ note = "NCRP Report 168 substantial radiation dose level for fluoroscopy time."
 
 [[rule]]
 key = "fluoro-kar-cumulative-90d"
-name = "Fluoroscopy: cumulative Ka,r ≥ 5 Gy in 90 days"
+name = "Fluoroscopy: cumulative Ka,r ≥ 5000 mGy in 90 days"
 kind = "cumulative"
 modality = "RF,XA"
 metric = "kar_total"
@@ -119,7 +119,7 @@ note = "About the top 0.14 % of children here (2025: 56 of 39,062). Studies, not
 
 [[rule]]
 key = "fluoro-psd-2gy"
-name = "Fluoroscopy: estimated peak skin dose ≥ 2 Gy"
+name = "Fluoroscopy: estimated peak skin dose ≥ 2000 mGy"
 kind = "threshold"
 modality = "RF,XA"
 metric = "psd"
@@ -181,7 +181,7 @@ note = "A repeat scan soon after the first: check the justification (technical f
 
 [[rule]]
 key = "fluoro-psd-cumulative-90d"
-name = "Fluoroscopy: cumulative peak skin dose ≥ 3 Gy in 90 days"
+name = "Fluoroscopy: cumulative peak skin dose ≥ 3000 mGy in 90 days"
 kind = "cumulative"
 modality = "RF,XA"
 metric = "psd"

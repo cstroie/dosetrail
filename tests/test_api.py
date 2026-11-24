@@ -385,7 +385,7 @@ def test_dose_statement_names_the_patient_so_needs_pid_and_is_audited(client):
     body = r.json()
     assert body["patient"]["name"] == "POPESCU^ION" and body["exam"] == "Coronary angiography"
     got = {d["key"]: d for d in body["doses"]}
-    assert got["dap"]["value"] == 12.5 and got["dap"]["unit"] == "Gy·cm²"
+    assert got["dap"]["value"] == 12500 and got["dap"]["unit"] == "mGy·cm²"
     assert got["rp"]["value"] == pytest.approx(420.0) and got["rp"]["unit"] == "mGy"  # Gy -> mGy
     assert "dlp" not in got and "activity" not in got  # only what applies to the examination
     assert client.get("/api/studies/9999/dose-statement").status_code == 404

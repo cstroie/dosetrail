@@ -5,7 +5,7 @@
 import '../components/dx-shell.js';
 import { confirmDialog } from '../core/confirm.js';
 import { h, clear, append, toast } from '../core/dom.js';
-import { num, smart } from '../core/format.js';
+import { num, smart, shown, shownUnit } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
 import { exportList, exportRun, specUrl, actionList, addAction, editAction, deleteAction, art12Report, art12Url, inspReport, inspReportUrl, surveyUrl, drlTrend, drlTrendUrl, gridReport, gridReportUrl, operatorReport, operatorReportUrl } from '../core/api.js';
@@ -225,18 +225,18 @@ async function loadTrend() {
   clear(host).append(h('p', { class: 'muted' }, t('rep.loading')));
   let r;
   try { r = await drlTrend({ year: state.year, quarter: state.quarter }); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
-  const cell = (x) => {
+  const cell = (x, u) => {
     if (!x) return h('td', { class: 'r muted' }, '—');
     const cls = x.mean_over_drl > 1.5 ? 'alert' : x.mean_over_drl > 1 ? 'warn' : 'ok';
-    return h('td', { class: 'r', title: `n ${x.n} · mean ${smart(x.mean)} · median ${smart(x.median)}` },
-      h('span', { class: `tag ${cls}` }, `${num(x.mean_over_drl, 2)}×`), h('br'), h('span', { class: 'muted small' }, `med ${smart(x.median)} · n ${x.n}`));
+    return h('td', { class: 'r', title: `n ${x.n} · mean ${shown(x.mean, u)} · median ${shown(x.median, u)}` },
+      h('span', { class: `tag ${cls}` }, `${num(x.mean_over_drl, 2)}×`), h('br'), h('span', { class: 'muted small' }, `med ${shown(x.median, u)} · n ${x.n}`));
   };
   clear(host).append(h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
     h('thead', {}, h('tr', {}, h('th', {}, t('rep.exam')), h('th', {}, t('rep.group')), h('th', { class: 'r' }, t('rep.drl')),
       r.quarters.map((q) => h('th', { class: 'r' }, q)), h('th', { class: 'r' }, t('rep.above')), h('th', { class: 'r' }, t('rep.trendcol')))),
     h('tbody', {}, r.rows.map((x) => h('tr', { class: x.last_above ? 'hot' : '' },
       h('td', { title: x.exam }, x.exam_meaning), h('td', {}, x.band_label || t('rep.all')),
-      h('td', { class: 'r' }, `${smart(x.reference)} ${x.unit}`), x.quarters.map(cell),
+      h('td', { class: 'r' }, `${shown(x.reference, x.unit)} ${shownUnit(x.unit).unit}`), x.quarters.map((q) => cell(q, x.unit)),
       h('td', { class: 'r' }, `${x.quarters_above}/${x.quarters_with_data}`),
       h('td', { class: 'r' }, x.trend_pct_per_quarter == null ? '' : `${x.trend_pct_per_quarter > 0 ? '+' : ''}${num(x.trend_pct_per_quarter, 0)} %/q`)))))))); 
 }
@@ -298,12 +298,12 @@ async function loadGrid() {
       const first = `${x.exam}|${x.quantity}` !== last;
       last = `${x.exam}|${x.quantity}`;
       return h('tr', { class: first ? 'group-start' : '' },
-        h('td', { title: x.exam }, first ? x.exam_meaning : ''), h('td', {}, first ? `${x.quantity} (${x.unit})` : ''),
+        h('td', { title: x.exam }, first ? x.exam_meaning : ''), h('td', {}, first ? `${x.quantity} (${shownUnit(x.unit).unit})` : ''),
         h('td', {}, x.group_label), h('td', { class: 'r' }, num(x.n)), h('td', { class: 'r muted' }, x.excluded ? num(x.excluded) : ''),
         h('td', { class: 'r muted', title: 'values with an estimated weight' }, x.estimated ? num(x.estimated) : ''),
-        h('td', { class: 'r' }, x.median == null ? '' : smart(x.median)), h('td', { class: 'r' }, x.p75 == null ? '' : smart(x.p75)),
-        h('td', { class: 'r' }, x.mean == null ? '' : smart(x.mean)),
-        h('td', { class: 'r' }, x.edrl == null ? '—' : smart(x.edrl)),
+        h('td', { class: 'r' }, x.median == null ? '' : shown(x.median, x.unit)), h('td', { class: 'r' }, x.p75 == null ? '' : shown(x.p75, x.unit)),
+        h('td', { class: 'r' }, x.mean == null ? '' : shown(x.mean, x.unit)),
+        h('td', { class: 'r' }, x.edrl == null ? '—' : shown(x.edrl, x.unit)),
         h('td', { class: 'r' }, x.status ? h('span', { class: `tag ${tone[x.status]}`, title: x.ratio ? `median / EDRL = ${num(x.ratio, 2)}` : '' }, x.ratio && x.status !== 'insufficient' ? `${num(x.ratio, 2)}×` : label[x.status]) : ''));
     }));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, t('rep.none'))));
