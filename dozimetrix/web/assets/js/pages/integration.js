@@ -19,7 +19,7 @@ const EMPTY = { name: '', aet: '', host: '', port: 104, enabled: true, query_ret
   retrieve: 'get', move_destination: '', modalities: '', max_results: null, timeout: 60, sync_days: null, notes: '' };
 
 function tabs() {
-  return adminTabs('dicom.html');
+  return adminTabs('integration.html');
 }
 
 function ago(s) {

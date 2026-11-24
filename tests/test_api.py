@@ -376,6 +376,11 @@ def test_every_page_in_the_web_folder_is_served(client):
     assert r.status_code == 200 and "dose-statement.js" in r.text
 
 
+def test_renamed_page_redirects_with_its_query(client):
+    r = client.get("/dicom.html?tab=his", follow_redirects=False)
+    assert r.status_code == 301 and r.headers["location"] == "/integration.html?tab=his"
+
+
 def test_dose_statement_names_the_patient_so_needs_pid_and_is_audited(client):
     login(client, "viewer", "viewer-pass-1")
     assert client.get("/api/studies/1/dose-statement").status_code == 403

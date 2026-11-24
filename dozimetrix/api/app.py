@@ -45,11 +45,12 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "devices.html": "devices.html", "drl.html": "drl.html", "drl-sets.html": "drl-sets.html",
          "review.html": "review.html",
          "reports.html": "reports.html", "quality.html": "quality.html",
-         "rules.html": "rules.html", "dicom.html": "dicom.html",
+         "rules.html": "rules.html", "integration.html": "integration.html",
          "users.html": "users.html", "audit.html": "audit.html",
          "alerts.html": "alerts.html", "local-drl.html": "local-drl.html",
          "indications.html": "indications.html", "survey-central.html": "survey-central.html",
          "dose-statement.html": "dose-statement.html"}
+OLD_PAGES = {"dicom.html": "integration.html"}  # old name -> page (DICOM, HIS and more now)
 
 
 class RevalidatedStatic(StaticFiles):
@@ -1677,6 +1678,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/{page:path}", response_class=HTMLResponse)
     def pages(page: str, request: Request, session: Session = Depends(db)):
+        if page in OLD_PAGES:  # renamed pages: old bookmarks keep working
+            query = f"?{request.url.query}" if request.url.query else ""
+            return RedirectResponse(f"/{OLD_PAGES[page]}{query}", status_code=301)
         if page.startswith(("assets/", "api/")) or page not in PAGES:
             raise HTTPException(404)
         uid = read_session(secret, request.cookies.get(COOKIE))
