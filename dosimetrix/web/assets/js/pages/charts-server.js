@@ -13,15 +13,17 @@ export const SERVER_TYPES = {
   shist: 'Histogram (server)', sdrl: 'Median vs DRL (server)',
 };
 
-const MODALITIES = { CT: 'CT', DX: 'Radiography DX', CR: 'Radiography CR', RF: 'Fluoroscopy RF', XA: 'Angiography XA', MG: 'Mammography' };
+const MODALITIES = { CT: 'CT', DX: 'Radiography DX', CR: 'Radiography CR', RF: 'Fluoroscopy RF', XA: 'Angiography XA', MG: 'Mammography', NM: 'Nuclear medicine', PT: 'PET' };
 const METRICS = {
   CT: { dlp_total: 'DLP study total', ctdivol_max: 'CTDIvol max', dlp: 'DLP per series', ctdivol: 'CTDIvol per series', scan_length: 'Scan length' },
   DX: { dap: 'DAP per exposure', dap_total: 'DAP study total', kvp: 'kVp', mas: 'mAs', ei: 'Exposure index', di: 'Deviation index', exposures: 'Exposures per study' },
   RF: { dap_total: 'DAP total', kar_total: 'Ka,r total', fluoro_time: 'Fluoroscopy time', dap_fluoro: 'DAP fluoroscopy', dap_acq: 'DAP acquisition' },
-  MG: { dap: 'DAP per exposure', kvp: 'kVp', mas: 'mAs' },
+  MG: { agd: 'AGD per view', agd_breast: 'AGD per breast', thickness: 'Compressed thickness', force: 'Compression force', kvp: 'kVp', mas: 'mAs' },
+  NM: { activity: 'Administered activity', activity_kg: 'Activity per kg' },
 };
 METRICS.CR = METRICS.DX;
-METRICS.XA = METRICS.RF;
+METRICS.PT = METRICS.NM;
+METRICS.XA = { ...METRICS.RF, psd: 'Peak skin dose (estimate)' };
 const DIMS = { exam: 'Exam', device: 'Device', age_band: 'Age group', weight_band: 'Weight group', ref_group: 'ICRP 135 group', view: 'Projection', protocol: 'Protocol (raw)', sex: 'Sex', indication: 'Clinical indication', year: 'Year' };
 const PERIODS = { month: 'Month', quarter: 'Quarter', year: 'Year' };
 const SYSTEMS = { '': 'Local nomenclator', 'ro-drl-ms838-2025': 'National DRL exams', 'ec-rp185': 'RP 185 exams' };

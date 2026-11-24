@@ -69,6 +69,15 @@ METRICS: dict[str, Metric] = {
     "ei": Metric("event", Event.exposure_index, "1", "Exposure index"),
     "di": Metric("event", Event.deviation_index, "1", "Deviation index"),
     "sid": Metric("event", Event.sid_mm, "mm", "Source–image distance"),
+    "agd": Metric("event", Event.agd, "mGy", "AGD per view"),
+    "agd_breast": Metric("study", func.coalesce(Study.agd_left, Study.agd_right), "mGy",
+                         "AGD per breast (left, else right)"),
+    "thickness": Metric("event", Event.compression_thickness_mm, "mm",
+                        "Compressed breast thickness"),
+    "force": Metric("event", Event.compression_force_n, "N", "Compression force"),
+    "activity": Metric("study", Study.admin_activity_mbq, "MBq", "Administered activity"),
+    "activity_kg": Metric("study", Study.admin_activity_mbq / Study.weight_kg, "MBq/kg",
+                          "Administered activity per kg"),
 }
 DIMENSIONS = ("exam", "device", "age_band", "weight_band", "ref_group", "month", "quarter",
               "year", "modality", "sex", "protocol", "view", "indication")

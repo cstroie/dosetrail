@@ -14,7 +14,7 @@ PROFILES: list[dict] = [
      "metrics": ["dlp_total", "ctdivol_max"], "drl": ["dlp", "ctdivol"]},
     {"code": "DX", "label": "DX/CR", "modalities": ["DX", "CR"],
      "columns": ["n_events", "kvp_max", "ei_range", "di_range", "dap_total"], "main": "dap_total",
-     "metrics": ["dap", "kvp", "mas", "ei", "di"], "drl": ["dap", "kae"]},
+     "metrics": ["dap", "dap_total", "kvp", "mas", "ei", "di"], "drl": ["dap", "kae"]},
     {"code": "RF", "label": "RF", "modalities": ["RF"],
      "columns": ["n_events", "fluoro_time", "fluoro_dap", "acq_dap", "kar_total", "dap_total"],
      "main": "dap_total", "metrics": ["dap_total", "kar_total", "fluoro_time"],
@@ -24,13 +24,13 @@ PROFILES: list[dict] = [
      "metrics": ["dap_total", "kar_total", "fluoro_time"], "drl": ["dap", "kae"]},
     {"code": "MG", "label": "MG", "modalities": ["MG"],
      "columns": ["n_events", "agd_left", "agd_right"], "main": "agd_max",
-     "metrics": ["agd", "kvp", "mas"], "drl": ["mgd"]},
+     "metrics": ["agd", "thickness", "kvp", "mas"], "drl": ["mgd"]},
     {"code": "NM", "label": "NM", "modalities": ["NM"],
      "columns": ["activity", "dlp_total"], "main": "activity",
-     "metrics": ["activity"], "drl": ["activity"]},
+     "metrics": ["activity", "activity_kg"], "drl": ["activity"]},
     {"code": "PT", "label": "PT", "modalities": ["PT"],
      "columns": ["activity", "dlp_total"], "main": "activity",
-     "metrics": ["activity"], "drl": ["activity"]},
+     "metrics": ["activity", "activity_kg"], "drl": ["activity"]},
 ]
 
 BY_MODALITY = {m: p for p in PROFILES for m in p["modalities"]}

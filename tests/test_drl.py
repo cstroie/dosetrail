@@ -92,6 +92,14 @@ def test_activity_per_study_and_mammography_per_breast(session, data):
     (g,) = [r for r in out["rows"] if r["exam"] == "MG-UNILATERAL"][0]["groups"]
     assert g["n"] == 2 and sorted([g["min"], g["max"]]) == [pytest.approx(2.5),
                                                              pytest.approx(2.6)]
+    # the same studies through the chart metrics of the MG and NM/PT profiles
+    from dosimetrix import stats
+    from dosimetrix.db.models import Study as S
+
+    agd = stats.compute(session, [S.modality == "MG"], "agd", [])
+    assert agd["groups"][0]["n"] == 4
+    act = stats.compute(session, [S.modality == "PT"], "activity", [])
+    assert act["groups"][0]["n"] == 2 and act["groups"][0]["median"] == pytest.approx(360.0)
 
 
 def test_european_set_units_bands_and_devices(session, data):
