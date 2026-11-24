@@ -2,7 +2,7 @@
 
 [database]
 # the "db" service of docker-compose.yml; use the same password as MARIADB_PASSWORD
-url = "mysql+pymysql://dosimetrix:CHANGE-ME@db/dosimetrix?charset=utf8mb4"
+url = "mysql+pymysql://dozimetrix:CHANGE-ME@db/dozimetrix?charset=utf8mb4"
 
 [paths]
 data_dir = "/var/lib/dozimetrix"

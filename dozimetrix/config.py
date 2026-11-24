@@ -13,7 +13,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DEFAULT_DB_URL = "sqlite:///dosimetrix.sqlite3"  # database names keep "dosimetrix" for now
+DEFAULT_DB_URL = "sqlite:///dozimetrix.sqlite3"
 
 
 @dataclass

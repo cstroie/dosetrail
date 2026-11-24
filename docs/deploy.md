@@ -11,9 +11,9 @@ query/retrieve job. Docker images will follow; this guide uses systemd only.
 
 ## 2. Database
 ```sql
-CREATE DATABASE dosimetrix CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'dosimetrix'@'localhost' IDENTIFIED BY '…';
-GRANT ALL ON dosimetrix.* TO 'dosimetrix'@'localhost';
+CREATE DATABASE dozimetrix CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'dozimetrix'@'localhost' IDENTIFIED BY '…';
+GRANT ALL ON dozimetrix.* TO 'dozimetrix'@'localhost';
 ```
 Give InnoDB enough memory to hold the working set — at least the size of the data
 (`innodb_buffer_pool_size`, e.g. 2G for about 600 000 studies). On spinning disks this
@@ -153,7 +153,7 @@ docker compose --profile qr up -d qr     # query/retrieve every hour (needs [pac
 docker compose --profile his up -d his   # HIS worker (needs a HIS server)
 ```
 - `web` migrates and seeds on start, then serves on 127.0.0.1:8104 (put an HTTPS reverse proxy in front). `receive` listens on 11112.
-- The volume `dosimetrix-data` holds the site secret, the spool and the growth tables (`docker compose run --rm web growth install`). Back it up together with `dosimetrix-db`.
+- The volume `dozimetrix-data` holds the site secret, the spool and the growth tables (`docker compose run --rm web growth install`). Back it up together with `dozimetrix-db`.
 - The image build has not been tested here (no Docker on the development host); the same install steps were checked in a clean virtual environment.
 
 ## Local DRLs
