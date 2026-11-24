@@ -522,10 +522,25 @@ def _his_run(session, secret, args) -> int:
     totals: dict = {}
 
     def report(row, stats):
-        if args.dry_run or args.verbose:
-            d = row.detail or {}
-            print(f"study {row.study_id}: {row.status} score={row.match_score} "
-                  f"{d.get('written') or ''} {d.get('rejected') or ''}".rstrip())
+        """One line per study tried, always (the service log follows the worker)."""
+        import datetime as dt
+
+        d = row.detail or {}
+        bits = [f"{dt.datetime.now():%Y-%m-%d %H:%M:%S} study {row.study_id}: {row.status}"]
+        if row.request_id:
+            bits.append(f"request {row.request_id} ({d.get('type', '?')}, "
+                        f"score {row.match_score})")
+        for k in ("accession_saved", "accession_other_patient", "rejected_request",
+                  "rejected_patient", "why"):
+            if d.get(k):
+                bits.append(f"{k.replace('_', ' ')} {d[k]}")
+        if d.get("written"):
+            bits.append("wrote " + ", ".join(d["written"]))
+        if row.status == "pending" and row.next_try_at:
+            bits.append(f"next try {row.next_try_at:%Y-%m-%d %H:%M}")
+        if args.verbose and d:
+            bits.append(str(d))
+        print(" · ".join(bits), flush=True)
 
     while True:
         try:
@@ -542,6 +557,8 @@ def _his_run(session, secret, args) -> int:
         if not args.dry_run:
             servers.write_status(session, {"message": msg, "totals": totals, "error": error})
             session.commit()
+        if stats and not stats.get("no_server"):
+            print(f"batch: {msg}", flush=True)
         if args.once or args.dry_run:
             print(msg)
             return 1 if error else 0
