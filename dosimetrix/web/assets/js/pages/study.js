@@ -78,19 +78,38 @@ function cumulative(s) {
       `Alert levels over ${s.thresholds.cum_weeks} weeks: Σ Ka,r ${num(s.thresholds.cum_kar_gy, 2)} Gy, Σ DAP ${dap(s.thresholds.cum_dap_gycm2)} ${dapUnit()}.`));
 }
 
+/** Ka,r axis: the thresholds are drawn only when the curve comes within half of them, so a
+ *  few-mGy paediatric study is not flattened against a 0-4 Gy axis; below that, mGy. */
+function karScale(totalGy, th) {
+  const lines = [['alert', th.kar_gy, 'alert'], ['notify', th.kar_notify_gy, 'warn']]
+    .filter(([, v]) => v != null && v <= 2 * totalGy);
+  if (!lines.length) return { unit: 'mGy', k: 1000, max: null, lines };
+  const top = Math.max(totalGy, ...lines.map(([, v]) => v)) * 1.15;
+  return { unit: 'Gy', k: 1, max: Math.ceil(top * 2) / 2, lines };
+}
+
 function curveOption(s, selected) {
   return (th) => {
     const base = baseOption(th);
     const t0 = new Date(s.events[0].time).getTime();
     const mins = (iso) => (new Date(iso).getTime() - t0) / 60000;
-    let run = 0;
-    const line = [[0, 0]];
-    for (const e of s.events) {
-      line.push([mins(e.time), run / 1000]);
-      run += e.kar_mgy;
-      line.push([mins(e.time) + e.duration_s / 60, run / 1000]);
-    }
     const f = DAP_UNITS[dapUnit()].factor;
+    // step curves: flat between events, rising over each event's duration
+    let kar = 0;
+    let dapSum = 0;
+    const karPts = [[0, 0]];
+    const dapPts = [[0, 0]];
+    for (const e of s.events) {
+      const a = mins(e.time);
+      const b = a + (e.duration_s || 0) / 60;
+      karPts.push([a, kar]); dapPts.push([a, dapSum]);
+      kar += (e.kar_mgy ?? 0) / 1000;
+      dapSum += (e.dap_gycm2 ?? 0) * f;
+      karPts.push([b, kar]); dapPts.push([b, dapSum]);
+    }
+    const ks = karScale(kar, s.thresholds);
+    const karLine = karPts.map(([x, y]) => [x, y * ks.k]);
+    const karDigits = ks.unit === 'Gy' ? 2 : 1;
     const bar = (type) => s.events.map((e, i) => (e.type === type ? {
       value: [mins(e.time), e.dap_gycm2 * f],
       itemStyle: { color: type === 'fluoro' ? th.devices[0] : th.devices[1], opacity: e.plane === 'B' ? 0.55 : 1,
@@ -98,29 +117,35 @@ function curveOption(s, selected) {
       eventIndex: i } : null)).filter(Boolean);
     const [sh, sm] = s.events[0].time.slice(11, 16).split(':').map(Number);
     const hhmm = (v) => { const m = Math.round(sh * 60 + sm + v); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
-    const xMax = Math.ceil(line[line.length - 1][0] / 5) * 5;
+    const xMax = Math.max(5, Math.ceil(karPts[karPts.length - 1][0] / 5) * 5);
+    // axis names run along the axis, so they cannot sit on the legend or the other panel
+    const yName = (name, gap = 40) => ({ name, nameLocation: 'middle', nameGap: gap, nameRotate: 90 });
     return {
       ...base,
-      legend: { ...base.legend, data: ['Σ Ka,r', 'Fluoro', 'Acquisition'], left: 'center' },
-      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => (p.seriesName === 'Σ Ka,r' ? `Σ Ka,r ${num(p.value[1], 2)} Gy`
-        : `#${p.data.eventIndex + 1} ${p.seriesName} · plane ${s.events[p.data.eventIndex].plane}<br>${clock(s.events[p.data.eventIndex].time)} · DAP ${dap(s.events[p.data.eventIndex].dap_gycm2, 1)} ${dapUnit()}`) },
-      grid: [{ left: 56, right: 90, top: 44, height: '46%' }, { left: 56, right: 90, top: '68%', bottom: 30 }],
+      legend: { ...base.legend, data: ['Σ Ka,r', 'Fluoro', 'Acquisition', 'Σ DAP'], left: 'center' },
+      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => (
+        p.seriesName === 'Σ Ka,r' ? `Σ Ka,r ${num(p.value[1], karDigits)} ${ks.unit}`
+          : p.seriesName === 'Σ DAP' ? `Σ DAP ${dap(p.value[1] / f, 1)} ${dapUnit()}`
+            : `#${p.data.eventIndex + 1} ${p.seriesName} · plane ${s.events[p.data.eventIndex].plane}<br>${clock(s.events[p.data.eventIndex].time)} · DAP ${dap(s.events[p.data.eventIndex].dap_gycm2, 1)} ${dapUnit()}`) },
+      grid: [{ left: 60, right: 90, top: 34, height: '38%' }, { left: 60, right: 90, top: '60%', bottom: 28 }],
       xAxis: [
         { type: 'value', gridIndex: 0, min: 0, max: xMax, ...base._axis, axisLabel: { show: false }, splitLine: { show: false } },
-        { type: 'value', gridIndex: 1, min: 0, max: xMax, interval: 15, ...base._axis, axisLabel: { ...base._axis.axisLabel, formatter: hhmm }, splitLine: { show: false } },
+        { type: 'value', gridIndex: 1, min: 0, max: xMax, interval: xMax > 30 ? 15 : 5, ...base._axis, axisLabel: { ...base._axis.axisLabel, formatter: hhmm, hideOverlap: true }, splitLine: { show: false } },
       ],
       yAxis: [
-        { type: 'value', gridIndex: 0, name: 'Ka,r Gy', min: 0, max: 4, ...base._axis },
-        { type: 'value', gridIndex: 1, name: `DAP ${dapUnit()}`, ...base._axis, splitNumber: 2 },
+        { type: 'value', gridIndex: 0, ...yName(`Σ Ka,r ${ks.unit}`), min: 0, max: ks.max ?? undefined, splitNumber: 3, ...base._axis },
+        { type: 'value', gridIndex: 1, ...yName(`DAP ${dapUnit()}`), min: 0, splitNumber: 2, ...base._axis },
+        { type: 'value', gridIndex: 1, position: 'right', ...yName(`Σ DAP ${dapUnit()}`, 44), min: 0, splitNumber: 2,
+          ...base._axis, splitLine: { show: false } },
       ],
       series: [
-        { name: 'Σ Ka,r', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: line, showSymbol: false, lineStyle: { color: th.accent, width: 2.5 }, itemStyle: { color: th.accent },
-          markLine: { silent: true, symbol: 'none', label: { position: 'end', color: th.muted, fontFamily: th.mono, fontSize: 10, formatter: '{b}' },
-            data: [
-              { name: `alert ${num(s.thresholds.kar_gy, 1)} Gy`, yAxis: s.thresholds.kar_gy, lineStyle: { color: th.alert, type: 'dashed' } },
-              { name: `notify ${num(s.thresholds.kar_notify_gy, 1)} Gy`, yAxis: s.thresholds.kar_notify_gy, lineStyle: { color: th.warn, type: 'dashed' } }] } },
+        { name: 'Σ Ka,r', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: karLine, showSymbol: false, lineStyle: { color: th.accent, width: 2.5 }, itemStyle: { color: th.accent },
+          markLine: ks.lines.length ? { silent: true, symbol: 'none', label: { position: 'end', color: th.muted, fontFamily: th.mono, fontSize: 10, formatter: '{b}' },
+            data: ks.lines.map(([name, v, colour]) => ({ name: `${name} ${num(v, 1)} Gy`, yAxis: v, lineStyle: { color: th[colour], type: 'dashed' } })) } : undefined },
         { name: 'Fluoro', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: bar('fluoro'), barWidth: 5, itemStyle: { color: th.devices[0] } },
         { name: 'Acquisition', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: bar('acquisition'), barWidth: 5, barGap: '-100%', itemStyle: { color: th.devices[1] } },
+        { name: 'Σ DAP', type: 'line', xAxisIndex: 1, yAxisIndex: 2, data: dapPts, showSymbol: false, z: 3,
+          lineStyle: { color: th.text, width: 1.5, type: 'dashed', opacity: 0.8 }, itemStyle: { color: th.text } },
       ],
     };
   };
@@ -180,7 +205,7 @@ async function render() {
 
   const readoutBox = h('div');
   const cumHost = h('div');
-  const chart = h('dx-chart', { label: 'Cumulative Ka,r over the procedure, with irradiation events as bars (DAP)', height: '320' });
+  const chart = h('dx-chart', { label: 'Running Ka,r over the procedure; irradiation events as bars (DAP) with the running DAP', height: '360' });
   const grid = h('dx-data-grid', { class: 'study-events', label: 'Irradiation events', noun: 'events', 'storage-key': 'grid.events' },
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportEvents(s) }, 'CSV'));
   const selInfo = h('span', { class: 'muted mono' });
