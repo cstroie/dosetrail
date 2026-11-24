@@ -40,7 +40,7 @@ class Settings:
     keep_received: bool = False  # keep imported objects under spool/archive/YYYYMMDD
     dicom_max_object_mb: float = 2048.0  # larger objects are refused (Out of resources)
     spool_min_free_mb: float = 1024.0  # refuse objects when the spool disk has less free
-    spool_retention_days: int = 90  # failed/ and archive/ files older than this go; 0 keeps
+    spool_retention_days: int = 0  # failed/ and archive/ older than this many days go; 0 keeps
     # PACS for query/retrieve (C-FIND + C-GET)
     pacs_host: str | None = None
     pacs_port: int = 104

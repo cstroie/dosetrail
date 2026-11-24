@@ -27,7 +27,7 @@ spool_dir = "/var/lib/dozimetrix/spool"
 keep_received = false
 # max_object_mb = 2048                       # larger objects are refused
 # min_free_mb = 1024                         # refuse objects when the spool disk is this full
-# retention_days = 90                        # spool failed/ and archive/ older than this are removed (0 keeps)
+# retention_days = 90                        # remove spool failed/ and archive/ files older than this (default 0 = keep)
 
 [pacs]
 host = "pacs.example.org"
