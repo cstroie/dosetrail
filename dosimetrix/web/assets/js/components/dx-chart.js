@@ -100,7 +100,7 @@ class DtChart extends HTMLElement {
    *  chart would come out narrow and crowded. Same height as on screen, drawn off-screen at 2x. */
   downloadPNG(name = 'chart') {
     if (!this.instance || !this._build) return;
-    const EXPORT_WIDTH = 1200;
+    const EXPORT_WIDTH = 800;
     const width = Math.max(this.box.clientWidth, EXPORT_WIDTH);
     const height = this.box.clientHeight;
     const th = chartTheme();
