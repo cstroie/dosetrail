@@ -110,10 +110,19 @@ function curveOption(s, selected) {
     }
     const ks = karScale(kar, s.thresholds);
     const bar = (type) => s.events.map((e, i) => (e.type === type ? {
-      value: [mins(e.time), e.dap_gycm2 * f],
+      value: [mins(e.time), mins(e.time) + (e.duration_s || 0) / 60, e.dap_gycm2 * f],
       itemStyle: { color: type === 'fluoro' ? th.devices[0] : th.devices[1], opacity: e.plane === 'B' ? 0.55 : 1,
         borderColor: i === selected ? th.text : 'transparent', borderWidth: i === selected ? 2 : 0 },
       eventIndex: i } : null)).filter(Boolean);
+    // each event is a block from its start to start + duration (min 3 px, so short runs stay visible)
+    const span = (params, api) => {
+      const [x0, y0] = api.coord([api.value(0), 0]);
+      const [x1, y1] = api.coord([api.value(1), api.value(2)]);
+      const w = Math.max(3, x1 - x0);
+      const c = params.coordSys;
+      const shape = window.echarts.graphic.clipRectByRect({ x: x0 + Math.min(0, (x1 - x0 - w) / 2), y: y1, width: w, height: y0 - y1 }, c);
+      return shape && { type: 'rect', shape, style: api.style() };
+    };
     const [sh, sm] = s.events[0].time.slice(11, 16).split(':').map(Number);
     const hhmm = (v) => { const m = Math.round(sh * 60 + sm + v); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
     const xMax = Math.max(5, Math.ceil(karPts[karPts.length - 1][0] / 5) * 5);
@@ -125,7 +134,7 @@ function curveOption(s, selected) {
       tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => (
         p.seriesName === 'Σ Ka,r' ? `Σ Ka,r ${mgy(p.value[1])} mGy`
           : p.seriesName === 'Σ DAP' ? `Σ DAP ${dap(p.value[1] / f, 1)} ${dapUnit()}`
-            : `#${p.data.eventIndex + 1} ${p.seriesName} · plane ${s.events[p.data.eventIndex].plane}<br>${clock(s.events[p.data.eventIndex].time)} · DAP ${dap(s.events[p.data.eventIndex].dap_gycm2, 1)} ${dapUnit()}`) },
+            : `#${p.data.eventIndex + 1} ${p.seriesName} · plane ${s.events[p.data.eventIndex].plane}<br>${clock(s.events[p.data.eventIndex].time)} · ${num(s.events[p.data.eventIndex].duration_s, 1)} s · DAP ${dap(s.events[p.data.eventIndex].dap_gycm2, 1)} ${dapUnit()}`) },
       grid: [{ left: 66, right: 100, top: 34, height: '38%' }, { left: 66, right: 100, top: '60%', bottom: 28 }],
       xAxis: [
         { type: 'value', gridIndex: 0, min: 0, max: xMax, ...base._axis, axisLabel: { show: false }, splitLine: { show: false } },
@@ -141,8 +150,8 @@ function curveOption(s, selected) {
         { name: 'Σ Ka,r', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: karPts, showSymbol: false, lineStyle: { color: th.accent, width: 2.5 }, itemStyle: { color: th.accent },
           markLine: ks.lines.length ? { silent: true, symbol: 'none', label: { position: 'end', color: th.muted, fontFamily: th.mono, fontSize: 10, formatter: '{b}' },
             data: ks.lines.map(([name, v, colour]) => ({ name: `${name} ${mgy(v)} mGy`, yAxis: v, lineStyle: { color: th[colour], type: 'dashed' } })) } : undefined },
-        { name: 'Fluoro', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: bar('fluoro'), barWidth: 5, itemStyle: { color: th.devices[0] } },
-        { name: 'Acquisition', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: bar('acquisition'), barWidth: 5, barGap: '-100%', itemStyle: { color: th.devices[1] } },
+        { name: 'Fluoro', type: 'custom', xAxisIndex: 1, yAxisIndex: 1, data: bar('fluoro'), renderItem: span, encode: { x: [0, 1], y: 2 }, itemStyle: { color: th.devices[0] } },
+        { name: 'Acquisition', type: 'custom', xAxisIndex: 1, yAxisIndex: 1, data: bar('acquisition'), renderItem: span, encode: { x: [0, 1], y: 2 }, itemStyle: { color: th.devices[1] } },
         { name: 'Σ DAP', type: 'line', xAxisIndex: 1, yAxisIndex: 2, data: dapPts, showSymbol: false, z: 3,
           lineStyle: { color: th.text, width: 1.5, type: 'dashed', opacity: 0.8 }, itemStyle: { color: th.text } },
       ],
@@ -260,7 +269,7 @@ async function render() {
       h('div', { class: 'main' },
         h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
           h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, t('study.curve')), h('span', { class: 'spacer' }),
-            h('span', { class: 'muted small' }, 'faded bar = plane B · click a bar to find it in the table'),
+            h('span', { class: 'muted small' }, 'bar width = duration · faded = plane B · click a bar to find it in the table'),
             h('button', { class: 'btn xs no-print', type: 'button', onclick: () => chart.downloadPNG(`${(s.accession || `study-${s.id}`).replace(/[^\w.-]/g, '_')}-dose-curve`) }, 'PNG')),
           h('div', { class: 'panel-body' }, chart)),
         grid,
