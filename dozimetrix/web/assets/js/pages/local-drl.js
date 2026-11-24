@@ -61,6 +61,7 @@ async function propose() {
   const picks = new Map();
   const body = h('tbody');
   let last = null;
+  let lastProj = null;
   for (const x of rows) {
     const { f } = shownUnit(x.unit);  // edited in the shown unit, saved in the DRL's own unit
     const value = h('input', { class: 'input w-90', type: 'number', step: 'any', value: x.value == null ? '' : +(x.value * f).toPrecision(4), disabled: x.value == null });
@@ -69,16 +70,16 @@ async function propose() {
     const rooms = x.rooms.map((d) => `${d.device_name}: median ${shown(d.median, x.unit)} (n ${d.n})${d.counts ? '' : ' — too few'}`).join('\n');
     body.append(h('tr', {},
       h('td', {}, box),
-      h('td', { title: x.exam }, x.exam === last ? '' : x.exam_meaning, x.local_only && x.exam !== last ? h('span', { class: 'tag', title: 'no national or European DRL for this exam: local only' }, ' local only') : null),
+      h('td', { title: x.exam }, x.exam === last && x.projection === lastProj ? '' : x.exam_meaning + (x.projection ? ` (${x.projection})` : ''), x.local_only && !(x.exam === last && x.projection === lastProj) ? h('span', { class: 'tag', title: 'no national or European DRL for this exam: local only' }, ' local only') : null),
       h('td', {}, x.band_label), h('td', {}, QTY[x.quantity] || x.quantity),
       h('td', { class: 'r' }, num(x.n)), h('td', { class: 'r', title: rooms }, `${x.n_rooms}/${x.rooms.length}`),
       h('td', { class: 'r' }, value), h('td', {}, shownUnit(x.unit).unit),
-      h('td', { class: 'muted small' }, x.method === 'p75' ? 'P75' : x.method === 'median' ? 'median (P50)' : x.method === 'p75_rooms' ? 'P75 rooms' : x.method === 'median_room' ? 'median (1 room)' : 'too few'),
+      h('td', { class: 'muted small' }, x.value == null && x.indicative ? `indicative (n ${x.indicative.n}): P50 ${shown(x.indicative.p50, x.unit)} · P75 ${shown(x.indicative.p75, x.unit)}` : x.method === 'p75' ? 'P75' : x.method === 'median' ? 'median (P50)' : x.method === 'p75_rooms' ? 'P75 rooms' : x.method === 'median_room' ? 'median (1 room)' : 'too few'),
       h('td', { class: 'r' }, x.reference == null ? '—' : shown(x.reference, x.unit)),
       h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, `${num(x.ratio, 2)}×`) : '',
         x.outlier_rooms.length ? h('span', { class: 'tag warn', title: `room median over 3× or under ⅓ of the pooled median — check the classification and units before adopting: ${x.outlier_rooms.join(', ')}` }, ' room outlier') : null,
         x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT series reported on the 32 cm (body) phantom (about half the 16 cm value): left out of the proposal' }, ` 32 cm left out: ${x.n_phantom32}`) : null)));
-    last = x.exam;
+    last = x.exam; lastProj = x.projection;
   }
   const name = h('input', { class: 'input', value: `Local DRLs ${r.start} – ${r.end}`, style: { width: '320px' } });
   const adopt = async () => {

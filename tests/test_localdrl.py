@@ -56,6 +56,8 @@ def test_pooled_rule(session, data):  # noqa: F811
     assert few["method"] == "median" and few["value"] == 1000 and few["n"] == 3
     none = ct(min_n=4, p75_n=30)
     assert none["method"] is None and none["value"] is None and none["n"] == 3
+    # too few for a DRL: where we stand is still shown (indicative P50 / P75)
+    assert none["indicative"] == {"n": 3, "p50": 1000, "p75": 1150}
     # the p75 threshold never undercuts the minimum
     assert ct(min_n=4, p75_n=2)["value"] is None
     # default is the pooled rule; a room far from the pooled median is flagged
@@ -127,3 +129,35 @@ def test_local_only_exams(session, data):  # noqa: F811
     (r,) = rev["rows"]
     assert r["local_only"] and r["reference"] is None
     assert r["local_drl"] == pytest.approx(2300) and r["change_pct"] == 0
+
+
+def test_local_only_radiography_per_view(session, data):  # noqa: F811
+    """A radiography exam with no national DRL gets one local row per view: AP and lateral
+    DAP are never pooled; the projection is stored and read back by the comparison."""
+    from dozimetrix.classify import run
+    from dozimetrix.db.models import Device, Event, Study
+
+    dev = session.query(Device).filter_by(display_name="CT A").one()
+    for i in range(3):
+        s = Study(study_uid=f"k.{i}", modality="DX", device_id=dev.id,
+                  study_datetime=dt.datetime(2026, 6, 3), source_kind="test",
+                  study_description="Genunchi", age_days=int(2 * 365.25) + 30)
+        s.events = [Event(protocol="Genunchi a.p.", view="antero-posterior", dap=0.02 + i / 100),
+                    Event(protocol="Genunchi lat.", view="lateral", dap=0.01)]
+        session.add(s)
+    session.flush()
+    run(session)
+    out = localdrl.propose(session, [], "national", min_n=1, p75_n=3)
+    rows = [r for r in out["rows"] if r["exam"] == "RG-MIGN" and r["band"] == "1-4y"]
+    by = {r["projection"]: r for r in rows}
+    assert set(by) == {"AP/PA", "LL"} and all(r["local_only"] for r in rows)
+    assert by["AP/PA"]["value"] == pytest.approx(0.035)  # P75 of 0.02, 0.03, 0.04
+    assert by["LL"]["value"] == pytest.approx(0.01)
+    rs = localdrl.adopt(session, list(by.values()), name="Knee", grid="national",
+                        start=dt.date(2026, 1, 1), end=dt.date(2026, 12, 31), min_n=1,
+                        query="", p75_n=3)
+    cmp = drl.compare(session, [], rs.key, min_n=1)
+    got = {r["projection"]: r["groups"][0]["median"] for r in cmp["rows"]}
+    assert got["AP/PA"] == pytest.approx(0.03) and got["LL"] == pytest.approx(0.01)
+    rev = localdrl.review(session, rs.key, [], min_n=1)
+    assert {r["projection"] for r in rev["rows"]} == {"AP/PA", "LL"}

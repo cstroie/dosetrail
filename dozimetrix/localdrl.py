@@ -72,7 +72,8 @@ def _sig(v: float | None, digits: int = 3) -> float | None:
 
 
 LOCAL_SYSTEMS = ("ro-nom-ct", "ro-nom-rx")  # local-only exams: nomenclator codes with no DRL
-LOCAL_FAMILIES = ("CT", "RF")  # radiography needs a projection first (see drl.collect)
+LOCAL_FAMILIES = ("CT", "RF", "RX")
+LOCAL_PROJECTIONS = ("AP/PA", "LL")  # radiography: one row per view, never pooled
 SCOPES = ("all", "national")
 
 
@@ -119,10 +120,11 @@ def _templates(session: Session, grid: str, scope: str = "all") -> list[dict]:
     for key, c, local_only in codes:
         fam = FAMILY.get((c.modality or "").upper())
         for quantity, unit, applies_to in QUANTITIES.get(fam, []):
-            for scheme, band in per_code[(key, c.code)]:
-                out.append({"code": c, "system": key, "local_only": local_only,
-                            "scheme": scheme, "band": band, "quantity": quantity,
-                            "unit": unit, "applies_to": applies_to})
+            for pj in (LOCAL_PROJECTIONS if local_only and fam == "RX" else (None,)):
+                for scheme, band in per_code[(key, c.code)]:
+                    out.append({"code": c, "system": key, "local_only": local_only,
+                                "scheme": scheme, "band": band, "quantity": quantity,
+                                "unit": unit, "applies_to": applies_to, "projection": pj})
     return out
 
 
@@ -209,7 +211,11 @@ def _room_rule(per_dev: dict, min_n: int, names: dict, rule: str = "pooled",
                 and not (1 / OUTLIER <= r["median"] / pm <= OUTLIER)]
     return {"rooms": rooms, "n": pooled["n"], "pooled_median": pm,
             "n_rooms": len(medians), "value": _sig(value), "method": method,
-            "outlier_rooms": outliers}
+            "outlier_rooms": outliers,
+            # where our own exams stand even when there are too few for a DRL: the pooled
+            # median and P75, indicative only (shown greyed, never adopted by default)
+            "indicative": {"n": pooled["n"], "p50": _sig(pm), "p75": _sig(pooled.get("p75"))}
+            if pooled["n"] else None}
 
 
 def _status(value: float | None, ref: float | None) -> str | None:
@@ -230,7 +236,8 @@ def propose(session: Session, conds: list, grid: str = "national", min_n: int = 
     templates = _templates(session, grid, scope)
     items = [Item(key=i, exam_code_id=t["code"].id, quantity=t["quantity"], unit=t["unit"],
                   applies_to=t["applies_to"], scheme=t["scheme"].key,
-                  parameter=t["scheme"].parameter, band=t["band"].key)
+                  parameter=t["scheme"].parameter, band=t["band"].key,
+                  projection=t["projection"])
              for i, t in enumerate(templates)]
     got, p32 = _collect(session, conds, items, [(t["system"], t["code"].code) for t in templates],
                         estimated_weights=estimated_weights)
@@ -246,7 +253,7 @@ def propose(session: Session, conds: list, grid: str = "national", min_n: int = 
             (t["code"].code, t["band"].key, t["quantity"]))
         rows.append({
             "exam": t["code"].code, "system": t["system"], "local_only": t["local_only"],
-            "exam_meaning": t["code"].meaning,
+            "projection": t["projection"], "exam_meaning": t["code"].meaning,
             "modality": t["code"].modality, "scheme": t["scheme"].key,
             "band": t["band"].key, "band_label": t["band"].label,
             "quantity": t["quantity"], "unit": t["unit"], "applies_to": t["applies_to"],
@@ -312,7 +319,7 @@ def adopt(session: Session, rows: list[dict], *, name: str, grid: str, start: dt
         if r.get("unit") not in QUANTITY[q][1]:
             raise LocalDRLError(f"{code.code} {q}: unit {r.get('unit')!r} not supported")
         rs.values.append(ReferenceValue(exam_code=code, band=band, quantity=q, value=value,
-                                        unit=r["unit"],
+                                        unit=r["unit"], projection=r.get("projection"),
                                         applies_to=r.get("applies_to") or "study"))
     session.flush()
     return rs
@@ -354,7 +361,8 @@ def review(session: Session, set_key: str, conds: list, min_n: int = 10,
     ).all()
     items = [Item(key=i, exam_code_id=rv.exam_code_id, quantity=rv.quantity, unit=rv.unit,
                   applies_to=rv.applies_to, scheme=sc.key if sc else None,
-                  parameter=sc.parameter if sc else None, band=b.key if b else None)
+                  parameter=sc.parameter if sc else None, band=b.key if b else None,
+                  projection=rv.projection)
              for i, (rv, _c, b, sc, _k) in enumerate(vals)]
     got, p32 = _collect(session, conds, items, [(k, c.code) for _rv, c, _b, _sc, k in vals])
     refs = _references(session, grid)
@@ -372,7 +380,7 @@ def review(session: Session, set_key: str, conds: list, min_n: int = 10,
         ref = ref * factor if ref else None
         rows.append({
             "exam": code.code, "exam_meaning": code.meaning, "system": system,
-            "local_only": system != NATIONAL,
+            "local_only": system != NATIONAL, "projection": rv.projection,
             "band": band.key if band else None, "band_label": band.label if band else None,
             "quantity": rv.quantity, "unit": rv.unit, "local_drl": rv.value,
             "new_value": new,

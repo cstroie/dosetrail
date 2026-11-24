@@ -24,9 +24,11 @@ from sqlalchemy import (
     Index,
     Integer,
     SmallInteger,
-    Text as LongText,
     UniqueConstraint,
     func,
+)
+from sqlalchemy import (
+    Text as LongText,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -490,6 +492,8 @@ class ReferenceValue(Base):
     value: Mapped[float] = mapped_column(Float)
     unit: Mapped[str] = mapped_column(AsciiId(16))  # UCUM: mGy.cm mGy Gy.cm2 mGy.cm2 MBq
     applies_to: Mapped[str] = mapped_column(AsciiId(16))  # series / study / exposure
+    # radiography exams without a DRL per view (local DRLs): "AP/PA" or "LL"; NULL = any view
+    projection: Mapped[str | None] = mapped_column(AsciiId(8))
 
     reference_set: Mapped[ReferenceSet] = relationship(back_populates="values")
     exam_code: Mapped[Code] = relationship()

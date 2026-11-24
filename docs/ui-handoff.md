@@ -92,3 +92,14 @@ Requested:
 - **Alerts page** (`alerts.html`, the rail's Alerts entry): filters, per-rule counts, paging, and bulk acknowledge with a note.
 - **Study detail** for CT, DX and MG (`pages/study-generic.js`). "Reveal…" now calls the audited identify endpoint.
 - **Admin:** DICOM nodes, Users and Audit log pages, with one shared tab bar (`components/admin-tabs.js`).
+
+## Protocol comparison and local DRLs (2026-11-24/25)
+
+New API, no page yet (the backend session leaves the page to you):
+
+**`GET /api/protocols/compare`** (`protocols.py`): the protocols of one CT region side by side.
+Params: `region` (exam code, default vocabulary the national DRL: `CT-CAP` gathers head, low-dose head and head trauma; `system` selects another, e.g. `ro-nom-ct`), `q`, `start`, `end`, `grid` (`icrp` = head by age, body by weight; `national`), `by` (`protocol` | `family`: merges contrast / phase / band variants such as `CER_NATIV`, `CER K`), `by_device` (true: one row per room), `min_n`, `estimated`.
+Each row: `band`, `band_label`, `phantom_cm` (16 / 32: never mixed), `device_name`, `protocol` (normalised) with `names` (raw spellings), `n`, `studies`, `stats[metric]` = `{n, mean, sd, min, p25, median, p75, max}` for `ctdivol`, `dlp`, `kvp`, `ma`, `rotation_s`, `pitch`, `collimation_mm`, `scan_length_mm`, `emas` (mA × rotation / pitch), `hist` = `{edges, counts}` on one scale per group and phantom, `rank` (by median CTDIvol among rows with `enough`), `ratio_to_lowest`, `n_from_name` (band taken from the protocol name, e.g. `CT_CAP_N_1_6_ANI`), `n_name_mismatch`.
+Suggested page: region picker, group tabs (the bands), one table per group and phantom with the rank and a ratio-to-lowest bar, a small histogram or box per protocol on the shared scale, columns for kV / mAs / pitch / collimation. Say plainly that dose is the only thing ranked: image quality (noise, slice thickness) is not in the data.
+
+**Local DRLs** (`local-drl.html`, already updated): rule select (pooled P75 from 30 values else median, or ICRP room rule), "Values for P75", exam scope (all / national only), "local only" tag for exams without a national or European DRL, "room outlier" tag. Radiography local-only exams have one row per view (`projection`: `AP/PA` or `LL`); reference values and comparison rows now carry `projection`.

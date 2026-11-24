@@ -93,7 +93,8 @@ def reference_values(session: Session, set_key: str) -> dict:
             "values": [{"exam": c.code, "exam_meaning": c.meaning, "modality": c.modality,
                         "scheme": sc.key if sc else None, "band": b.key if b else None,
                         "band_label": b.label if b else None, "quantity": v.quantity,
-                        "value": v.value, "unit": v.unit, "applies_to": v.applies_to}
+                        "value": v.value, "unit": v.unit, "applies_to": v.applies_to,
+                        "projection": v.projection}
                        for v, c, b, sc in rows]}
 
 
@@ -120,7 +121,7 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
     items = [Item(key=i, exam_code_id=rv.exam_code_id, quantity=rv.quantity, unit=rv.unit,
                   applies_to=rv.applies_to, scheme=scheme.key if scheme else None,
                   parameter=scheme.parameter if scheme else None,
-                  band=band.key if band else None)
+                  band=band.key if band else None, projection=rv.projection)
              for i, (rv, _code, band, scheme) in enumerate(refs)]
     collected = collect(session, conds, items, by_device=by_device, physical=physical,
                         include_excluded=include_excluded,
@@ -132,7 +133,8 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
                 "group": _group(code.modality, rv.quantity),
                 "band": band.key if band else None, "band_label": band.label if band else None,
                 "scheme": scheme.key if scheme else None, "quantity": rv.quantity,
-                "applies_to": rv.applies_to, "reference": rv.value, "unit": rv.unit}
+                "applies_to": rv.applies_to, "reference": rv.value, "unit": rv.unit,
+                "projection": rv.projection}
         if scheme is not None and scheme.key not in bands:
             bands[scheme.key] = BandLookup(session, scheme.key, scheme.parameter)
         if rv.quantity not in QUANTITY:
@@ -153,7 +155,8 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
         groups.sort(key=lambda g: (g["device_name"] or "", -g["n"]))
         results.append({**item, "groups": groups,
                         "status": _worst([g["status"] for g in groups]) if groups else "no_data"})
-    results.sort(key=lambda r: (r["exam"], r["quantity"], _band_order(r, bands)))
+    results.sort(key=lambda r: (r["exam"], r["quantity"], r["projection"] or "",
+                                _band_order(r, bands)))
     return {"set": rs.key, "name": rs.name, "source": rs.source, "notes": rs.notes,
             "by": "device" if by_device else "facility", "min_n": min_n,
             "estimated_weights": estimated_weights, "rows": results}
@@ -178,6 +181,18 @@ class Item:
     scheme: str | None = None
     parameter: str | None = None  # age / weight
     band: str | None = None
+    projection: str | None = None  # radiography: PROJECTIONS group, e.g. "AP/PA" (None = any)
+
+
+# radiography projection groups for exams that have no DRL of their own per view: the
+# frontal and lateral views differ by a factor and must not be pooled
+PROJECTIONS = {"AP": "AP/PA", "PA": "AP/PA", "LL": "LL"}
+
+
+def projection_of(view: str | None, protocol: str | None) -> str:
+    from .classify import view_code
+
+    return PROJECTIONS.get(view_code(view, protocol), "other")
 
 
 def collect(session: Session, conds: list, items: list[Item], *, by_device: bool = False,
@@ -206,6 +221,7 @@ def collect(session: Session, conds: list, items: list[Item], *, by_device: bool
         code_ids = {it.exam_code_id for it in its}
         schemes = {it.scheme for it in its if it.scheme}
         c = aliased(Classification)
+        need_proj = any(it.projection for it in its)
         weight = Study.weight_kg if estimated_weights else case(
             (Study.weight_source == SizeSource.estimated_reference, None),
             else_=Study.weight_kg)
@@ -213,7 +229,7 @@ def collect(session: Session, conds: list, items: list[Item], *, by_device: bool
                  *([] if include_excluded else [Study.drl_exclusion.is_(None)])]
         if col.table is Study.__table__:  # one value per study (administered activity)
             q = (select(col, Study.id, Study.id, Study.device_id, Study.age_days, weight,
-                        c.code_id, None)
+                        c.code_id, None, None, None)
                  .select_from(Study)
                  .join(c, and_(c.study_id == Study.id, c.code_id.in_(code_ids),
                                c.event_id.is_(None)))
@@ -224,29 +240,33 @@ def collect(session: Session, conds: list, items: list[Item], *, by_device: bool
                             and_(c.event_id.is_(None), Study.modality.not_in(EXPOSURE_EXAM),
                                  ~own_codes(Event.id))))
             q = (select(col, Event.id, Study.id, Study.device_id, Study.age_days, weight,
-                        c.code_id, Event.laterality)
+                        c.code_id, Event.laterality, Event.view, Event.protocol)
                  .select_from(Event).join(Study, Study.id == Event.study_id).join(c, link)
                  .where(Event.is_localizer.is_not(True), *where))
         # (code, scheme|None, band|None, per-study?) -> (unit id, device) -> sum
         buckets: dict[tuple, dict[tuple, float]] = defaultdict(lambda: defaultdict(float))
-        wanted = {(it.exam_code_id, it.scheme, it.band, it.applies_to == "study")
-                  for it in its}
+        wanted = {(it.exam_code_id, it.scheme, it.band, it.projection,
+                   it.applies_to == "study") for it in its}
         modes = {it.applies_to == "study" for it in its}
-        for value, eid, sid, did, age, weight, cid, side in session.execute(q):
+        for value, eid, sid, did, age, weight, cid, side, view, proto in session.execute(q):
             unit = (sid, side) if cid in per_breast else sid
+            pj = projection_of(view, proto) if need_proj else None
             dev = (physical.get(did, did) if did is not None else None) if by_device else None
             keys = [(cid, None, None)]
             for sk in schemes:
                 lk = lookups[sk]
                 keys.append((cid, sk, lk(age if lk.parameter == "age" else weight)))
             for k in keys:
-                for per_study in modes:
-                    if (*k, per_study) in wanted:
-                        buckets[(*k, per_study)][(unit if per_study else eid, dev)] += value
+                for proj in ((None, pj) if need_proj else (None,)):
+                    for per_study in modes:
+                        if (*k, proj, per_study) in wanted:
+                            buckets[(*k, proj, per_study)][
+                                (unit if per_study else eid, dev)] += value
         for it in its:
             factor = units_map[it.unit]
             per_dev: dict[int | None, list[float]] = defaultdict(list)
             for (_uid, dev), v in buckets.get((it.exam_code_id, it.scheme, it.band,
+                                               it.projection,
                                                it.applies_to == "study"), {}).items():
                 per_dev[dev].append(v * factor)
             out[it.key] = dict(per_dev)
