@@ -49,6 +49,16 @@ async function send(method, path, body) {
   return data;
 }
 
+/** GET /api/me/prefs/{key} → the value this user stored on the server (never cached) */
+export async function getPref(key) {
+  if (isSample) return null;
+  const r = await fetch(new URL(`/api/me/prefs/${encodeURIComponent(key)}`, MODE).href, { headers: { Accept: 'application/json' } });
+  if (!r.ok) return null;
+  return (await r.json()).value;
+}
+/** PUT /api/me/prefs/{key}  {value} */
+export const putPref = (key, value) => send('PUT', `/api/me/prefs/${encodeURIComponent(key)}`, { value });
+
 /** PATCH /api/devices/{id}  {display_name?, modality_override? ('auto' clears), origin?} */
 export const updateDevice = (id, patch) => send('PATCH', `/api/devices/${id}`, patch);
 /** POST /api/devices/merge  {record_ids, survivor_id, display_name?} */

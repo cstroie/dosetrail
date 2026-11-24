@@ -11,7 +11,7 @@ import { baseOption } from '../components/dx-chart.js';
 import { h, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart } from '../core/format.js';
-import { groupRows, physicalDevices, drl, isSample } from '../core/api.js';
+import { groupRows, physicalDevices, drl, isSample, getPref, putPref } from '../core/api.js';
 import { summary, groupBy, histogram } from '../core/stats.js';
 import { prefs } from '../core/prefs.js';
 import { SERVER_TYPES, buildServer, serverOptions, serverSummary, defaultsFor } from './charts-server.js';
@@ -490,7 +490,42 @@ async function loadRows() {
   renderAll();
 }
 
+// Workspaces follow the user: kept on the server (per user) and mirrored in this browser.
+// The first visit after this change uploads the workspaces this browser already had.
+let flushPrefs = async () => {};
+// a reload must not drop the last change still waiting to be sent
+const reloadPage = () => flushPrefs().catch(() => {}).finally(() => location.reload());
+
+async function syncWorkspaces() {
+  if (isSample) return;
+  const names = await getPref('workspaces');
+  if (names?.length) {
+    prefs.set('workspaces', names);
+    const [current, ...wss] = await Promise.all([getPref('workspace.current'), ...names.map((n) => getPref(wsKey(n)))]);
+    names.forEach((n, i) => { if (wss[i]) prefs.set(wsKey(n), wss[i]); });
+    if (current) prefs.set('workspace.current', current);
+  } else {
+    const local = wsNames();
+    await Promise.all([putPref('workspaces', local), ...local.filter((n) => prefs.get(wsKey(n))).map((n) => putPref(wsKey(n), prefs.get(wsKey(n))))]);
+  }
+  const pending = new Map();
+  let timer;
+  prefs.subscribe((name, value) => {
+    if (!name.startsWith('workspace')) return;
+    pending.set(name, value);
+    clearTimeout(timer);
+    timer = setTimeout(() => flushPrefs().catch((e) => toast(`Workspace not saved on the server: ${e.message}`)), 600);
+  });
+  flushPrefs = () => {
+    clearTimeout(timer);
+    const batch = [...pending];
+    pending.clear();
+    return Promise.all(batch.map(([k, v]) => putPref(k, v)));
+  };
+}
+
 async function init() {
+  await syncWorkspaces().catch(() => {});  // the server copy is a convenience: the page works without it
   [devices, drlSet] = await Promise.all([physicalDevices(), drl()]);
   const names = wsNames();
   const urlQ = new URL(location.href).searchParams.get('q');
@@ -511,24 +546,24 @@ async function init() {
       prefs.set('workspaces', [...wsNames(), name]);
       prefs.set('workspace.current', name);
     } else prefs.set('workspace.current', e.target.value);
-    location.reload();
+    reloadPage();
   } }, wsNames().map((n) => h('option', { value: n, selected: n === ws.name }, n)), h('option', { value: '__new' }, '+ New workspace…'));
 
   page.replaceChildren(
     h('div', { class: 'row' },
       h('span', { class: 'pill' }, `${t('charts.workspace')}:`, wsSelect),
-      h('span', { class: 'muted small' }, isSample ? 'saved in this browser' : 'auto-saved'),
+      h('span', { class: 'muted small' }, isSample ? 'saved in this browser' : 'auto-saved to your account'),
       h('span', { class: 'spacer' }),
       h('a', { class: 'btn', href: '#', onclick: (e) => { e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:CT ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
       h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied. Sharing whole workspaces needs the server.'); } }, 'Share'),
-      h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog('Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { ws.panels = structuredClone(DEFAULT_PANELS); ws.q = DEFAULT_Q; saveWs(); location.reload(); } } }, t('charts.reset')),
+      h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog('Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { ws.panels = structuredClone(DEFAULT_PANELS); ws.q = DEFAULT_Q; saveWs(); reloadPage(); } } }, t('charts.reset')),
       h('button', { class: 'btn danger', type: 'button', onclick: async () => {
         if (!await confirmDialog(`Delete the workspace “${ws.name}” and its panels? This cannot be undone.`, { title: 'Delete workspace', label: 'Delete', danger: true })) return;
         const left = wsNames().filter((n) => n !== ws.name);
         prefs.set(wsKey(ws.name), null);
         prefs.set('workspaces', left.length ? left : [DEFAULT_WS]);  // the last one is replaced by a fresh default
         prefs.set('workspace.current', (left.length ? left : [DEFAULT_WS])[0]);
-        location.reload();
+        reloadPage();
       } }, 'Delete')),
     h('div', { class: 'row', style: { 'align-items': 'flex-start' } },
       h('div', { style: { flex: '1 1 600px' } }, qb),

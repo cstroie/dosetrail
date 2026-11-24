@@ -526,6 +526,19 @@ class User(TimestampMixin, Base):
         return {r.strip() for r in (self.roles or "").split(",") if r.strip()}
 
 
+
+class UserPref(Base):
+    """A user's saved setting kept on the server (chart workspaces), so it follows the user
+    from browser to browser. ``value`` is the JSON the page stored."""
+
+    __tablename__ = "user_pref"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    key: Mapped[str] = mapped_column(AsciiId(128))
+    value: Mapped[dict | list | None] = mapped_column(JSONType)
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_pref"),)
+
 class AuditLog(Base):
     """Append-only record of sensitive actions (identifier reveal, exports, admin changes)."""
 

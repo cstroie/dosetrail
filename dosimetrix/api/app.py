@@ -380,6 +380,38 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def me(user: User = Depends(current_user)):
         return _me(user)
 
+    # a user's own settings on the server (chart workspaces): only "workspace*" keys, small
+    PREF_KEY = re.compile(r"^workspace[A-Za-z0-9._ \-]{0,100}$")
+
+    @app.get("/api/me/prefs/{key}")
+    def get_pref(key: str, user: User = Depends(current_user),
+                 session: Session = Depends(db)):
+        from ..db.models import UserPref
+
+        if not PREF_KEY.match(key):
+            raise HTTPException(400, "unknown preference")
+        row = session.scalar(select(UserPref).filter_by(user_id=user.id, key=key))
+        return {"key": key, "value": row.value if row else None}
+
+    @app.put("/api/me/prefs/{key}")
+    def put_pref(key: str, body: dict = Body(...), user: User = Depends(current_user),  # noqa: B008
+                 session: Session = Depends(db)):
+        from ..db.models import UserPref
+
+        if not PREF_KEY.match(key):
+            raise HTTPException(400, "unknown preference")
+        value = body.get("value")
+        if len(json.dumps(value)) > 256_000:
+            raise HTTPException(413, "preference too large")
+        row = session.scalar(select(UserPref).filter_by(user_id=user.id, key=key))
+        if row is None:
+            row = UserPref(user_id=user.id, key=key)
+            session.add(row)
+        row.value = value
+        row.updated_at = clock()
+        session.commit()
+        return {"key": key, "saved": True}
+
     # ------------------------------------------------------------------ data
 
     @app.get("/api/overview")

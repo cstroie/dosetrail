@@ -112,6 +112,17 @@ def test_xa_rows_carry_fluoroscopy_columns(client):
     assert srt.status_code == 200
 
 
+def test_workspaces_are_kept_per_user(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/me/prefs/workspace.Audit").json()["value"] is None
+    ws = {"name": "Audit", "q": "date:90d", "panels": [{"type": "dots", "group": "DX"}]}
+    assert client.put("/api/me/prefs/workspace.Audit", json={"value": ws}).status_code == 200
+    assert client.get("/api/me/prefs/workspace.Audit").json()["value"] == ws
+    assert client.get("/api/me/prefs/theme").status_code == 400
+    login(client, "phys", "phys-pass-12")  # another user does not see it
+    assert client.get("/api/me/prefs/workspace.Audit").json()["value"] is None
+
+
 def test_modality_profiles(client):
     login(client, "viewer", "viewer-pass-1")
     profs = {p["code"]: p for p in client.get("/api/modalities").json()}
