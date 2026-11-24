@@ -117,6 +117,8 @@ kbd { font: var(--fs-xs) var(--font-mono); border: 1px solid var(--line-2); bord
 .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
 .seg button { border: 0; border-right: 1px solid var(--line-2); background: none; color: var(--muted); padding: 0 8px; height: 26px; font-size: var(--fs-xs); cursor: pointer; }
 .seg button:last-child { border-right: 0; }
+.nav-split button { height: 26px; padding: 0 10px; font-size: var(--fs-md, 15px); color: var(--text); }
+.nav-split button:disabled { color: var(--muted); opacity: .45; cursor: default; }
 .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); font-weight: 700; }
 
 .tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: 3px; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .03em; white-space: nowrap; text-transform: uppercase; }

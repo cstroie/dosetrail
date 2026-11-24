@@ -10,6 +10,7 @@ import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, clock } from '../core/format.js';
 import { studyHref, setGlandularity, isSample } from '../core/api.js';
+import { studyNav } from '../core/study-nav.js';
 
 const SYSTEMS = { 'ro-nom-ct': 'Nomenclator CT', 'ro-nom-rx': 'Nomenclator radiologie', 'ro-drl-ms838-2025': 'NRD OMS 838/2025',
   'ec-rp185': 'EU RP 185', 'ro-insp-1255-ct': 'INSP 1255 CT', 'ro-insp-1255-rx': 'INSP 1255 radiologie',
@@ -185,7 +186,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
   page.replaceChildren(
     h('div', { class: 'row' }, h('h1', {}, title),
       (s.alerts || []).filter((a) => a.status === 'open').length ? h('span', { class: 'tag alert' }, `${s.alerts.filter((a) => a.status === 'open').length} alerts`) : null,
-      h('span', { class: 'spacer' }), h('button', { class: 'btn no-print', type: 'button', onclick: () => print() }, t('study.print'))),
+      h('span', { class: 'spacer' }), studyNav(s.id), h('button', { class: 'btn no-print', type: 'button', onclick: () => print() }, t('study.print'))),
     h('div', { class: 'detail' },
       h('div', { class: 'side' },
         h('section', { class: 'panel', 'aria-label': 'Patient and exam' },

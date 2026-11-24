@@ -16,6 +16,7 @@ import { num, dap, dapUnit, mgy, mmss, clock, DAP_UNITS } from '../core/format.j
 import { rdsrUrl, doseStatementHref, study, studyLabel, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
 import { renderStudy } from './study-generic.js';
 import { prefs } from '../core/prefs.js';
+import { studyNav } from '../core/study-nav.js';
 
 const page = document.getElementById('page');
 const params = new URL(location.href).searchParams;
@@ -250,7 +251,7 @@ async function render() {
   page.replaceChildren(
     sampleNote || '',
     h('div', { class: 'row' }, h('h1', {}, s.description), s.alerts.map((a) => h('span', { class: `tag ${a.level}`, title: a.text }, a.kind === 'kar' ? 'Ka,r ≥ alert' : 'Σ 12 wk ≥ alert')),
-      h('span', { class: 'spacer' }), unitSeg, h('button', { class: 'btn no-print', type: 'button', onclick: () => print() }, t('study.print'))),
+      h('span', { class: 'spacer' }), unitSeg, studyNav(s.id), h('button', { class: 'btn no-print', type: 'button', onclick: () => print() }, t('study.print'))),
     h('div', { class: 'detail' },
       h('div', { class: 'side' },
         h('section', { class: 'panel', 'aria-label': 'Patient and exam' },

@@ -10,6 +10,7 @@ import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../cor
 import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { live } from '../core/live.js';
+import { rememberList } from '../core/study-nav.js';
 
 const DEFAULT_Q = 'modality:CT date:90d age:>=18 origin:local -phantom';
 const SAVED_KEY = 'savedQueries.ct';  // the key predates the other modalities; kept for users' saved queries
@@ -218,6 +219,7 @@ async function init() {
   grid.setState({ sort: initial.sort, dir: initial.dir, page: initial.page, size: 50 });
   grid.fetcher = (state) => studies({ q: currentQ, ...state }).then((res) => {
     res.rows.forEach((r) => { r._rowClass = r.flags.some((f) => f.level === 'alert') ? 'hot' : ''; });
+    rememberList(state, currentQ, res.rows, res.total);  // the study pages step through it
     return res;
   });
   grid.addEventListener('state-change', (e) => syncUrl(e.detail, currentQ));
