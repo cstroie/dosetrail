@@ -203,15 +203,15 @@ async function init() {
   };
 
   setProfile(profile);
-  // new studies of the modality shown (checked every 15 s): the list reloads in place and
+  // new or changed studies of the modality shown (checked every 15 s): the list reloads in place and
   // keeps the row that had the focus (and its preview)
-  let seen = null;  // newest study id per modality when the list was loaded
+  let seen = null;  // per modality [newest id, last change] when the list was loaded
   let focused = null;
   grid.addEventListener('row-focus', (e) => { focused = grid.rowId(e.detail); });
   live(['studies'], { studies: async (newest) => {
     if (seen === null) { seen = newest; return; }
     const mods = profile?.modalities || Object.keys(newest);
-    const moved = mods.some((m) => (newest[m] || 0) > (seen[m] || 0));
+    const moved = mods.some((m) => JSON.stringify(newest[m] ?? null) !== JSON.stringify(seen[m] ?? null));
     seen = newest;
     if (!moved) return;
     const keep = focused;

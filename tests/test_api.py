@@ -826,7 +826,7 @@ def test_live_stream_sends_current_state_per_topic(client, monkeypatch):
     assert svc[0]["state"] == "ok" and svc[1]["state"] == "alert"  # receiver never started
     r = client.get("/api/live?topics=studies,alerts")  # the slow topics, first snapshot
     studies_ = json.loads(r.text.split("event: studies\ndata: ", 1)[1].split("\n", 1)[0])
-    assert studies_ and all(isinstance(v, int) for v in studies_.values())
+    assert studies_ and all(isinstance(v[0], int) and len(v) == 2 for v in studies_.values())
     assert "event: alerts" in r.text
 
 

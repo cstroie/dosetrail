@@ -1141,11 +1141,16 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                                 "alerts_open": _alerts.open_count(session)}
             if "services" in topics:
                 out["services"] = services_health(session)
-            if "studies" in topics:  # newest study per modality, from the latest 500 (PK scan)
-                newest: dict[str, int] = {}
-                for sid, mod in session.execute(select(Study.id, Study.modality)
-                                                .order_by(Study.id.desc()).limit(500)):
-                    newest.setdefault(mod or "?", sid)
+            if "studies" in topics:
+                # per modality, from the latest 2000 studies (PK scan): the newest id and the
+                # last change (more images, HIS details, a new classification)
+                newest: dict[str, list] = {}
+                for sid, mod, upd in session.execute(
+                        select(Study.id, Study.modality, Study.updated_at)
+                        .order_by(Study.id.desc()).limit(2000)):
+                    cur = newest.setdefault(mod or "?", [sid, upd])
+                    if upd and (cur[1] is None or upd > cur[1]):
+                        cur[1] = upd
                 out["studies"] = newest
             for t in topics:  # "study:<id>": what an open study page shows changed
                 if t.startswith("study:"):
