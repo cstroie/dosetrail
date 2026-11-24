@@ -5,7 +5,7 @@ Flow per study (queued in ``his_lookup`` when the study is first stored):
    reject a HIS record whose birth date is far from the header's (another person's ID);
 2. sex and birth date: CNP > HIS > DICOM (demographics.reconcile), exact ages recomputed;
 3. device policy ``full``: the patient's requests of the matching type whose order time is
-   in [exam − window_before_h, exam + window_after_h]; the closest one before the exam wins
+   in [exam − window_before_h (default a week), exam + window_after_h]; the closest one before the exam wins
    (body region as tie-break); its order form gives weight, height, pregnancy, ward,
    requester, indication, guideline decision → ``study_request``;
 4. weight / height by rank: measured > request same day > request ≤ 72 h > DICOM header /
@@ -254,22 +254,12 @@ def process(session: Session, lookup: HisLookup, server: HisServer, client, ctx:
     req: HisRequest | None = None
     if policy == "full" and study.study_datetime is not None:
         when = study.study_datetime
-        first = (when - dt.timedelta(hours=server.window_before_h)).date()
-        last = (when + dt.timedelta(hours=server.window_after_h)).date()
-        days = [first + dt.timedelta(days=i) for i in range((last - first).days + 1)]
-        days.sort(key=lambda d: abs((d - when.date()).days))  # the exam's day first
         for kind in kinds_for(modality):
-            stubs: list = []
-            stub = score = None
-            for day in days:  # one day per call, the exam's first: stop at an earlier order
-                key = (hp.id, kind, day)
-                if key not in ctx.listings:
-                    ctx.listings[key] = client.list_requests(hp.id, kind, day)
-                stubs += ctx.listings[key]
-                stub, score = choose_request(stubs, when, server.window_before_h,
-                                             server.window_after_h)
-                if stub is not None and stub.authored_on <= when:
-                    break
+            key = (hp.id, kind)  # one listing per patient and type: every year, one HIS page
+            if key not in ctx.listings:
+                ctx.listings[key] = client.list_requests(hp.id, kind)
+            stub, score = choose_request(ctx.listings[key], when, server.window_before_h,
+                                         server.window_after_h)
             if stub is not None:
                 req = client.get_request(stub.id)
                 lookup.request_id, lookup.match_score = stub.id[:32], score

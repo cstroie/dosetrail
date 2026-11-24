@@ -6,12 +6,13 @@ categories); the rest of Dozimetrix sees `HisPatient` and `HisRequest`.
 Calls used (one patient, one study ≈ 3 calls):
   GET /fhir/Patient?q=<national id>          bare Patient (1 hit) | Bundle (several) | 404
   GET /fhir/Patient/<id>                     full record (chart weight / height, undated)
-  GET /fhir/ServiceRequest?patient=<id>&type=<radio|ct|rads|…>&dt=<day>
-                                             the patient's requests of that type on that day
+  GET /fhir/ServiceRequest?patient=<id>&type=<radio|ct|rads|…>
+                                             the patient's requests of that type, all years
   GET /fhir/ServiceRequest/<id>              order form: weight, height, indication, ward…
-Never list requests without `type` (the gateway would scrape every department) nor without
-`dt` (every year, at most 100 rows: recent requests of a long history can be cut off).
-`dt` filters to that calendar day (it once kept only the year), so a window is listed day by day.
+Never list requests without `type`: the gateway would scrape every department (24 pages).
+Nor send `dt`: the gateway then keeps only requests within ±24 h of it, halving that until
+one is left – too narrow, as requests are written up to days before the exam. With `type`
+alone it reads one HIS page (at most 100 rows); the match window is applied here.
 Every call carries `background=1`: the gateway then never holds its users' work for ours.
 
 Authentication is HTTP Basic, passed through to the HIS login. Wrong credentials, like a
@@ -248,12 +249,9 @@ class Client:
         full = self._get(f"/fhir/Patient/{urllib.parse.quote(str(exact[0].get('id')))}")
         return parse_patient(full or exact[0])
 
-    def list_requests(self, patient_id: str, kind: str,
-                      day: dt.date | None = None) -> list[HisRequestStub]:
-        """The patient's requests of one type; with `day`, only that day's."""
+    def list_requests(self, patient_id: str, kind: str) -> list[HisRequestStub]:
+        """The patient's requests of one type (every year; no `dt`, see the module note)."""
         params = {"patient": patient_id, "type": kind}
-        if day:
-            params["dt"] = f"{day.isoformat()}T00:00:00"  # the gateway keeps only the day
         body = self._get("/fhir/ServiceRequest", params)
         return [parse_request_stub(e["resource"]) for e in (body or {}).get("entry") or []
                 if (e.get("resource") or {}).get("resourceType") == "ServiceRequest"]

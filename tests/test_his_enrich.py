@@ -214,7 +214,7 @@ def test_whoami_404_alone_does_not_stop_the_worker(session, stub, his):
     assert session.get(HisLookup, st.id).his_patient_id == "77"
 
 
-def test_listings_ask_day_by_day_and_in_background(session, stub, his):
+def test_listings_span_years_without_dt_and_in_background(session, stub, his):
     stub.patients[GIRL] = his_stub.patient("77", GIRL)
     stub.requests["77"] = [his_stub.request("R-NY", "2024-12-31T20:00:00", national_id=GIRL)]
     st = _ingest(session, "1.9.88")
@@ -222,8 +222,7 @@ def test_listings_ask_day_by_day_and_in_background(session, stub, his):
     session.get(HisLookup, st.id).next_try_at = None
     enrich.run_batch(session, SECRET, now=dt.datetime(2025, 1, 1, 12), sleep=lambda s: None)
     assert session.get(HisLookup, st.id).request_id == "R-NY"
-    # the exam's day first, then back day by day until an earlier order turns up
-    assert [d[:10] for d in stub.dts] == ["2025-01-01", "2024-12-31"]
+    assert stub.dts == [None]  # one listing, no dt: the gateway would cut it to ±24 h
     assert set(stub.background) == {"1"}
 
 def test_outputs_study_summary_quality_and_survey(session, stub, his):
@@ -282,3 +281,15 @@ def test_enqueue_adds_missing_resets_on_request_and_repeats_are_harmless(session
     assert enrich.enqueue(session, sids, reset=True) == 3
     assert session.get(HisLookup, sids[0]).status == "pending"
     assert session.get(HisLookup, sids[0]).attempts == 0
+
+
+def test_request_written_days_before_the_exam_is_found(session, stub, his):
+    stub.patients[GIRL] = his_stub.patient("77", GIRL)
+    stub.requests["77"] = [his_stub.request("R-WEEK", "2025-11-01T10:00:00", national_id=GIRL),
+                           his_stub.request("R-OLD", "2025-10-01T10:00:00", national_id=GIRL)]
+    st = _ingest(session, "1.9.97")
+    st.study_datetime = dt.datetime(2025, 11, 6, 9)  # five days after the order
+    session.get(HisLookup, st.id).next_try_at = None
+    enrich.run_batch(session, SECRET, now=dt.datetime(2025, 11, 6, 12), sleep=lambda s: None)
+    lk = session.get(HisLookup, st.id)
+    assert lk.request_id == "R-WEEK" and lk.status == "matched"

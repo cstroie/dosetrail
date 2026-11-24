@@ -8,6 +8,7 @@ on /api/whoami and – like the real gateway – an empty 404 on searches.
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import json
 import threading
 import urllib.parse
@@ -105,8 +106,10 @@ class Stub:
                     if "type" not in q:
                         return self._send(400, {"error": "type required in tests"})
                     rs = stub.requests.get(q.get("patient", ""), [])
-                    if q.get("dt"):  # like the gateway: that day only
-                        rs = [r for r in rs if r["authoredOn"][:10] == q["dt"][:10]]
+                    if q.get("dt"):  # like the gateway: ±24 h of dt
+                        t = dt.datetime.fromisoformat(q["dt"])
+                        rs = [r for r in rs if abs(dt.datetime.fromisoformat(r["authoredOn"]) - t)
+                              <= dt.timedelta(hours=24)]
                     stub.dts.append(q.get("dt"))
                     return self._send(200, {"resourceType": "Bundle", "total": len(rs),
                                             "entry": [{"resource": r} for r in rs]})

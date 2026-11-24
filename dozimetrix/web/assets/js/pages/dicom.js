@@ -14,7 +14,7 @@ import { dicomStatus, createNode, updateNode, deleteNode, echoNode,
 
 const page = document.getElementById('page');
 const HIS_EMPTY = { name: '', kind: 'hippobridge', base_url: '', username: '', enabled: true, timeout: 120,
-  modalities: '', window_before_h: 72, window_after_h: 2, min_interval_s: 2, backfill_hours: '22-06', notes: '' };
+  modalities: '', window_before_h: 168, window_after_h: 2, min_interval_s: 2, backfill_hours: '22-06', notes: '' };
 const EMPTY = { name: '', aet: '', host: '', port: 104, enabled: true, query_retrieve: false, sends: true,
   retrieve: 'get', move_destination: '', modalities: '', max_results: null, timeout: 60, sync_days: null, notes: '' };
 

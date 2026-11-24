@@ -693,7 +693,7 @@ class HisServer(TimestampMixin, Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     timeout: Mapped[int] = mapped_column(Integer, default=120)
     modalities: Mapped[str | None] = mapped_column(AsciiId(64))  # comma list; empty = all
-    window_before_h: Mapped[int] = mapped_column(Integer, default=72)
+    window_before_h: Mapped[int] = mapped_column(Integer, default=168)  # a week: orders precede exams by days
     window_after_h: Mapped[int] = mapped_column(Integer, default=2)
     min_interval_s: Mapped[float] = mapped_column(Float, default=2.0)
     backfill_hours: Mapped[str | None] = mapped_column(AsciiId(16))  # e.g. "22-06"
