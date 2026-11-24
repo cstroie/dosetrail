@@ -1,5 +1,5 @@
 [Unit]
-Description=Dosimetrix web UI and API
+Description=Dozimetrix web UI and API
 After=network-online.target mariadb.service
 Wants=network-online.target
 

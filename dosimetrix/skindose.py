@@ -1,6 +1,6 @@
 """Skin dose map and peak skin dose estimate for fluoroscopy and interventional studies.
 
-This is Dosimetrix's own model. It is an **estimate**, not a measurement, and it is
+This is Dozimetrix's own model. It is an **estimate**, not a measurement, and it is
 labelled as such wherever it is shown. Every assumption is returned with the result.
 
 Patient

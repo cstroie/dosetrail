@@ -2,7 +2,7 @@
 
 Date: 2026-11-21
 
-**Sources** (OpenREM is GPLv3. This document describes its behaviour only. No OpenREM code is reused in Dosimetrix.)
+**Sources** (OpenREM is GPLv3. This document describes its behaviour only. No OpenREM code is reused in Dozimetrix.)
 - Source code: `gitlab.com/openrem/OpenREM`, tag `0.10.0` (Nov 2019, Python 2.7/3, Django 2.2, Celery) and branch `develop` = `1.0.0b3` (Python 3.10+, Django 3.2, huey/redis).
 - Docs: 0.10.0.
 - Live demo: `demo.openrem.org`, logged in as `demo/demo`. It runs 1.0.0b3 with 2000 CT, 1599 DX, 5 RF, 3 MG and some NM studies.

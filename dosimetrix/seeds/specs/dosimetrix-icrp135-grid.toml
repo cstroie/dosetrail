@@ -8,7 +8,7 @@ id = "dosimetrix-icrp135-grid"
 kind = "compare"
 version = "1"
 title = { en = "ICRP 135 / RP 185 grid", ro = "Grila ICRP 135 / RP 185" }
-authority = "Dosimetrix"
+authority = "Dozimetrix"
 country = ""
 legal = "ICRP 135, EC RP 185"
 formats = ["xlsx", "json"]

@@ -203,7 +203,7 @@ def to_result(ctx: Context, report: dict, info: dict | None = None) -> Result:
     if min_patients:
         lines.append((f"Aparat × procedură sub {min_patients} pacienți ({_article(spec)})",
                       low_total))
-    lines += [("Necolectate de Dosimetrix", n["not_collected"]), ("Notă", table.get("note", ""))]
+    lines += [("Necolectate de Dozimetrix", n["not_collected"]), ("Notă", table.get("note", ""))]
     out: list[OutSheet] = []
     names = report["devices"]
     for s in report["sheets"]:

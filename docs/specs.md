@@ -5,7 +5,7 @@ audit, a form another hospital or country uses. The program finds it, checks it,
 command line, in the API, on the Reports page and (if it has a deadline) on the overview. There is no
 route, command or page to write for a new one.
 
-Every national report Dosimetrix makes is itself a bundled spec (`dosimetrix/seeds/specs/`), and its
+Every national report Dozimetrix makes is itself a bundled spec (`dosimetrix/seeds/specs/`), and its
 constants (30 patients, 20 patients, February-March, the 20th of the month…) are the spec's `[rules]`,
 each with the article it comes from. An amendment of an order is an edit to a number in a file.
 
@@ -104,7 +104,7 @@ day = 20                     #   ... on this day
 ```
 
 The overview shows the deadline from `lead_days` before until `grace_days` after, with the spec's
-title in the user's language and a link to the report. A person marks it **sent**; Dosimetrix sends
+title in the user's language and a link to the report. A person marks it **sent**; Dozimetrix sends
 nothing.
 
 ## Extending beyond the file: plugins

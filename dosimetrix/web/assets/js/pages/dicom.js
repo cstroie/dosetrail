@@ -1,4 +1,4 @@
-// Integration: DICOM (this Dosimetrix's AE and receiver status, the remote nodes – PACS to query,
+// Integration: DICOM (this Dozimetrix's AE and receiver status, the remote nodes – PACS to query,
 // modalities allowed to send –, C-ECHO, PACS sync coverage) and the HIS / RIS servers that
 // studies are enriched from (patient, weight, height, request, indication). Changes need the
 // admin role and are audit-logged; the receiver picks up node changes within a minute. The HIS
@@ -44,7 +44,7 @@ async function render() {
   const senders = Object.entries(rx?.by_aet || {}).sort((a, b) => b[1].n - a[1].n);
   append(clear(page), [tabs(),
     h('div', { class: 'kpis drl-kpis' },
-      h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'This Dosimetrix'), h('span', { class: 'v mono' }, st.local.aet),
+      h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'This Dozimetrix'), h('span', { class: 'v mono' }, st.local.aet),
         h('span', { class: 'm' }, `port ${st.local.port} · ${st.local.bind}`)),
       h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Receiver'), serviceTag(rx, 'receiver'),
         h('span', { class: 'm' }, rx ? `${num(rx.received)} objects since start · ${ago(rx.age_s)}` : 'start it with dosimetrix receive')),
@@ -256,7 +256,7 @@ function edit(node) {
     h('div', { style: { display: 'grid', 'grid-template-columns': '1fr 1fr', gap: 'var(--sp-2)' } },
       field('Name', els.name), field('AE title', els.aet), field('Host', els.host, 'not needed for a node that only sends'),
       field('Port', els.port),
-      h('label', { class: 'chk' }, els.sends, ' sends to Dosimetrix (accepted caller)'),
+      h('label', { class: 'chk' }, els.sends, ' sends to Dozimetrix (accepted caller)'),
       h('label', { class: 'chk' }, els.query_retrieve, ' query/retrieve from it (PACS)'),
       field('Retrieve', els.retrieve), field('C-MOVE destination', els.move_destination, 'default: our AE title'),
       field('Modalities to query', els.modalities, 'one C-FIND per modality'), field('C-FIND result cap', els.max_results, 'capped days are split'),

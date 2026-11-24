@@ -1,5 +1,5 @@
 [Unit]
-Description=Dosimetrix HIS lookups (patient, weight, height, imaging request)
+Description=Dozimetrix HIS lookups (patient, weight, height, imaging request)
 After=network-online.target mariadb.service
 Wants=network-online.target
 

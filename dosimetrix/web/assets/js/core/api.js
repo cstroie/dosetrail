@@ -2,7 +2,7 @@
 //
 // Mode is chosen by <html data-api="...">:
 //   "sample" (default) → static JSON in data/sample/, filtered and paged in the browser;
-//   anything else      → treated as the base URL of the Dosimetrix REST API (planned endpoints
+//   anything else      → treated as the base URL of the Dozimetrix REST API (planned endpoints
 //                        are noted per function; the response shapes are the same).
 
 import { parse, matchStudy, active } from './query.js';
@@ -197,7 +197,7 @@ export async function study(ref) {
 }
 
 /** Link to a study's detail page: by id when the API provides one, else by accession. */
-/** How a study is named in lists: its accession, else its Dosimetrix id (some devices,
+/** How a study is named in lists: its accession, else its Dozimetrix id (some devices,
  *  e.g. the Artis and the Luminos, send no accession number). */
 export function studyLabel(s) {
   return s.accession || (s.id != null ? `study ${s.id}` : '—');
@@ -248,7 +248,7 @@ export async function groupRows(group, q = '') {
 /* ---------------- statistics, reference levels, exam classification (server only) ---------------- */
 
 function serverOnly(what) {
-  return Promise.reject(new Error(`${what} needs the Dosimetrix server (sample mode has no data for it)`));
+  return Promise.reject(new Error(`${what} needs the Dozimetrix server (sample mode has no data for it)`));
 }
 
 /**
@@ -283,7 +283,7 @@ export const actionList = (year, quarter) => (isSample ? serverOnly('Reports') :
 export const addAction = (a) => send('POST', '/api/actions', a);
 export const editAction = (id, patch) => send('PUT', `/api/actions/${id}`, patch);
 export const deleteAction = (id) => send('DELETE', `/api/actions/${id}`);
-/** POST /api/deadlines/{id}/done: a person says the report was sent (nothing is sent by Dosimetrix). */
+/** POST /api/deadlines/{id}/done: a person says the report was sent (nothing is sent by Dozimetrix). */
 export const deadlineDone = (id) => send('POST', `/api/deadlines/${encodeURIComponent(id)}/done`);
 
 /** PUT /api/studies/{id}/glandularity {percent|null} (admin): mammography, typed in. */

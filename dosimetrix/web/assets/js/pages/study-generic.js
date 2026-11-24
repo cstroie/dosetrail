@@ -214,7 +214,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
               : 'DRL per projection (OMS 838/2025, by age group). Retakes of the same projection add up to the projection dose.'))));
   grid.reload();  // the grid fetches once it is in the document
   adminGrid?.reload();
-  document.title = `${s.accession || s.id} · Dosimetrix`;
+  document.title = `${s.accession || s.id} · Dozimetrix`;
 }
 
 function exportRows(s, kind) {

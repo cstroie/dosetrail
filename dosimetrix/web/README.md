@@ -1,4 +1,4 @@
-# Dosimetrix web UI
+# Dozimetrix web UI
 
 Static frontend: plain HTML, CSS and vanilla JavaScript ES modules with native custom elements.
 There is no npm and no build step. The only third-party file is Apache ECharts, vendored in

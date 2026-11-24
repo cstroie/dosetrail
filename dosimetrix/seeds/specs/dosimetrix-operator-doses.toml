@@ -7,7 +7,7 @@ id = "dosimetrix-operator-doses"
 kind = "outliers"
 version = "1"
 title = { en = "Doses per operator (optimisation)", ro = "Doze pe operator (optimizare)" }
-authority = "Dosimetrix"
+authority = "Dozimetrix"
 country = ""
 legal = ""
 formats = ["xlsx", "json"]

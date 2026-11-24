@@ -125,7 +125,7 @@ function lookupPanel() {
 }
 
 // Reporting deadlines of Order 1255/2016 (art. 8 quarterly, art. 12 annual): shown as the date
-// approaches; a person marks one as sent, Dosimetrix sends nothing.
+// approaches; a person marks one as sent, Dozimetrix sends nothing.
 function deadlinePanel(list, reload) {
   if (!list?.length) return null;
   const rows = list.map((d) => {

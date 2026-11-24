@@ -1,8 +1,8 @@
-# Dosimetrix — design draft
+# Dozimetrix — design draft
 
 Status: **DRAFT for review** · 2026-11-21
 
-Dosimetrix is an open-source (MIT) patient radiation exposure monitor for CT, radiography (DX/CR), fluoroscopy (RF/XA), mammography (MG) and later NM/PET. It aims to reach the same goals and reports as OpenREM (see `openrem-analysis.md`) with a fast, modern, maintainable code base. No OpenREM code is reused.
+Dozimetrix is an open-source (MIT) patient radiation exposure monitor for CT, radiography (DX/CR), fluoroscopy (RF/XA), mammography (MG) and later NM/PET. It aims to reach the same goals and reports as OpenREM (see `openrem-analysis.md`) with a fast, modern, maintainable code base. No OpenREM code is reused.
 
 ---
 
@@ -25,7 +25,7 @@ Dosimetrix is an open-source (MIT) patient radiation exposure monitor for CT, ra
 | Language | Python **3.12** (floor). It gives `tomllib`, modern typing and performance. To be confirmed for the production host. |
 | Production DB | **MariaDB ≥ 10.6** (10.11 / 11.4 LTS recommended) |
 | Development / test DB | SQLite (no server needed). CI also runs the test suite against MariaDB. |
-| PostgreSQL | **Not supported** as a Dosimetrix backend. It is only *read* by the OpenREM importer (§8). |
+| PostgreSQL | **Not supported** as a Dozimetrix backend. It is only *read* by the OpenREM importer (§8). |
 | Deployment | Plain install first: virtualenv, systemd unit, reverse proxy optional. Docker later. |
 | Licence | MIT |
 
@@ -303,7 +303,7 @@ A scheduled C-FIND per modality and date window. Series are selected per modalit
 
 ### 8.1 Access
 OpenREM uses PostgreSQL. Two modes are planned:
-- **CSV mode (default, no extra dependency):** a script runs `psql \copy (SELECT …) TO STDOUT CSV HEADER` for the needed `remapp_*` tables into a dump folder. Dosimetrix then reads that folder with the stdlib `csv` module. The dump can be produced on the OpenREM server itself.
+- **CSV mode (default, no extra dependency):** a script runs `psql \copy (SELECT …) TO STDOUT CSV HEADER` for the needed `remapp_*` tables into a dump folder. Dozimetrix then reads that folder with the stdlib `csv` module. The dump can be produced on the OpenREM server itself.
 - **Direct mode (optional extra):** read-only connection with `psycopg`.
 
 ### 8.2 Mapping
@@ -327,7 +327,7 @@ OpenREM may have stored patient ID and name in clear, as unsalted SHA-256, or no
 
 ## 9. Exports, DRL surveys and reference levels
 
-Dosimetrix does not adopt any single national template. It stores one **standards-based core dataset**, and every survey format is a thin converter on top of it.
+Dozimetrix does not adopt any single national template. It stores one **standards-based core dataset**, and every survey format is a thin converter on top of it.
 
 ### 9.1 Standards
 | Layer | Standard |
@@ -339,7 +339,7 @@ Dosimetrix does not adopt any single national template. It stores one **standard
 | Registry exchange | **IHE REM**: de-identified RDSR export for dose registries |
 
 ### 9.2 Export products
-1. **Dosimetrix DRL Dataset (versioned)**
+1. **Dozimetrix DRL Dataset (versioned)**
    - One row per exam, as CSV, XLSX (own writer) or JSON, with a published data dictionary.
    - Each row holds:
      - pseudonymised facility and device codes, modality, manufacturer and model;
@@ -361,7 +361,7 @@ DRL tables are stored as **versioned reference sets** (local, national, European
 
 ### 9.4 Regulatory reporting, national surveys and data quality
 - **National reporting (Romania, first converter set):**
-  - **Quarterly centralised report:** per national procedure code, the exam counts by age band and sex, and the mean dose (DAP, ESAK/MGD, DLP, RP dose or activity) by age group. Dosimetrix fills the official workbook layout directly.
+  - **Quarterly centralised report:** per national procedure code, the exam counts by age band and sex, and the mean dose (DAP, ESAK/MGD, DLP, RP dose or activity) by age group. Dozimetrix fills the official workbook layout directly.
   - **Per-exam DRL survey forms (art. 12):** one row per exam per exam-type sheet, with a partial national ID (sex and birth-date digits only), age, sex, height, weight, pregnancy, indication and dose.
   - **Single-sheet per-exam register:** a variant with pick-lists for exam code, indication, contrast or projection, and dose.
   - **Semestrial trend analysis:** quarterly means compared with the DRL over the last 6 quarters.
@@ -388,7 +388,7 @@ DRL tables are stored as **versioned reference sets** (local, national, European
   - phantom consistent with the exam (a 32 cm phantom on a paediatric head scan is flagged);
   - duplicates;
   - **completeness KPIs**, for example the share of studies with a measured weight.
-- **Aggregator mode (later):** one Dosimetrix instance can receive anonymised survey exports from many institutions, by upload or API, validate them and compute national statistics. The same code serves local sites and the central collection.
+- **Aggregator mode (later):** one Dozimetrix instance can receive anonymised survey exports from many institutions, by upload or API, validate them and compute national statistics. The same code serves local sites and the central collection.
 
 ## 10. Security and privacy
 
@@ -430,7 +430,7 @@ DRL tables are stored as **versioned reference sets** (local, national, European
 - **Frontend:** HTML, CSS and vanilla JavaScript only; no npm and no build step. Visual direction: **variant B "Console"**, provisional (§3).
 - **Python:** 3.12 is the minimum, and the production host will provide it.
 - **pynetdicom** is kept.
-- **Legacy import:** CSV dumps are made on the OpenREM server and copied to the Dosimetrix host.
+- **Legacy import:** CSV dumps are made on the OpenREM server and copied to the Dozimetrix host.
 - **Notifications:** pluggable channels: e-mail over SMTP (stdlib `smtplib`) and **ntfy** (plain HTTP POST with stdlib `urllib`), with more to come.
 
 - **Survey and DRL exports:** a standards-based core dataset (ICRP 135 method, RP 180/185/195 taxonomies, RadLex/LOINC codes, UCUM units, IHE REM RDSR export). National formats will be converters (§9).

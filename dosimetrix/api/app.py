@@ -216,7 +216,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     engine = engine or make_engine(settings.database_url)
     maker = make_sessionmaker(engine)
     secret = secret or load_or_create_secret(settings.secret_file)
-    app = FastAPI(title="Dosimetrix", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Dozimetrix", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.secret = secret
     app.state.settings = settings
     app.state.fixed_now = now  # tests only
@@ -1311,7 +1311,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                    user: User = Depends(current_user), session: Session = Depends(db)):
         """The study's dose SR (IHE REM; RRDSR for NM/PET) as a download; pseudonymised unless
         pid=1 (pid role).
-        A file download only: Dosimetrix does not send dose SRs anywhere."""
+        A file download only: Dozimetrix does not send dose SRs anywhere."""
         from ..export import rdsr
 
         _exporter(user)

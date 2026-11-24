@@ -1,7 +1,7 @@
 """Client for HippoBridge, a FHIR-shaped gateway to a hospital information system.
 
 Only this module knows HippoBridge's resource shapes (its extension URLs and note
-categories); the rest of Dosimetrix sees `HisPatient` and `HisRequest`.
+categories); the rest of Dozimetrix sees `HisPatient` and `HisRequest`.
 
 Calls used (one patient, one study ≈ 3 calls):
   GET /fhir/Patient?q=<national id>          bare Patient (1 hit) | Bundle (several) | 404

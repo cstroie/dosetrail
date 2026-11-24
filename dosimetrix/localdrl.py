@@ -226,7 +226,7 @@ def adopt(session: Session, rows: list[dict], *, name: str, grid: str, start: dt
     key = f"{LOCAL_PREFIX}{grid}-{now:%Y%m%d-%H%M%S}"
     rs = ReferenceSet(
         key=key, name=name[:255], valid_from=now.date(),
-        source=f"Local DRL (Dosimetrix): {start.isoformat()} – {end.isoformat()}, "
+        source=f"Local DRL (Dozimetrix): {start.isoformat()} – {end.isoformat()}, "
                f"{'national age groups' if grid == 'national' else 'ICRP 135 / RP 185 groups'}"
                f", query {query or '(all)'!s}"[:512],
         notes=f"P75 of the room medians (rooms with ≥ {min_n} values); a single room: its "

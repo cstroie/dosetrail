@@ -1,4 +1,4 @@
-# Deploying Dosimetrix (plain install)
+# Deploying Dozimetrix (plain install)
 
 A single machine runs everything: MariaDB, the web UI/API, the DICOM receiver and an hourly
 query/retrieve job. Docker images will follow; this guide uses systemd only.
@@ -74,7 +74,7 @@ systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
   - the WHO Child Growth Standards for 0–5 years;
   - the WHO 2007 Growth Reference for 5–10 years;
   - the CDC 2000 growth charts (2–20 years), used only beyond 10 years, where WHO has no weight-for-age reference. Rerun `install` on older setups to add it.
-- They are WHO and CDC data under their publishers' terms (see `SOURCE.txt` there), so they are not shipped with Dosimetrix. `dosimetrix growth status` shows whether they are installed.
+- They are WHO and CDC data under their publishers' terms (see `SOURCE.txt` there), so they are not shipped with Dozimetrix. `dosimetrix growth status` shows whether they are installed.
 - With the tables, data quality flags weights outside P1–P99 for age and sex. Studies of children (< 18 y) below P5 or above P95 are left out of DRL statistics (`study.drl_exclusion`), as the national paediatric survey plan asks. Missing or implausible weights (outside P1–P99) are replaced by the median weight for age and sex (`weight_source = estimated_reference`; an implausible reported value is kept in `weight_reported_kg` and still reported by data quality). Estimates are marked on the study page, in exports and in the second-grid report; patients over 20 years, or without age or sex, keep no weight. Run `dosimetrix growth check` after importing weights, e.g. from the RIS (a reported weight replaces an estimate); new studies are estimated and checked as they arrive.
 
 ## Weight / height from a CSV file
@@ -89,7 +89,7 @@ systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
 
 ## Dose SR export (IHE REM)
 
-`dosimetrix rdsr --study ID --out DIR` (or `--query 'modality:CT date:30d'`) writes one X-Ray Radiation Dose SR per study: TID 10011 for CT, TID 10001 for radiography, fluoroscopy and mammography, built from the stored values. Files are pseudonymised unless `--identified`: pseudonymous patient ID; no name, birth date, accession or physicians; derived study, series, SOP and event UIDs. They still carry the exact study date and time, age, sex, the study description and the free-text protocol names and comments, so treat them as personal data (the survey export, which cuts dates to the month, is the anonymised product). Estimated weights are not written. Users with the exporter role can download a study's file from the study page ("Dose SR"; `GET /api/studies/{id}/rdsr`). Dosimetrix only writes files: it does not send dose SRs to a PACS or registry.
+`dosimetrix rdsr --study ID --out DIR` (or `--query 'modality:CT date:30d'`) writes one X-Ray Radiation Dose SR per study: TID 10011 for CT, TID 10001 for radiography, fluoroscopy and mammography, built from the stored values. Files are pseudonymised unless `--identified`: pseudonymous patient ID; no name, birth date, accession or physicians; derived study, series, SOP and event UIDs. They still carry the exact study date and time, age, sex, the study description and the free-text protocol names and comments, so treat them as personal data (the survey export, which cuts dates to the month, is the anonymised product). Estimated weights are not written. Users with the exporter role can download a study's file from the study page ("Dose SR"; `GET /api/studies/{id}/rdsr`). Dozimetrix only writes files: it does not send dose SRs to a PACS or registry.
 
 ## DICOM nodes
 - Remote AEs are managed in Admin → Integration:
@@ -135,7 +135,7 @@ systemctl enable --now dosimetrix-his   # only with a HIS server (see below)
   Data quality flags HIS lookups that found no patient (`his_unmatched`) and disagreements
   between CNP, HIS and DICOM (`demographic_conflict`). The survey export carries the
   request's indication as free text (`indication_text`): review it before sending.
-- Use a HIS account of its own for Dosimetrix, not one another service already uses (for
+- Use a HIS account of its own for Dozimetrix, not one another service already uses (for
   example the modality worklist's): the HIS may keep a single session per account.
 - National IDs alone (offline, no HIS): `dosimetrix cnp backfill` shows what would change;
   add `--apply` to write it.

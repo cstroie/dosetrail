@@ -9,7 +9,7 @@
   Irradiation Event X-Ray Data container per stored exposure or fluoroscopy run.
 
 The objects are DICOM Part 10 files (Explicit VR Little Endian) that our own parser, and
-other dose monitors, read back. Values are what Dosimetrix stored, in DICOM's units; nothing
+other dose monitors, read back. Values are what Dozimetrix stored, in DICOM's units; nothing
 is recomputed. A weight is written only when it was reported (estimated weights are not).
 
 Pseudonymised by default: patient ID → the keyed pseudonym, no name, birth date, accession or
@@ -386,7 +386,7 @@ def _build(study: Study, events: list[Event], secret: bytes, identified: bool,
         ds.PatientBirthDate = ""
         ds.ReferringPhysicianName = ""
         ds.PatientIdentityRemoved = "YES"
-        ds.DeidentificationMethod = "Dosimetrix pseudonym; derived UIDs"
+        ds.DeidentificationMethod = "Dozimetrix pseudonym; derived UIDs"
     ds.SeriesInstanceUID = _uid(secret, ds.StudyInstanceUID, "series")
     ds.PatientSex = (pat.sex if pat and pat.sex in ("M", "F", "O") else "") or ""
     if study.age_days is not None:
@@ -403,13 +403,13 @@ def _build(study: Study, events: list[Event], secret: bytes, identified: bool,
     ds.Modality = "SR"
     ds.SeriesNumber = 999
     ds.InstanceNumber = 1
-    ds.SeriesDescription = "Radiation Dose Information (Dosimetrix)"
+    ds.SeriesDescription = "Radiation Dose Information (Dozimetrix)"
     ds.Manufacturer = (d.manufacturer if d else "") or ""
     ds.ManufacturerModelName = (d.model_name if d else "") or ""
     ds.DeviceSerialNumber = (d.serial_number if d else "") or ""
     ds.StationName = (d.station_name if d else "") or ""
     ds.InstitutionName = (d.institution_name if d else "") or ""
-    ds.SoftwareVersions = f"Dosimetrix {__version__}"
+    ds.SoftwareVersions = f"Dozimetrix {__version__}"
     ds.ReferencedPerformedProcedureStepSequence = Sequence([])
     ds.PerformedProcedureCodeSequence = Sequence([])
     ds.CompletionFlag, ds.VerificationFlag = "COMPLETE", "UNVERIFIED"

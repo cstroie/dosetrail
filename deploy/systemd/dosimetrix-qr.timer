@@ -1,5 +1,5 @@
 [Unit]
-Description=Run Dosimetrix PACS query/retrieve every hour
+Description=Run Dozimetrix PACS query/retrieve every hour
 
 [Timer]
 OnCalendar=hourly

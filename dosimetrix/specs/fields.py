@@ -24,7 +24,7 @@ def _study(name: str, attr: str, unit: str = "", doc: str = ""):
 
 
 for _n, _a, _u, _d, _nd in [  # the last column is unused (kept for readability)
-    ("study.id", "id", "", "Dosimetrix's own study number", None),
+    ("study.id", "id", "", "Dozimetrix's own study number", None),
     ("study.date", "study_datetime", "", "Date and time of the study", None),
     ("study.modality", "modality", "", "DICOM modality (PT is stored for PET/CT, NM for SPECT/CT)", None),
     ("study.description", "study_description", "", "Study description from the header", None),

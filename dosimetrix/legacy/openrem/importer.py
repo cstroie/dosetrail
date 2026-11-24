@@ -1,11 +1,11 @@
-"""Import an OpenREM CSV dump (see dump.py) into Dosimetrix.
+"""Import an OpenREM CSV dump (see dump.py) into Dozimetrix.
 
 * Patients are keyed by sha256(utf8(patient_id)) – OpenREM's own hashing recipe – so
   hashed historical records and clear-ID records of the same patient merge automatically.
 * Devices are keyed by device observer UID > manufacturer + serial > normalised tuple,
   so case variants of the same station collapse into one device.
 * Studies are merged by Study Instance UID; events are unique per (study, event UID).
-* Units are converted to Dosimetrix storage units (DAP Gy·m² -> Gy·cm², µAs -> mAs, ms -> s).
+* Units are converted to Dozimetrix storage units (DAP Gy·m² -> Gy·cm², µAs -> mAs, ms -> s).
 * Re-running skips studies whose UID already exists.
 * Exact duplicate exposures inside a study (same time to the second, same DAP, kVp, mAs and
   protocol – e.g. one exposure stored both as a CR and a DX object) are removed, keeping

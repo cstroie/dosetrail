@@ -1,6 +1,6 @@
 """Central collection for the national paediatric dose survey (aggregator mode).
 
-The same Dosimetrix that collects locally can run centrally: institutions send their
+The same Dozimetrix that collects locally can run centrally: institutions send their
 anonymised monthly survey export (export/survey.py, CSV or JSON), the central team uploads
 it here, and the national statistics come out of all uploads together.
 

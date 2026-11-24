@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Setup · Dosimetrix</title>
+  <title>Setup · Dozimetrix</title>
   <link rel="icon" href="/assets/img/favicon.svg">
   <link rel="stylesheet" href="/assets/css/tokens.css">
   <link rel="stylesheet" href="/assets/css/base.css">
@@ -37,7 +37,7 @@
 </head>
 <body>
 <main>
-  <h1 class="brand"><svg class="mark" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h5.5a8 8 0 0 1 0 16H5z M8.5 16.5C11 16.5 11.5 10 15 9.5"/></svg><span>Dosimetri<span class="x">x</span> <span style="font-weight:400;opacity:.7">· first-run setup</span></span></h1>
+  <h1 class="brand"><svg class="mark" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h5.5a8 8 0 0 1 0 16H5z M8.5 16.5C11 16.5 11.5 10 15 9.5"/></svg><span>Dozimet<span class="x">rix</span> <span style="font-weight:400;opacity:.7">· first-run setup</span></span></h1>
   <ol class="steps" id="steps"></ol>
   <div id="view"></div>
 </main>
@@ -186,7 +186,7 @@ function dicomView() {
 function growthView() {
   const out = el('div', {});
   return el('section', {}, el('h2', {}, 'Growth tables'),
-    el('p', { class: 'note' }, 'WHO (0–10 years) and CDC 2000 (to 20 years) weight-for-age tables are downloaded from their publishers (they are not bundled, because of their licence). Dosimetrix uses them to check children\'s weights, to estimate missing ones, and to leave out of DRL statistics the children below P5 or above P95.'),
+    el('p', { class: 'note' }, 'WHO (0–10 years) and CDC 2000 (to 20 years) weight-for-age tables are downloaded from their publishers (they are not bundled, because of their licence). Dozimetrix uses them to check children\'s weights, to estimate missing ones, and to leave out of DRL statistics the children below P5 or above P95.'),
     ok('growth') ? el('p', { class: 'note' }, '✅ Installed.') : null, out,
     el('div', { class: 'actions' }, skip('done', ok('growth') ? 'Next' : 'Skip'),
       el('button', { class: 'btn primary', type: 'button', onclick: async (ev) => {
@@ -204,7 +204,7 @@ function doneView() {
       el('p', { class: 'note' }, 'Everything is in place.'),
     el('p', { class: 'note' }, 'Next: back up the site secret and the database; import history (dosimetrix openrem-import) or let query/retrieve fill it; review devices under Admin → Devices.'),
     el('div', { class: 'actions' }, el('button', { class: 'btn', type: 'button', onclick: () => go('checks') }, 'Back to checks'),
-      el('button', { class: 'btn primary', type: 'button', onclick: async () => { await api('POST', '/api/setup/finish'); location.href = '/'; } }, 'Open Dosimetrix')));
+      el('button', { class: 'btn primary', type: 'button', onclick: async () => { await api('POST', '/api/setup/finish'); location.href = '/'; } }, 'Open Dozimetrix')));
 }
 
 function render() {

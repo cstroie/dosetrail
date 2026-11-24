@@ -1,4 +1,4 @@
-"""Conversion of DICOM measured values to Dosimetrix storage units.
+"""Conversion of DICOM measured values to Dozimetrix storage units.
 
 Units arrive as UCUM codes, sometimes misspelled by vendors ('mGy*cm', 'dGy.cm2', 'µGy.m2',
 'Gym2').

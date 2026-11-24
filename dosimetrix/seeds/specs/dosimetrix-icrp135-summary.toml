@@ -7,7 +7,7 @@ id = "dosimetrix-icrp135-summary"
 kind = "compare"
 version = "1"
 title = { en = "ICRP 135 summary (rooms and facility)", ro = "Sumar ICRP 135 (săli și unitate)" }
-authority = "Dosimetrix"
+authority = "Dozimetrix"
 country = ""
 legal = "ICRP 135"
 formats = ["xlsx", "csv", "json"]

@@ -187,7 +187,7 @@ async function init() {
     grid.setAttribute('label', gridLabel(p));
     grid.table?.setAttribute('aria-label', gridLabel(p));
     grid.columns = cols;
-    document.title = `${gridLabel(p)} · Dosimetrix`;
+    document.title = `${gridLabel(p)} · Dozimetrix`;
     if (!cols.some((c) => c.key === grid.state?.sort) && grid.state && grid.state.sort !== 'date') grid.setState({ sort: 'date', dir: 'desc' });
   };
   const apply = (q) => {

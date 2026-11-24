@@ -1,5 +1,5 @@
 [Unit]
-Description=Dosimetrix DICOM receiver (C-STORE/C-ECHO SCP)
+Description=Dozimetrix DICOM receiver (C-STORE/C-ECHO SCP)
 After=network-online.target mariadb.service
 Wants=network-online.target
 

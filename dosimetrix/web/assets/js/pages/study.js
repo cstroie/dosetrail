@@ -267,7 +267,7 @@ async function render() {
         selInfo,
         skinPanel(s))));
 
-  document.title = `${studyLabel(s)} · Dosimetrix`;
+  document.title = `${studyLabel(s)} · Dozimetrix`;
   refresh();
   chart.on('click', (ev) => {
     if (ev.data?.eventIndex === undefined) return;
@@ -322,7 +322,7 @@ function skinPanel(s) {
       views,
       h('details', {}, h('summary', { class: 'muted small', style: { cursor: 'pointer' } }, `Model and assumptions · ${r.events_used} events in ${r.geometries} geometries${r.events_skipped ? `, ${r.events_skipped} without Ka,r` : ''}`),
         h('ul', { class: 'muted small' }, [A.phantom, A.factors, `isocentre ${A.isocentre}`, ...A.notes].map((x) => h('li', {}, x)),
-          h('li', {}, 'A Dosimetrix model, not a measurement: use it to decide on patient follow-up, not as a skin dose record.'))));
+          h('li', {}, 'A Dozimetrix model, not a measurement: use it to decide on patient follow-up, not as a skin dose record.'))));
     chart.draw(option);
   }).catch((err) => host.replaceChildren(h('p', { class: 'error' }, err.message)));
   return panel;

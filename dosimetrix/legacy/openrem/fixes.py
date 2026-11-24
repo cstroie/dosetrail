@@ -2,7 +2,7 @@
 
 Each fix names the equipment it applies to (manufacturer + model, as stored on the device
 record), the event column, a multiplication factor and the reason. Fixes only touch events of
-studies imported from OpenREM (``study.source_kind == "openrem"``); data Dosimetrix reads from
+studies imported from OpenREM (``study.source_kind == "openrem"``); data Dozimetrix reads from
 DICOM itself is parsed correctly in the first place.
 
 Applying is idempotent: every corrected event records the fix name in

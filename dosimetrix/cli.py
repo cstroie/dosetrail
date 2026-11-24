@@ -645,8 +645,8 @@ def _cmd_alerts(args: argparse.Namespace) -> int:
             if not cfg.channels:
                 print("no channel configured: set [notify] smtp_host + email_to, or ntfy_url")
                 return 1
-            m = notify.Message("[Dosimetrix] Test notification",
-                               "This is a test message from Dosimetrix.", cfg.base_url, False)
+            m = notify.Message("[Dozimetrix] Test notification",
+                               "This is a test message from Dozimetrix.", cfg.base_url, False)
             for ch in cfg.channels:
                 try:
                     notify.SENDERS[ch](cfg, m)
@@ -899,7 +899,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     s = load_settings()
     host, port = args.host or s.web_host, args.port or s.web_port
     if host not in ("127.0.0.1", "localhost", "::1"):
-        print(f"warning: listening on {host}; put Dosimetrix behind an HTTPS reverse proxy")
+        print(f"warning: listening on {host}; put Dozimetrix behind an HTTPS reverse proxy")
     # access_log off: query strings may contain search terms with identifiers.
     # X-Forwarded-For/-Proto are honoured only from the configured reverse proxies.
     uvicorn.run(create_app(), host=host, port=port, access_log=False,
@@ -1161,7 +1161,7 @@ def _listening(port: int) -> bool:
 
 def _cmd_info(_args: argparse.Namespace) -> int:
     s = load_settings()
-    print(f"Dosimetrix {__version__}")
+    print(f"Dozimetrix {__version__}")
     print(f"config file : {s.source or '(none)'}")
     print(f"database    : {_redact(s.database_url)}")
     return 0

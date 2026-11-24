@@ -32,7 +32,7 @@ class DtShell extends HTMLElement {
     kids.filter((n) => !ctxExtras.includes(n)).forEach((n) => work.append(n));
 
     const rail = h('nav', { class: 'rail', 'aria-label': 'Main' },
-      h('span', { class: 'logo', role: 'img', 'aria-label': 'Dosimetrix' }, icon('logo', 26, 2)),
+      h('span', { class: 'logo', role: 'img', 'aria-label': 'Dozimetrix' }, icon('logo', 26, 2)),
       NAV.map(([key, href, ic]) => h('a', { href, 'aria-current': key === page ? 'page' : false, title: t(`nav.${key}`) },
         key === 'alerts' ? h('span', { class: 'dot', 'aria-hidden': 'true' }) : null,
         icon(ic, 20), t(`nav.${key}.short`))));
@@ -42,7 +42,7 @@ class DtShell extends HTMLElement {
 
     const palette = h('dx-command-palette');
     const ctx = h('header', { class: 'ctx' },
-      h('a', { class: 'ctx-logo', href: 'index.html', 'aria-label': `Dosimetrix · ${t('nav.overview')}`, title: t('nav.overview') }, icon('logo', 24, 2)),
+      h('a', { class: 'ctx-logo', href: 'index.html', 'aria-label': `Dozimetrix · ${t('nav.overview')}`, title: t('nav.overview') }, icon('logo', 24, 2)),
       crumb,
       h('button', { class: 'cmdk-trigger', type: 'button', onclick: () => palette.open() },
         icon('search', 14, 2), h('span', { class: 'cmdk-label' }, t('shell.search')), h('kbd', {}, 'Ctrl K')),

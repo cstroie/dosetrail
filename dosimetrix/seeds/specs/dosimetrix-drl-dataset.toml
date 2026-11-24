@@ -1,4 +1,4 @@
-# The Dosimetrix DRL dataset (versioned): one row per study x DRL exam, the core for local DRL work
+# The Dozimetrix DRL dataset (versioned): one row per study x DRL exam, the core for local DRL work
 # and national surveys. The period is reduced to the month; patients, devices and the facility are
 # keyed pseudonymous codes (HMAC with the site secret). Each dose has a fixed UCUM unit; the data
 # dictionary ships with every file. Radiography rows group the exposures of one projection
@@ -9,7 +9,7 @@ id = "dosimetrix-drl-dataset"
 kind = "records"
 version = "1.0"
 title = { en = "DRL dataset (pseudonymised)", ro = "Set de date NRD (pseudonimizat)" }
-authority = "Dosimetrix"
+authority = "Dozimetrix"
 country = ""
 legal = "ICRP 135 / RP 185"
 formats = ["csv", "xlsx", "json"]

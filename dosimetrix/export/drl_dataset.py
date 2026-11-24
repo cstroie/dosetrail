@@ -1,4 +1,4 @@
-"""Dosimetrix DRL dataset (versioned) and the ICRP 135 summary.
+"""Dozimetrix DRL dataset (versioned) and the ICRP 135 summary.
 
 **Dataset**: one row per study × DRL exam, the core for local DRL work and national surveys.
 * The period is reduced to the month (YYYY-MM).
@@ -68,7 +68,7 @@ def dataset_rows(session: Session, conds: list, secret: bytes,
 
 def metadata(q: str, now: dt.datetime, rows: int | None = None) -> dict:
     return {"dataset": "dosimetrix-drl", "version": DATASET_VERSION,
-            "software": f"Dosimetrix {VERSION}", "generated": now.isoformat(timespec="seconds"),
+            "software": f"Dozimetrix {VERSION}", "generated": now.isoformat(timespec="seconds"),
             "query": q or "(all)",
             "method": "ICRP 135 / RP 185; CT per study without localisers; radiography per "
                       "projection with retakes; units UCUM; period by month; keyed pseudonyms",

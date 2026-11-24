@@ -7,7 +7,7 @@ id = "dosimetrix-cohort"
 kind = "records"
 version = "1"
 title = { en = "Cohort extract (studies of a query)", ro = "Extras de cohortă (studii după interogare)" }
-authority = "Dosimetrix"
+authority = "Dozimetrix"
 country = ""
 legal = ""
 formats = ["xlsx", "csv", "json"]

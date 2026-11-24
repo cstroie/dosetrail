@@ -44,7 +44,7 @@ wtage.csv      CDC 2000 growth charts, 2-20 years, by half month; used beyond 10
 
 The WHO data are published by WHO in its GitHub repositories (WorldHealthOrganization/
 anthro and /anthroplus); the CDC data by the US Centers for Disease Control and
-Prevention. They are not part of Dosimetrix and are not redistributed with it; check the
+Prevention. They are not part of Dozimetrix and are not redistributed with it; check the
 publishers' terms before redistributing them.
 """
 DAYS_PER_MONTH = 30.4375
