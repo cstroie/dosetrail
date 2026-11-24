@@ -18,6 +18,8 @@ be seen.
   phantom reads about half the 16 cm CTDIvol, so the phantoms are never mixed). ``by``
   ``protocol`` keeps each normalised name; ``family`` merges the contrast / phase / band
   variants of a name (``CER_NATIV``, ``CER K``, ``CEREBRAL C``).
+* Not diagnostic acquisitions are left out: bolus-tracking monitoring (stationary series
+  or scan length under 20 mm), aborted scans, series without dose.
 * Per row: n and the distribution (P25, median, P75, min, max) of CTDIvol, DLP, kVp, mA,
   rotation time, pitch, collimation, scan length and the effective mAs (mA × rotation /
   pitch), plus a CTDIvol histogram on the group's own edges.
@@ -55,6 +57,12 @@ _WEIGHT_ONE = re.compile(r" (\d{1,3}) ?kg ")
 _NOISE = {"n", "c", "k", "v", "sc", "cc", "nativ", "native", "nat", "contrast", "cont", "art",
           "arterial", "ven", "venos", "tardiv", "tard", "ani", "an", "kg", "adult", "child",
           "ped", "pediatric"}
+
+
+# Series that are not diagnostic acquisitions: bolus-tracking monitoring (stationary, ~10 mm),
+# aborted scans. A bolus name alone does not exclude: "T/A/P BOLUS" is often the real scan.
+_NOT_DIAGNOSTIC = re.compile(r"monitor|abort|test bolus|smart ?prep|care ?bolus")
+MIN_SCAN_MM = 20.0
 
 
 class ProtocolsError(ValueError):
@@ -152,6 +160,8 @@ def compare(session: Session, conds: list, region: str, *, system: str = NATIONA
                 weight, Study.id)
          .select_from(Event).join(Study, Study.id == Event.study_id).join(c, link)
          .where(Event.is_localizer.is_not(True), Event.ctdivol.is_not(None),
+                Event.dlp > 0, or_(Event.event_type.is_(None), Event.event_type != "stationary"),
+                or_(Event.scan_length_mm.is_(None), Event.scan_length_mm >= MIN_SCAN_MM),
                 Study.drl_exclusion.is_(None), *conds))
     physical = None
     groups: dict[tuple, dict] = defaultdict(lambda: {
@@ -163,6 +173,8 @@ def compare(session: Session, conds: list, region: str, *, system: str = NATIONA
             from .db.models import Device
             physical = {i: (m or i) for i, m in session.execute(
                 select(Device.id, Device.merged_into_id))}
+        if _NOT_DIAGNOSTIC.search(normalise(protocol)):
+            continue
         band = band_of(age, wt)
         nb = name_band(protocol)
         named = name_key(*nb) if nb else None

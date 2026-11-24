@@ -69,3 +69,23 @@ def test_compare(session, data):
     assert [r["rank"] for r in few["rows"] if r["protocol"] == "head"] == [None]
     with pytest.raises(protocols.ProtocolsError):
         protocols.compare(session, [], "NOPE")
+
+
+def test_monitoring_left_out(session, data):
+    dev = session.query(Device).filter_by(display_name="CT A").one()
+    s = Study(study_uid="p.mon", modality="CT", device_id=dev.id, study_datetime=T,
+              study_description="CT cap nativ", source_kind="test", age_days=AGE_2Y)
+    s.events = [Event(protocol="Monitoring", event_type="stationary", dlp=9.0, ctdivol=9.0,
+                      scan_length_mm=10.0),
+                Event(protocol="Head", event_type="spiral", dlp=500.0, ctdivol=29.0,
+                      scan_length_mm=180.0, ct_phantom_cm=16),
+                Event(protocol="Scan aborted", event_type="spiral", dlp=18.0, ctdivol=29.0,
+                      scan_length_mm=9.0)]
+    session.add(s)
+    session.flush()
+    classify.run(session)
+    out = protocols.compare(session, [], "CT-CAP", min_n=1, by_device=False)
+    names = {r["protocol"] for r in out["rows"]}
+    assert "monitoring" not in names and "scan aborted" not in names
+    (head,) = [r for r in out["rows"] if r["protocol"] == "head" and r["band"] == "age:1-6y"]
+    assert head["n"] == 2  # the fixture's and this one
