@@ -48,6 +48,7 @@ const PERIODS = { week: 'Week', month: 'Month', quarter: 'Quarter', year: 'Year'
 const DEFAULT_Q = 'date:2026-07-01..2026-11-21 origin:local';
 const DEFAULT_PANELS = [
   { type: 'dots', metric: 'ctdivol', span: 'L' },
+  { type: 'dots', group: 'DX', metric: 'dap', span: 'L' },
   { type: 'box', metric: 'dlp', span: 'S', sort: 'n' },
   { type: 'trend', metric: 'ctdivol', span: 'M', period: 'month', stat: 'median' },
   { type: 'scatter', metric: 'dlp', span: 'M' },
@@ -470,7 +471,14 @@ function renderAll() {
       saveWs();
       renderAll();
       gridHost.lastElementChild.previousElementSibling.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } }, `+ ${label}`))));
+    } }, `+ ${label}`)),
+    // per-exposure / per-study DRLs exist for these too (OMS 838/2025, by exam and age group)
+    [['DX', 'dap', 'DAP dots vs DRL (DX/CR)'], ['RF', 'dap_total', 'DAP dots vs DRL (RF)'], ['NM', 'activity', 'Activity dots vs DRL (NM)'], ['PT', 'activity', 'Activity dots vs DRL (PET)']]
+      .map(([group, metric, label]) => h('button', { class: 'btn', type: 'button', onclick: () => {
+        ws.panels.push({ type: 'dots', group, metric, span: 'L' });
+        saveWs();
+        loadRows().then(() => gridHost.lastElementChild.previousElementSibling.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      } }, `+ ${label}`))));
 }
 
 async function loadRows() {

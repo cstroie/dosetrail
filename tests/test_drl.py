@@ -107,6 +107,8 @@ def test_activity_per_study_and_mammography_per_breast(session, data):
     assert len(mg_rows) == 4 and {r["agd"] for r in mg_rows} == {1.0, 1.5, 1.2, 1.4}
     pt_rows = api_data.group_rows(session, "", T, "PT")
     assert sorted(r["activity"] or 0 for r in pt_rows) == [0, 300.0, 420.0]
+    # each PET study row carries the national activity DRL of its exam (dots vs DRL panel)
+    assert all(r["drl"].get("activity") for r in pt_rows if r["activity"])
     # the detail page: per-administration rows and per-breast AGD
     d = api_data.study(session, late.id)
     (adm,) = [e for e in d["events"] if e.get("agent")]

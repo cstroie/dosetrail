@@ -562,6 +562,56 @@ _STUDY_FIELDS = {"dap_total": (Study.total_dap, 4), "kar_total": (Study.total_rp
                  "activity": (Study.admin_activity_mbq, 1)}
 
 
+class _NationalDRL:
+    """National DRLs (OMS 838/2025) in stored units, and the national exam code of each
+    exposure (its own classification, else its study's), banded by the national age groups."""
+
+    def __init__(self, session: Session, study_ids: list[int], event_ids: list[int]):
+        from ..db.models import (
+            Classification,
+            Code,
+            CodeSystem,
+            GroupBand,
+            ReferenceSet,
+            ReferenceValue,
+        )
+        from ..drl import QUANTITY
+        from ..stats import BandLookup
+
+        self.values: dict[tuple, float] = {}
+        rs = session.scalar(select(ReferenceSet).filter_by(key="ro-ms838-2025"))
+        if rs is not None:
+            for rv, code, band in session.execute(
+                    select(ReferenceValue, Code.code, GroupBand.key)
+                    .join(Code, Code.id == ReferenceValue.exam_code_id)
+                    .outerjoin(GroupBand, GroupBand.id == ReferenceValue.band_id)
+                    .where(ReferenceValue.set_id == rs.id)):
+                factor = QUANTITY.get(rv.quantity, (None, {}))[1].get(rv.unit)
+                if factor:
+                    self.values[(code, band, rv.quantity)] = rv.value / factor
+        self.study: dict[int, str] = {}
+        self.event: dict[int, str] = {}
+        nat = (select(Classification.study_id, Classification.event_id, Code.code)
+               .join(Code, Code.id == Classification.code_id).join(CodeSystem)
+               .where(CodeSystem.key == "ro-drl-ms838-2025"))
+        for chunk in range(0, len(study_ids), 5000):
+            ids = list(set(study_ids[chunk:chunk + 5000]))
+            for sid, eid, code in session.execute(nat.where(Classification.study_id.in_(ids))):
+                if eid is None:
+                    self.study.setdefault(sid, code)
+                else:
+                    self.event.setdefault(eid, code)
+        self.band = BandLookup(session, "ro-drl-age", "age")
+
+    def value(self, study_id: int, event_id: int | None, age_days: int | None,
+              quantity: str) -> float | None:
+        code = (self.event.get(event_id) if event_id else None) or self.study.get(study_id)
+        if code is None:
+            return None
+        return self.values.get((code, self.band(age_days), quantity)) or \
+            self.values.get((code, None, quantity))
+
+
 def group_rows(session: Session, q: str, now: dt.datetime, group: str,
                limit: int = 50000) -> list:
     """Chart rows of one modality group (the browser chart panels): CT keeps its acquisition
@@ -589,16 +639,20 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
     base = [Study.device_id, Study.weight_kg, Study.age_days, Study.study_datetime,
             Study.study_description]
     if per_event:
-        stmt = (select(*base, Event.protocol, Event.event_datetime, *cols)
+        stmt = (select(Study.id, Event.id, *base, Event.protocol, Event.event_datetime, *cols)
                 .join(Study, Study.id == Event.study_id))
     else:
-        stmt = select(*base, Study.procedure_name, Study.study_datetime.label("t"), *cols)
+        stmt = select(Study.id, Study.id.label("e"), *base, Study.procedure_name,
+                      Study.study_datetime.label("t"), *cols)
     rows = session.execute(stmt.where(mod_cond, *conds)
                            .order_by(Study.study_datetime.desc()).limit(limit)).all()
     phys = _physical_ids(session)
     names = device_names(session)
+    refs = _NationalDRL(session, [r[0] for r in rows], [r[1] for r in rows] if per_event else [])
+    quantity = {"DX": ("dap", "dap"), "RF": ("dap_total", "dap"), "XA": ("dap_total", "dap"),
+                "NM": ("activity", "activity"), "PT": ("activity", "activity")}.get(prof["code"])
     out = []
-    for did, w, age, st, desc_, proto, t, *vals in rows:
+    for sid, eid, did, w, age, st, desc_, proto, t, *vals in rows:
         pid = phys.get(did, did)
         r = {"protocol": proto or desc_ or "(none)", "device_id": pid, "device": names.get(pid),
              "weight": w, "age": age_years(age), "time": iso_min(t or st), "drl": {}}
@@ -608,6 +662,10 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
             r["activity_kg"] = _r(r["activity"] / w, 2) if r["activity"] and w else None
         if "kar_total" in r and r["kar_total"] is not None:
             r["kar_total"] = _r(r["kar_total"] * 1000, 1)  # Gy → mGy, as the list shows it
+        if quantity:  # the national DRL of this exposure's / study's exam and age group
+            ref = refs.value(sid, eid if per_event else None, age, quantity[1])
+            if ref is not None:
+                r["drl"] = {quantity[0]: ref, "source": {quantity[0]: "OMS 838/2025"}}
         out.append(r)
     return out
 
