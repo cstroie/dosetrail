@@ -160,26 +160,42 @@ function drlPanel(kind, events, grid, unitOf) {
     const series = events.filter((e) => !e.localizer && e.agent === undefined);
     const ref = series.find((e) => e.drl?.dlp)?.drl;
     const total = series.reduce((a, e) => a + (e.dlp || 0), 0);
-    if (total) rows.push({ label: 'Exam DLP (total)', parts: series.filter((e) => e.dlp).map((e) => ({ v: e.dlp, e })), ref: ref?.dlp, unit: 'mGy·cm', d: 0, code: ref?.code });
-    // each series: its DLP against the same exam DRL, so the series add up to the total bar
+    if (total) rows.push({ label: 'Exam DLP (total)', parts: series.filter((e) => e.dlp).map((e, i) => ({ v: e.dlp, e, colour: i })), ref: ref?.dlp, unit: 'mGy·cm', d: 0, code: ref?.code });
+    // each series: its DLP against the same exam DRL, so the series add up to the total bar.
+    // A later series is a repeat only with the same name, the same scan range (±10 %) and the
+    // same contrast (header agent): a second series of another name is just the next series.
+    const norm = (x) => (x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const sameRange = (a, b) => (a == null || b == null ? a === b : Math.abs(a - b) <= 0.1 * Math.max(a, b));
+    const seenCt = [];
     for (const e of series) {
       if (e.dlp == null) continue;
-      rows.push({ label: `#${e.no} ${e.protocol || 'series'}`, parts: [{ v: e.dlp, e }], ref: ref?.dlp, unit: 'mGy·cm', d: 0,
+      const first = seenCt.find((x) => norm(x.protocol) === norm(e.protocol) && sameRange(x.scan_length_mm, e.scan_length_mm)
+        && Boolean(x.contrast_agent) === Boolean(e.contrast_agent));
+      seenCt.push(e);
+      rows.push({ label: `#${e.no} ${e.protocol || 'series'}${first ? ` (repeat of #${first.no})` : ''}`, parts: [{ v: e.dlp, e, colour: rows[0]?.parts.findIndex((p) => p.e === e), repeat: Boolean(first) }],
+        ref: ref?.dlp, unit: 'mGy·cm', d: 0,
         extra: e.ctdivol != null ? `CTDIvol ${num(e.ctdivol, 2)} mGy${e.drl?.ctdivol ? ` · DRL ${num(e.drl.ctdivol, 1)} mGy (${Math.round((e.ctdivol / e.drl.ctdivol) * 100)}%)` : ''}` : '' });
+    }
+    for (const p of rows[0]?.parts || []) {  // a repeat is amber in the total bar too
+      p.repeat = rows.some((r, i) => i && r.parts[0].e === p.e && r.parts[0].repeat);
     }
   } else if (kind === 'rx') {
     const by = new Map();
     for (const e of events) {
       if (e.dap_gycm2 == null) continue;
-      const key = e.drl?.code || e.projection || e.protocol || `#${e.no}`;
-      if (!by.has(key)) by.set(key, { label: [e.projection, e.anatomy].filter(Boolean).join(' · ') || e.protocol || key, parts: [], ref: e.drl?.dap, unit: unitOf(), d: 2, code: e.drl?.code });
-      by.get(key).parts.push({ v: e.dap_gycm2, e });
+      // a retake = the same projection again (same name: "pulmonar" + "pulmonar"); two
+      // projections sharing a DRL (AP and PA chest) stay separate rows
+      const name = [e.projection, e.anatomy].filter(Boolean).join(' · ') || e.protocol || `#${e.no}`;
+      const key = name.toLowerCase();
+      if (!by.has(key)) by.set(key, { label: name, parts: [], ref: e.drl?.dap, unit: unitOf(), d: 2, code: e.drl?.code });
+      const g = by.get(key);
+      g.parts.push({ v: e.dap_gycm2, e, colour: 0, repeat: g.parts.length > 0 });
     }
     // each projection: its cumulative row (retakes stacked), then every exposure on its own
     for (const r of by.values()) {
       rows.push({ ...r, label: `${r.label} (total)` });
       for (const p of r.parts) {
-        rows.push({ label: `#${p.e.no} ${[p.e.projection, p.e.anatomy].filter(Boolean).join(' · ') || p.e.protocol || 'exposure'}`,
+        rows.push({ label: `#${p.e.no} ${[p.e.projection, p.e.anatomy].filter(Boolean).join(' · ') || p.e.protocol || 'exposure'}${p.repeat ? ' (retake)' : ''}`,
           parts: [p], ref: r.ref, unit: r.unit, d: r.d, code: r.code,
           extra: [p.e.kvp != null ? `${num(p.e.kvp, 0)} kV` : '', p.e.mas != null ? `${num(p.e.mas, 1)} mAs` : '',
             p.e.exposure_index != null ? `EI ${num(p.e.exposure_index, 0)}` : '', p.e.deviation_index != null ? `DI ${num(p.e.deviation_index, 1)}` : ''].filter(Boolean).join(' · ') });
@@ -187,7 +203,7 @@ function drlPanel(kind, events, grid, unitOf) {
     }
   } else if (kind === 'mg') {
     for (const lat of ['R', 'L']) {
-      const parts = events.filter((e) => e.laterality === lat && e.agd_mgy != null).map((e) => ({ v: e.agd_mgy, e }));
+      const parts = events.filter((e) => e.laterality === lat && e.agd_mgy != null).map((e, i) => ({ v: e.agd_mgy, e, colour: i }));
       if (parts.length) rows.push({ label: lat === 'R' ? 'Right breast' : 'Left breast', parts, ref: null, unit: 'mGy AGD', d: 2 });
     }
   }
@@ -211,8 +227,12 @@ function drlPanel(kind, events, grid, unitOf) {
           const p = r.parts[k];
           if (!p) return null;
           const over = r.ref && total(r) > r.ref;
+          // CT / MG: each series or view its own colour, the same in the total and in its row;
+          // X-ray: first exposure accent, retakes amber; past the DRL the whole row is red
+          const colour = over ? th.alert : p.repeat ? th.warn
+            : kind === 'rx' ? th.accent : th.devices[(p.colour ?? k) % th.devices.length];
           return { value: scale(r, p.v), row: i, part: k,
-            itemStyle: { color: over ? th.alert : (k ? th.devices[1] : th.accent), opacity: k ? 0.75 : 1,
+            itemStyle: { color: colour, opacity: 1,
               borderColor: p.e.no === selected ? th.text : 'transparent', borderWidth: p.e.no === selected ? 2 : 0 } };
         }) });
     }
@@ -259,7 +279,7 @@ function drlPanel(kind, events, grid, unitOf) {
   const hint = withRef ? 'dashed line = DRL · red = above it' : 'no DRL for this exam';
   return h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, title), h('span', { class: 'spacer' }),
-      h('span', { class: 'muted small' }, `${hint}${kind === 'rx' ? ' · “total” = the projection, retakes stacked' : kind === 'mg' ? ' · stacked = views' : ''} · click a bar to find it in the table`)),
+      h('span', { class: 'muted small' }, `${hint}${kind === 'rx' ? ' · amber = retake (same projection again)' : kind === 'ct' ? ' · colour = series · amber = repeat' : ' · colour = view'} · click a bar to find it in the table`)),
     h('div', { class: 'panel-body' }, chart));
 }
 

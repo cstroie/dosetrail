@@ -507,6 +507,7 @@ def _event(no: int, e: Event) -> dict:
         "ssde_source": "reported" if e.ssde is not None else e.ssde_method,
         "wed_cm": _r(e.wed_mm / 10, 1) if e.wed_mm else None,
         "scan_length_mm": _r(e.scan_length_mm, 1), "pitch": _r(e.pitch, 3),
+        "contrast_agent": ((e.extra_json or {}).get("contrast") or {}).get("agent"),
         "localizer": e.is_localizer, "exposure_index": _r(e.exposure_index, 1),
         "deviation_index": _r(e.deviation_index, 2), "agd_mgy": _r(e.agd, 3),
         # mammography
