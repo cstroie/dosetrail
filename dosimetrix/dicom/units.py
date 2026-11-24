@@ -26,6 +26,7 @@ _FACTORS: dict[str, dict[str, float]] = {
     "m2": {"m2": 1, "cm2": 1e-4, "mm2": 1e-6},
     "kg": {"kg": 1, "g": 1e-3},
     "m": {"m": 1, "cm": 0.01, "mm": 1e-3},
+    "MBq": {"mbq": 1, "bq": 1e-6, "kbq": 1e-3, "gbq": 1e3, "mci": 37, "uci": 0.037},
 }
 
 

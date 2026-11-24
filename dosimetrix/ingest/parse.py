@@ -25,6 +25,7 @@ from ..patient_age import parse_dicom_age
 from . import dosepage
 
 RDSR_TITLE = "113701"  # X-Ray Radiation Dose Report
+RRDSR_TITLE = "113500"  # Radiopharmaceutical Radiation Dose Report (TID 10021)
 HEADER_SOP = {
     "1.2.840.10008.5.1.4.1.1.1": "CR",
     "1.2.840.10008.5.1.4.1.1.1.1": "DX",
@@ -235,6 +236,8 @@ def parse(ds) -> ParsedObject:
     sop_uid = str(ds.get("SOPInstanceUID", ""))
     if ds.get("ContentSequence") and ds.get("ConceptNameCodeSequence"):
         title = str(ds.ConceptNameCodeSequence[0].get("CodeValue", ""))
+        if title == RRDSR_TITLE:
+            return parse_rrdsr(ds, tree(ds))
         if title != RDSR_TITLE:
             return ParsedObject("ignored", sop_uid, sop_class, reason="structured report, "
                                 "not a radiation dose report")
@@ -330,6 +333,39 @@ def parse_nm(ds) -> ParsedObject:
     if not events:
         return ParsedObject("ignored", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
                             reason="NM/PET image without radiopharmaceutical information")
+    return ParsedObject("nm_header", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
+                        study=study, patient=patient, device=device, events=events)
+
+
+def parse_rrdsr(ds, root: Node) -> ParsedObject:
+    """Radiopharmaceutical Radiation Dose SR (TID 10021): one event per administration
+    (TID 10022), stored like the administrations read from NM/PET image headers."""
+    study, patient, device = _header(ds)
+    _observer(root, device)
+    _patient_characteristics(root, study)
+    events = []
+    for adm in root.find_all("113502", deep=True):
+        mbq = adm.num("113507", "MBq")
+        start = adm.datetime("123003")
+        agent = adm.text("349358000") or adm.text("F-61FDB")
+        nuclide = adm.text("89457008") or adm.text("C-10072")
+        uid = (adm.text("113503") or "")[:64] or None
+        if not uid:
+            key = f"{study['study_uid']}|{start}|{agent}|{mbq}"
+            uid = "rp-" + hashlib.sha1(key.encode()).hexdigest()[:40]
+        events.append({
+            "event_uid": uid, "event_datetime": start, "event_type": "radiopharmaceutical",
+            "protocol": _s(agent), "comment": _s(nuclide, 64),
+            "extra_json": {"source": "rrdsr", "activity_mbq": mbq,
+                           "half_life_s": adm.num("304283002", "s"),
+                           "route": _s(adm.text("410675002"), 64)},
+        })
+    if study.get("modality") in (None, "SR", "OT"):
+        study["modality"] = "PT" if any("18" in (e["comment"] or "") or "fluor" in
+                                        (e["comment"] or "").lower() for e in events) else "NM"
+    if not events:
+        return ParsedObject("ignored", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
+                            reason="radiopharmaceutical dose report without administrations")
     return ParsedObject("nm_header", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
                         study=study, patient=patient, device=device, events=events)
 

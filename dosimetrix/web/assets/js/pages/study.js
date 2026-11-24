@@ -156,7 +156,9 @@ export function revealButton(s, identity) {
   const sr = rdsrUrl(s.id);
   const stmt = isSample ? null : h('a', { class: 'btn xs ghost', href: doseStatementHref(s.id), target: '_blank', rel: 'noopener', title: 'Written dose information for the patient (Order 1255/2016 art. 4). Names the patient: pid role, audited.' }, 'Dose statement');
   return h('span', { class: 'row no-print', style: { display: 'inline-flex' } }, btn,
-    stmt, sr ? h('a', { class: 'btn xs ghost', href: sr, download: '', title: 'Dose SR (IHE REM RDSR) of this study, pseudonymised (exporter role)' }, 'Dose SR') : null);
+    stmt, sr ? (['NM', 'PT'].includes(s.modality)
+      ? h('a', { class: 'btn xs ghost', href: sr, download: '', title: 'Radiopharmaceutical dose SR (IHE REM-NM RRDSR) of this study, pseudonymised (exporter role)' }, 'Dose SR (RRDSR)')
+      : h('a', { class: 'btn xs ghost', href: sr, download: '', title: 'Dose SR (IHE REM RDSR) of this study, pseudonymised (exporter role)' }, 'Dose SR')) : null);
 }
 
 async function render() {

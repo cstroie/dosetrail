@@ -1309,7 +1309,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.get("/api/studies/{study_id}/rdsr")
     def study_rdsr(study_id: int, request: Request, pid: bool = False,
                    user: User = Depends(current_user), session: Session = Depends(db)):
-        """The study's dose SR (IHE REM) as a download; pseudonymised unless pid=1 (pid role).
+        """The study's dose SR (IHE REM; RRDSR for NM/PET) as a download; pseudonymised unless
+        pid=1 (pid role).
         A file download only: Dosimetrix does not send dose SRs anywhere."""
         from ..export import rdsr
 

@@ -84,3 +84,22 @@ def test_header_study_and_estimated_weight(session, tmp_path):
     same = parse(rdsr.build(st, SECRET, identified=True))
     assert same.events[0]["event_uid"] == st.events[0].event_uid
     assert "PatientWeight" not in back and p.study["weight_kg"] is None
+
+
+def test_rrdsr_roundtrip_for_pet(session):
+    """A PET study's administrations -> RRDSR (TID 10021) -> parsed back the same."""
+    st = _store(session, f.pet_image(study_uid="5.4.1", sop_uid="5.4.1.1", mbq=210.0))
+    ds = rdsr.build(st, SECRET)
+    assert ds.SOPClassUID == rdsr.RRDSR_SOP
+    assert ds.ContentTemplateSequence[0].TemplateIdentifier == "10021"
+    back, p = _roundtrip(ds)
+    assert p.kind == "nm_header" and len(p.events) == 1
+    ev, stored = p.events[0], st.events[0]
+    assert ev["extra_json"]["activity_mbq"] == pytest.approx(210.0)
+    assert ev["protocol"] == stored.protocol and ev["comment"] == stored.comment
+    assert ev["event_datetime"] == stored.event_datetime
+    assert ev["extra_json"]["half_life_s"] == pytest.approx(6586.2)
+    assert p.study["modality"] == "PT" and back.PatientIdentityRemoved == "YES"
+    # a received RRDSR is stored like the image headers: same activity on the study
+    other = Store(session, SECRET).store(p)
+    assert session.get(Study, other.study_id).admin_activity_mbq == pytest.approx(210.0)

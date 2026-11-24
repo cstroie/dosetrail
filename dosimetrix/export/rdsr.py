@@ -1,6 +1,10 @@
-"""X-Ray Radiation Dose SR (IHE REM) written from the stored data of a study.
+"""Dose SRs (IHE REM, REM-NM) written from the stored data of a study.
 
 * CT studies → TID 10011 (CT Radiation Dose), one CT Acquisition per stored series;
+* NM and PET studies with administrations → the Radiopharmaceutical Radiation Dose SR
+  (RRDSR, TID 10021), one Radiopharmaceutical Administration Event (TID 10022) per stored
+  administration; an administration counted on an earlier study is still reported here
+  (it was given to this patient) and the earlier study is named in a comment;
 * everything else (DX/CR/RF/XA/MG) → TID 10001 (Projection X-Ray Radiation Dose), one
   Irradiation Event X-Ray Data container per stored exposure or fluoroscopy run.
 
@@ -32,6 +36,7 @@ from .. import __version__
 from ..db.models import Event, SizeSource, Study
 
 RDSR_SOP = "1.2.840.10008.5.1.4.1.1.88.67"
+RRDSR_SOP = "1.2.840.10008.5.1.4.1.1.88.68"
 ESTIMATED = {SizeSource.estimated_reference, SizeSource.estimated_visual}
 
 CT_TYPE = {
@@ -311,17 +316,59 @@ def _proj_content(study: Study, events: list[Event], secret: bytes,
 # ------------------------------------------------------------------------------ public
 
 
+def _rrdsr_content(study: Study, events: list[Event], secret: bytes,
+                   identified: bool) -> list[Dataset]:
+    out = []
+    for ev in events:
+        x = ev.extra_json or {}
+        ch: list[Dataset] = []
+        if ev.protocol:
+            ch.append(_item("CODE", ("349358000", "SCT", "Radiopharmaceutical agent"),
+                            _local(ev.protocol)))
+        if ev.comment:
+            ch.append(_item("CODE", ("89457008", "SCT", "Radionuclide"), _local(ev.comment)))
+        if x.get("half_life_s"):
+            _num(ch, ("304283002", "SCT", "Radionuclide physical half-life"),
+                 x["half_life_s"], "s")
+        if ev.event_datetime:
+            ch.append(_item("DATETIME", ("123003", "DCM", "Radiopharmaceutical Start DateTime"),
+                            ev.event_datetime))
+        _num(ch, ("113507", "DCM", "Administered activity"), x.get("activity_mbq"), "MBq")
+        if x.get("route"):
+            ch.append(_item("CODE", ("410675002", "SCT", "Route of administration"),
+                            _local(x["route"])))
+        if x.get("same_administration_as"):
+            _text(ch, ("121106", "DCM", "Comment"), "the same administration is reported "
+                  "with an earlier study of this patient")
+        ch.append(_item("UIDREF", ("113503", "DCM",
+                                   "Radiopharmaceutical Administration Event UID"),
+                        _event_uid(secret, study.study_uid, ev, identified)))
+        out.append(_item("CONTAINER", ("113502", "DCM",
+                                       "Radiopharmaceutical Administration"), children=ch))
+    return out
+
+
 def build(study: Study, secret: bytes, *, identified: bool = False,
           now: dt.datetime | None = None) -> Dataset:
     """The dose SR of one stored study (a pydicom FileDataset-like Dataset with file meta)."""
     now = now or dt.datetime.now()
     events = sorted(study.events, key=lambda e: (e.event_datetime or dt.datetime.min, e.id))
+    admin = [e for e in events if e.event_type == "radiopharmaceutical"]
+    if (study.modality or "").upper() in ("NM", "PT") and admin:
+        return _build(study, admin, secret, identified, now, "rrdsr")
     is_ct = (study.modality or "").upper() == "CT"
+    return _build(study, [e for e in events if e.event_type != "radiopharmaceutical"], secret,
+                  identified, now, "ct" if is_ct else "proj")
+
+
+def _build(study: Study, events: list[Event], secret: bytes, identified: bool,
+           now: dt.datetime, kind: str) -> Dataset:
+    sop = RRDSR_SOP if kind == "rrdsr" else RDSR_SOP
     pat = study.patient
     d = study.device
 
     ds = Dataset()
-    ds.SOPClassUID = RDSR_SOP
+    ds.SOPClassUID = sop
     ds.SOPInstanceUID = _uid(secret, study.study_uid, "sop", "id" if identified else "anon")
     if identified:
         ds.StudyInstanceUID = study.study_uid
@@ -368,30 +415,33 @@ def build(study: Study, secret: bytes, *, identified: bool = False,
     ds.CompletionFlag, ds.VerificationFlag = "COMPLETE", "UNVERIFIED"
     ds.ValueType = "CONTAINER"
     ds.ContinuityOfContent = "SEPARATE"
-    ds.ConceptNameCodeSequence = Sequence([_code("113701", "DCM",
-                                                 "X-Ray Radiation Dose Report")])
+    ds.ConceptNameCodeSequence = Sequence([
+        _code("113500", "DCM", "Radiopharmaceutical Radiation Dose Report") if kind == "rrdsr"
+        else _code("113701", "DCM", "X-Ray Radiation Dose Report")])
     tpl = Dataset()
-    tpl.MappingResource, tpl.TemplateIdentifier = "DCMR", "10011" if is_ct else "10001"
+    tpl.MappingResource = "DCMR"
+    tpl.TemplateIdentifier = {"ct": "10011", "proj": "10001", "rrdsr": "10021"}[kind]
     ds.ContentTemplateSequence = Sequence([tpl])
-    proc = ("77477000", "SCT", "Computed Tomography X-Ray") if is_ct else \
-        ("113704", "DCM", "Projection X-Ray")
+    proc = {"ct": ("77477000", "SCT", "Computed Tomography X-Ray"),
+            "proj": ("113704", "DCM", "Projection X-Ray"),
+            "rrdsr": ("371572003", "SCT", "Nuclear medicine procedure")}[kind]
     content = [_item("CODE", ("121058", "DCM", "Procedure reported"), proc,
                      rel="HAS CONCEPT MOD"),
                *_observer(study)]
     start = events[0].event_datetime if events and events[0].event_datetime else \
         study.study_datetime
-    if start:
+    if start and kind != "rrdsr":
         content.append(_item("DATETIME", ("113809", "DCM", "Start of X-Ray Irradiation"),
                              start))
     content += _patient_characteristics(study)
-    content += _ct_content(study, events, secret, identified) if is_ct else \
-        _proj_content(study, events, secret, identified)
+    content += {"ct": _ct_content, "proj": _proj_content, "rrdsr": _rrdsr_content}[kind](
+        study, events, secret, identified)
     content.append(_item("CODE", ("113854", "DCM", "Source of Dose Information"),
                          ("113856", "DCM", "Automated Data Collection")))
     ds.ContentSequence = Sequence(content)
 
     meta = FileMetaDataset()
-    meta.MediaStorageSOPClassUID = RDSR_SOP
+    meta.MediaStorageSOPClassUID = sop
     meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
     meta.TransferSyntaxUID = ExplicitVRLittleEndian
     meta.ImplementationClassUID = generate_uid(entropy_srcs=["dosimetrix", __version__])
