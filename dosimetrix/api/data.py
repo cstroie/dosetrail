@@ -8,6 +8,7 @@ from collections import Counter, defaultdict
 from sqlalchemy import and_, asc, desc, func, select
 from sqlalchemy.orm import Session
 
+from .. import modality_profiles
 from ..db.models import Device, Event, Patient, SizeSource, Study
 from ..hybrid import label as modality_label
 from ..patient_age import format_age
@@ -36,8 +37,7 @@ def _refuse_errors(tokens: list) -> None:
 
 YEAR_DAYS = 365.25
 STALE_DAYS = 2
-GROUPS = [("CT", "CT", ["CT"]), ("DX", "DX/CR", ["DX", "CR"]), ("RF", "RF", ["RF"]),
-          ("XA", "XA", ["XA"]), ("MG", "MG", ["MG"]), ("NM", "NM", ["NM"]), ("PT", "PT", ["PT"])]
+GROUPS = modality_profiles.GROUPS
 # Fluoroscopy alert thresholds: configuration defaults until the alert engine exists (M5)
 XA_THRESHOLDS = {"dap_gycm2": 250, "kar_gy": 3.0, "kar_notify_gy": 1.0, "cum_kar_gy": 5.0,
                  "cum_dap_gycm2": 500, "cum_weeks": 12, "source": "default"}
@@ -98,7 +98,7 @@ def overview(session: Session, now: dt.datetime, specs_dir=None) -> dict:
         weekly = [total(mods, today - dt.timedelta(days=7 * (i + 1)),
                         today - dt.timedelta(days=7 * i)) for i in reversed(range(12))]
         modalities.append({
-            "code": code, "label": label, "week": week,
+            "code": code, "label": label, "modalities": mods, "week": week,
             "month": total(mods, today - dt.timedelta(days=30), today),
             "delta_pct": round(100 * (week - prev) / prev) if prev else 0, "weekly": weekly,
         })
@@ -235,7 +235,11 @@ SORTS = {
     "date": Study.study_datetime, "device": Device.display_name, "accession": Study.accession,
     "patient": Study.age_days, "description": Study.study_description,
     "events": Study.n_events, "dlp_total": Study.total_dlp, "ctdivol_max": Study.ctdivol_max,
-    "dap_total": Study.total_dap,
+    "dap_total": Study.total_dap, "n_events": Study.n_events,
+    "fluoro_time": Study.total_fluoro_time, "fluoro_dap": Study.total_fluoro_dap,
+    "acq_dap": Study.total_acq_dap, "kar_total": Study.total_rp_dose, "psd": Study.psd_mgy,
+    "agd_left": Study.agd_left, "agd_right": Study.agd_right,
+    "activity": Study.admin_activity_mbq,
 }
 
 
@@ -255,10 +259,12 @@ def studies(session: Session, q: str, sort: str, direction: str, page: int, size
     rows = session.execute(_base().where(*conds).order_by(order(col), order(Study.id))
                            .limit(size).offset((page - 1) * size)).all()
     protocols = _protocols(session, [s.id for s, _, _ in rows])
+    technique = _technique(session, [s.id for s, _, _ in rows])
     names = device_names(session)
     return {
         "total": total,
-        "rows": [_study_row(s, d, p, protocols.get(s.id), names) for s, d, p in rows],
+        "rows": [_study_row(s, d, p, protocols.get(s.id), names, technique.get(s.id))
+                 for s, d, p in rows],
         "errors": [{"token": t.key, "error": t.error} for t in tokens if t.error],
     }
 
@@ -276,6 +282,19 @@ def _protocols(session: Session, ids: list[int]) -> dict[int, str]:
     return out
 
 
+def _technique(session: Session, ids: list[int]) -> dict[int, dict]:
+    """Per-study ranges of projection technique (kV, EI, DI) for the list columns."""
+    if not ids:
+        return {}
+    q = (select(Event.study_id, func.max(Event.kvp), func.min(Event.exposure_index),
+                func.max(Event.exposure_index), func.min(Event.deviation_index),
+                func.max(Event.deviation_index))
+         .where(Event.study_id.in_(ids)).group_by(Event.study_id))
+    return {sid: {"kvp_max": _r(kv, 1), "ei_min": _r(e0, 0), "ei_max": _r(e1, 0),
+                  "di_min": _r(d0, 1), "di_max": _r(d1, 1)}
+            for sid, kv, e0, e1, d0, d1 in session.execute(q)}
+
+
 def _patient_summary(s: Study, p: Patient | None) -> dict:
     return {"age": age_years(s.age_days), "age_days": s.age_days,
             "age_precision": str(s.age_precision) if s.age_precision else None,
@@ -287,10 +306,12 @@ def _patient_summary(s: Study, p: Patient | None) -> dict:
 
 
 def _study_row(s: Study, d: Device | None, p: Patient | None, protocol: str | None,
-               names: dict[int, str]) -> dict:
+               names: dict[int, str], technique: dict | None = None) -> dict:
+    tech = technique or {}
+    modality = d.modality_override if d and d.modality_override else s.modality
     return {
         "id": s.id, "accession": accession_display(s), "accession_hashed": s.accession_is_hashed,
-        "modality": (d.modality_override if d and d.modality_override else s.modality),
+        "modality": modality, "group": modality_profiles.group_of(modality),
         "modality_original": s.modality,
         "modality_label": modality_label(s.modality, s.total_dlp),
         "date": iso_min(s.study_datetime), "device_id": (d.merged_into_id or d.id) if d else None,
@@ -300,7 +321,11 @@ def _study_row(s: Study, d: Device | None, p: Patient | None, protocol: str | No
         "events": {"spiral": s.n_spiral, "axial": s.n_axial, "localizer": s.n_localizer,
                    "total": s.n_events},
         "ctdivol_max": _r(s.ctdivol_max, 2), "dlp_total": _r(s.total_dlp, 1),
-        "dap_total": _r(s.total_dap), "flags": [],
+        "dap_total": _r(s.total_dap), "n_events": s.n_events,
+        "fluoro_time": _r(s.total_fluoro_time, 1), "fluoro_dap": _r(s.total_fluoro_dap),
+        "acq_dap": _r(s.total_acq_dap), "kar_total": _r(s.total_rp_dose),
+        "psd": _r(s.psd_mgy, 1), "agd_left": _r(s.agd_left, 2), "agd_right": _r(s.agd_right, 2),
+        "activity": _r(s.admin_activity_mbq, 1), **tech, "flags": [],
         "test": bool(p.is_test) if p else False,
     }
 

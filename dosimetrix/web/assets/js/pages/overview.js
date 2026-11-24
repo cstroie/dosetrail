@@ -25,7 +25,7 @@ function sparkline(values, colorVar) {
 
 function kpis(mods) {
   return h('section', { class: 'kpis', 'aria-label': 'Studies per modality' },
-    mods.map((m) => h('a', { class: 'kpi', href: m.code === 'CT' ? 'studies.html' : '#', title: `${m.label}: ${m.weekly.join(', ')}` },
+    mods.map((m) => h('a', { class: 'kpi', href: `studies.html?q=${encodeURIComponent(`modality:${(m.modalities || [m.code]).join(',')} date:90d origin:local -phantom`)}`, title: `${m.label}: ${m.weekly.join(', ')}` },
       h('span', { class: 'code', style: { color: `var(${modColor(m.code)})` } }, m.label),
       h('span', { class: 'v' }, num(m.week)),
       h('span', { class: 'm' }, `${t('overview.thisweek')} · ${m.delta_pct > 0 ? '+' : ''}${m.delta_pct}%`),

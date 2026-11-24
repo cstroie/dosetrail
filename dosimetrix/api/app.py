@@ -538,6 +538,12 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         except drl_mod.DRLError as e:
             raise HTTPException(400, str(e)) from e
 
+    @app.get("/api/modalities")
+    def modalities(user: User = Depends(current_user)):
+        from ..modality_profiles import PROFILES
+
+        return PROFILES
+
     @app.get("/api/studies")
     def studies(q: str = "", sort: str = "date", dir: str = "desc", page: int = 1,
                 size: int = 50, user: User = Depends(current_user),

@@ -112,6 +112,31 @@ export async function physicalDevices() {
   return records.filter((r) => r.id === r.physical_id);
 }
 
+// Sample mode has no server: the same profiles as dosimetrix/modality_profiles.py.
+const SAMPLE_PROFILES = [
+  { code: 'CT', label: 'CT', modalities: ['CT'], columns: ['events', 'ctdivol_max', 'dlp_total'], main: 'dlp_total' },
+  { code: 'DX', label: 'DX/CR', modalities: ['DX', 'CR'], columns: ['n_events', 'kvp_max', 'ei_range', 'di_range', 'dap_total'], main: 'dap_total' },
+  { code: 'RF', label: 'RF', modalities: ['RF'], columns: ['n_events', 'fluoro_time', 'fluoro_dap', 'acq_dap', 'kar_total', 'dap_total'], main: 'dap_total' },
+  { code: 'XA', label: 'XA', modalities: ['XA'], columns: ['n_events', 'fluoro_time', 'kar_total', 'psd', 'dap_total'], main: 'dap_total' },
+  { code: 'MG', label: 'MG', modalities: ['MG'], columns: ['n_events', 'agd_left', 'agd_right'], main: 'agd_max' },
+  { code: 'NM', label: 'NM', modalities: ['NM'], columns: ['activity', 'dlp_total'], main: 'activity' },
+  { code: 'PT', label: 'PT', modalities: ['PT'], columns: ['activity', 'dlp_total'], main: 'activity' },
+];
+
+/** GET /api/modalities → one profile per modality group (columns, metrics, DRL quantities) */
+export async function modalities() {
+  return isSample ? SAMPLE_PROFILES : remote('/api/modalities');
+}
+
+/** The profile a query is about: its modality: token names one group only, else null. */
+export function profileOf(profiles, q) {
+  const m = /(?:^|\s)(?:modality|modalitate):(\S+)/i.exec(q || '');
+  if (!m) return null;
+  const mods = m[1].toUpperCase().split(',');
+  const hit = profiles.filter((p) => mods.some((x) => p.modalities.includes(x)));
+  return hit.length === 1 ? hit[0] : null;
+}
+
 /** GET /api/drl → local DRL set */
 export async function drl() {
   return isSample ? sample('drl.json') : remote('/api/drl');

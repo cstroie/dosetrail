@@ -102,6 +102,23 @@ def test_studies_carry_pseudonyms_only(client):
     assert res["total"] == 1 and res["rows"][0]["patient"]["age"] == 67
 
 
+def test_xa_rows_carry_fluoroscopy_columns(client):
+    login(client, "viewer", "viewer-pass-1")
+    row = client.get("/api/studies", params={"q": "modality:XA"}).json()["rows"][0]
+    assert row["group"] == "XA"
+    assert {"fluoro_time", "kar_total", "psd", "dap_total", "n_events"} <= row.keys()
+    assert row["kar_total"] is not None
+    srt = client.get("/api/studies", params={"q": "modality:XA", "sort": "kar_total"})
+    assert srt.status_code == 200
+
+
+def test_modality_profiles(client):
+    login(client, "viewer", "viewer-pass-1")
+    profs = {p["code"]: p for p in client.get("/api/modalities").json()}
+    assert profs["DX"]["modalities"] == ["DX", "CR"] and "dlp_total" in profs["CT"]["columns"]
+    assert "agd_left" in profs["MG"]["columns"] and profs["NM"]["main"] == "activity"
+
+
 def test_detail_units(client):
     login(client, "viewer", "viewer-pass-1")
     sid = client.get("/api/studies", params={"q": "modality:XA"}).json()["rows"][0]["id"]

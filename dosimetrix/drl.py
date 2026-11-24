@@ -47,6 +47,7 @@ from .db.models import (
     SizeSource,
     Study,
 )
+from .modality_profiles import group_of
 from .stats import EXPOSURE_EXAM, BandLookup, describe, own_codes
 
 # quantity -> (event column, local unit, factor to the reference unit by unit)
@@ -128,6 +129,7 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
     results = []
     for i, (rv, code, band, scheme) in enumerate(refs):
         item = {"exam": code.code, "exam_meaning": code.meaning,
+                "group": _group(code.modality, rv.quantity),
                 "band": band.key if band else None, "band_label": band.label if band else None,
                 "scheme": scheme.key if scheme else None, "quantity": rv.quantity,
                 "applies_to": rv.applies_to, "reference": rv.value, "unit": rv.unit}
@@ -155,6 +157,14 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
     return {"set": rs.key, "name": rs.name, "source": rs.source, "notes": rs.notes,
             "by": "device" if by_device else "facility", "min_n": min_n,
             "estimated_weights": estimated_weights, "rows": results}
+
+
+# the modality group a reference value belongs to, when its exam code names no modality
+_QUANTITY_GROUP = {"dlp": "CT", "ctdivol": "CT", "mgd": "MG", "activity": "NM"}
+
+
+def _group(modality: str | None, quantity: str) -> str:
+    return group_of(modality) or _QUANTITY_GROUP.get(quantity, "DX")
 
 
 @dataclass(frozen=True)
