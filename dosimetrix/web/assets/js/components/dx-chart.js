@@ -96,10 +96,28 @@ class DtChart extends HTMLElement {
     this.instance?.on(event, handler);
   }
 
+  /** The PNG is laid out at least EXPORT_WIDTH CSS px wide, whatever the screen: a phone-width
+   *  chart would come out narrow and crowded. Same height as on screen, drawn off-screen at 2x. */
   downloadPNG(name = 'chart') {
-    if (!this.instance) return;
-    const url = this.instance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: chartTheme().panel });
-    h('a', { href: url, download: `${name}.png` }).click();
+    if (!this.instance || !this._build) return;
+    const EXPORT_WIDTH = 1200;
+    const width = Math.max(this.box.clientWidth, EXPORT_WIDTH);
+    const height = this.box.clientHeight;
+    const th = chartTheme();
+    const host = h('div', { 'aria-hidden': 'true',
+      style: { position: 'fixed', left: '-100000px', top: '0', width: `${width}px`, height: `${height}px` } });
+    document.body.append(host);
+    const off = window.echarts.init(host, null, { renderer: 'canvas', width, height });
+    try {
+      const option = this._build(th);
+      delete option._axis;
+      off.setOption(option, true);
+      const url = off.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: th.panel });
+      h('a', { href: url, download: `${name}.png` }).click();
+    } finally {
+      off.dispose();
+      host.remove();
+    }
   }
 
   downloadCSV(name = 'chart') {
