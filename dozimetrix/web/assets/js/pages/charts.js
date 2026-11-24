@@ -8,7 +8,7 @@ import '../components/dx-shell.js';
 import '../components/dx-query-bar.js';
 import '../components/dx-chart.js';
 import { baseOption } from '../components/dx-chart.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, toast, esc } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
 import { groupRows, physicalDevices, drl, isSample, getPref, putPref } from '../core/api.js';
@@ -268,7 +268,7 @@ function buildDots(cfg) {
       const name = devices[deviceIndex(dev)]?.display_name || `Device ${dev}`;
       series.push({ name, type: 'scatter', data: pts, symbolSize: 4, itemStyle: { color: devColor(th, dev), opacity: 0.45 }, large: true });
       series.push({ name, type: 'scatter', data: meds, symbol: 'rect', symbolSize: [3, 18], itemStyle: { color: devColor(th, dev) }, z: 5,
-        tooltip: { formatter: (p) => `${name} · median ${num(p.value[0])}% of ${drlLabel(cfg.metric, protos[Math.round(p.value[1])])}` } });
+        tooltip: { formatter: (p) => `${esc(name)} · median ${num(p.value[0])}% of ${esc(drlLabel(cfg.metric, protos[Math.round(p.value[1])]))}` } });
     });
     series[0].markLine = { silent: true, symbol: 'none', data: [{ xAxis: 100 }], lineStyle: { color: th.ref, type: 'dashed', width: 2 },
       label: { formatter: drlLabel(cfg.metric, protos), position: 'start', color: th.ref, fontFamily: th.mono } };
@@ -276,7 +276,7 @@ function buildDots(cfg) {
       ...base,
       legend: { ...base.legend, data: devIds.map((d) => devices[deviceIndex(d)]?.display_name) },
       grid: { left: 8, right: 24, top: 34, bottom: 40, containLabel: true },
-      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${p.seriesName}<br>${smart(p.value[2])} ${metric.unit} · ${num(p.value[0])}% of DRL${p.value[3] ? ` (${p.value[3]})` : ''}` },
+      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${esc(p.seriesName)}<br>${smart(p.value[2])} ${esc(metric.unit)} · ${num(p.value[0])}% of DRL${p.value[3] ? ` (${esc(p.value[3])})` : ''}` },
       xAxis: { type: 'value', min: 0, max: 200, name: `% of applicable DRL (${metric.label}, exam + age/weight group)`, nameLocation: 'middle', nameGap: 24, ...base._axis, axisLine: { ...base._axis.axisLine, onZero: false } },
       yAxis: [
         { type: 'value', min: -0.5, max: protos.length - 0.5, inverse: true, show: false },
@@ -318,7 +318,7 @@ function buildBoxOrBar(cfg) {
     });
     const drlName = drlLabel(cfg.metric, protos);
     series.push({ name: drlName, type: 'scatter', symbol: 'rect', symbolSize: [2, 26], data: protos.map((p, i) => [protoRef(cfg.metric, p) ?? null, i]),
-      itemStyle: { color: th.ref }, z: 6, tooltip: { formatter: (p) => `Applicable ${drlLabel(cfg.metric, protos[p.dataIndex])} (median) ${num(p.value[0])} ${metric.unit}` } });
+      itemStyle: { color: th.ref }, z: 6, tooltip: { formatter: (p) => `Applicable ${esc(drlLabel(cfg.metric, protos[p.dataIndex]))} (median) ${num(p.value[0])} ${metric.unit}` } });
     return {
       ...base,
       legend: { ...base.legend, data: [...devIds.map((d) => devices[deviceIndex(d)]?.display_name), drlName] },
@@ -407,7 +407,7 @@ function buildScatter(cfg) {
       ...base,
       legend: { ...base.legend, data: [...byDev.keys()].sort().map((d) => devices[deviceIndex(d)]?.display_name) },
       grid: { left: 66, right: 20, top: 34, bottom: 40 },
-      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${p.seriesName}<br>${p.value[0]} ${xUnit} · ${smart(p.value[1])} ${y.unit}` },
+      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${esc(p.seriesName)}<br>${p.value[0]} ${xUnit} · ${smart(p.value[1])} ${y.unit}` },
       xAxis: { type: 'value', name: `${xName} ${xUnit}`, nameLocation: 'middle', nameGap: 24, scale: true, ...base._axis },
       yAxis: { type: 'value', name: `${y.label} ${y.unit}`, nameLocation: 'middle', nameGap: 50, ...base._axis },
       series: [...byDev.entries()].sort((a, b) => a[0] - b[0]).map(([dev, list]) => ({ name: devices[deviceIndex(dev)]?.display_name, type: 'scatter', symbolSize: 5,

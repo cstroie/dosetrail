@@ -917,6 +917,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     host, port = args.host or s.web_host, args.port or s.web_port
     if host not in ("127.0.0.1", "localhost", "::1"):
         print(f"warning: listening on {host}; put Dozimetrix behind an HTTPS reverse proxy")
+        if not s.secure_cookies:
+            print("warning: [security] secure_cookies is off; set it to true behind HTTPS")
     # access_log off: query strings may contain search terms with identifiers.
     # X-Forwarded-For/-Proto are honoured only from the configured reverse proxies.
     uvicorn.run(create_app(), host=host, port=port, access_log=False,

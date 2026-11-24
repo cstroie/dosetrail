@@ -11,8 +11,10 @@ Privacy rules:
 from __future__ import annotations
 
 import datetime as dt
+import html as _html
 import json
 import re
+import secrets
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -33,8 +35,16 @@ from sqlalchemy.orm import Session
 from ..config import Settings, load_settings
 from ..db.models import AuditLog, DicomNode, Study, User
 from ..db.session import make_engine, make_sessionmaker
-from ..security import load_or_create_secret, read_session, sign_session, verify_password
+from ..security import (
+    hash_password,
+    load_or_create_secret,
+    read_session_claims,
+    session_stamp,
+    sign_session,
+    verify_password,
+)
 from . import admin, data, review
+from .hardening import LoginThrottle, install_hardening
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 LOGIN_HTML = Path(__file__).resolve().parent / "login.html"
@@ -56,6 +66,9 @@ LIVE_TOPIC_EVERY_S = {"studies": 15, "alerts": 60}  # list pages: scarce updates
 LIVE_EVERY_S = 5  # heartbeats come every minute or so, HIS lookups every few seconds
 LIVE_PING_S = 25
 LIVE_RETRY_MS = 5000
+LIVE_MAX_TOPICS = 20
+LIVE_MAX_STREAMS = 8  # per user: a few tabs, each with one stream
+LIVE_RECHECK_S = 30
 LIVE_MAX_S = 600  # a stream ends after 10 min and the browser reopens it: no stale sockets  # old name -> page (DICOM, HIS and more now)
 
 
@@ -260,12 +273,41 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         with maker() as session:
             yield session
 
-    def current_user(request: Request, session: Session = Depends(db)) -> User:
-        uid = read_session(secret, request.cookies.get(COOKIE))
-        user = session.get(User, uid) if uid else None
+    install_hardening(app, settings)
+    app.state.live_streams = {}
+    throttle = LoginThrottle()
+    app.state.login_throttle = throttle
+
+    def session_user(request: Request, session: Session) -> User | None:
+        """The active user a valid cookie names, if its password and roles are unchanged."""
+        claims = read_session_claims(secret, request.cookies.get(COOKIE))
+        if not claims:
+            return None
+        user = session.get(User, claims[0])
         if user is None or not user.is_active:
+            return None
+        if claims[1] != session_stamp(secret, user.password_hash, user.roles or ""):
+            return None
+        return user
+
+    def set_session_cookie(request: Request, response: Response, user: User) -> None:
+        response.set_cookie(
+            COOKIE, sign_session(secret, user.id, settings.session_hours,
+                                 stamp=session_stamp(secret, user.password_hash, user.roles or "")),
+            httponly=True, samesite="strict",
+            # always Secure over HTTPS (X-Forwarded-Proto from a trusted proxy)
+            secure=settings.secure_cookies or request.url.scheme == "https",
+            max_age=int(settings.session_hours * 3600), path="/")
+
+    def current_user(request: Request, session: Session = Depends(db)) -> User:
+        user = session_user(request, session)
+        if user is None:
             raise HTTPException(401, "login required")
         return user
+
+    def admin_only(user: User) -> None:
+        if "admin" not in user.role_set():
+            raise HTTPException(403, "the admin role is required")
 
     def admin_user(user: User = Depends(current_user)) -> User:
         if "admin" not in user.role_set():
@@ -304,9 +346,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         setup_token(_s)
 
     def optional_user(request: Request, session: Session) -> User | None:
-        uid = read_session(secret, request.cookies.get(COOKIE))
-        user = session.get(User, uid) if uid else None
-        return user if user is not None and user.is_active else None
+        return session_user(request, session)
 
     def setup_guard(request: Request, session: Session) -> User | None:
         """No account yet: open (the token protects the first write). Else: admin only."""
@@ -318,6 +358,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if "admin" not in user.role_set():
             raise HTTPException(403, "the admin role is required")
         return user
+
+    def _token_ok(request: Request, session: Session, token: str) -> None:
+        try:
+            first_run.check_token(setup_token(session), token)
+        except first_run.SetupError:
+            throttle.fail(request, "setup")
+            raise
 
     def _setup(fn):
         try:
@@ -331,9 +378,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return first_run.status(session, settings)
 
     @app.post("/api/setup/database")
-    def setup_database(body: TokenIn, session: Session = Depends(db)):
+    def setup_database(body: TokenIn, request: Request,
+                       session: Session = Depends(db)):
         """Fresh install only (no account yet; token): create the schema, load seeds."""
-        _setup(lambda: first_run.check_token(setup_token(session), body.token))
+        throttle.check(request, "setup")
+        _setup(lambda: _token_ok(request, session, body.token))
         report = first_run.prepare_database(session, settings)
         session.commit()
         return {"report": report}
@@ -341,15 +390,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.post("/api/setup/admin")
     def setup_admin(body: SetupAdminIn, request: Request, response: Response,
                     session: Session = Depends(db)):
-        _setup(lambda: first_run.check_token(setup_token(session), body.token))
+        throttle.check(request, "setup")
+        _setup(lambda: _token_ok(request, session, body.token))
         user = _setup(lambda: first_run.create_admin(session, body.model_dump()))
         _audit(session, request, user, "setup.admin", user.username)
         session.commit()
         app.state.setup_token = None
-        response.set_cookie(COOKIE, sign_session(secret, user.id, settings.session_hours),
-                            httponly=True, samesite="strict",
-                            secure=settings.secure_cookies or request.url.scheme == "https",
-                            max_age=int(settings.session_hours * 3600), path="/")
+        set_session_cookie(request, response, user)
         return _me(user)
 
     @app.post("/api/setup/site")
@@ -381,8 +428,15 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.post("/api/login")
     def login(body: LoginIn, request: Request, response: Response,
               session: Session = Depends(db)):
+        throttle.check(request, "login", body.username)
         user = session.scalar(select(User).filter_by(username=body.username))
-        ok = bool(user and user.is_active and verify_password(body.password, user.password_hash))
+        # always run scrypt, so the time taken does not tell which usernames exist
+        good = verify_password(body.password, user.password_hash if user else _DUMMY_HASH)
+        ok = bool(user and user.is_active and good)
+        if not ok:
+            throttle.fail(request, "login", body.username)
+        else:
+            throttle.clear(request, "login", body.username)
         _audit(session, request, user if ok else None, "login" if ok else "login_failed",
                body.username)
         session.commit()
@@ -390,11 +444,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(401, "invalid username or password")
         user.last_login_at = dt.datetime.now()
         session.commit()
-        response.set_cookie(COOKIE, sign_session(secret, user.id, settings.session_hours),
-                            httponly=True, samesite="strict",
-                            # always Secure over HTTPS (X-Forwarded-Proto from a trusted proxy)
-                            secure=settings.secure_cookies or request.url.scheme == "https",
-                            max_age=int(settings.session_hours * 3600), path="/")
+        set_session_cookie(request, response, user)
         return _me(user)
 
     @app.post("/api/logout")
@@ -647,7 +697,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                     session: Session = Depends(db)):
         from ..db.models import OptimizationAction as A
 
-        _exporter(user)
+        admin_only(user)
         text_ok = (body.finding or "").strip() and (body.action or "").strip()
         if body.year is None or body.quarter not in (1, 2, 3, 4) or not text_ok:
             raise HTTPException(400, "year, quarter 1..4, finding and action are required")
@@ -668,7 +718,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                      user: User = Depends(current_user), session: Session = Depends(db)):
         from ..db.models import OptimizationAction as A
 
-        _exporter(user)
+        admin_only(user)
         a = session.get(A, action_id)
         if a is None:
             raise HTTPException(404, "action not found")
@@ -691,7 +741,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                        session: Session = Depends(db)):
         from ..db.models import OptimizationAction as A
 
-        _exporter(user)
+        admin_only(user)
         a = session.get(A, action_id)
         if a is None:
             raise HTTPException(404, "action not found")
@@ -708,7 +758,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         from .. import deadlines
         from ..db.models import AppSetting
 
-        _exporter(user)
+        admin_only(user)
         from ..specs import loader as _loader
 
         known = {d["id"] for d in deadlines.upcoming(
@@ -945,13 +995,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(400, str(e)) from e
 
     @app.put("/api/me/password")
-    def my_password(body: PasswordIn, request: Request, user: User = Depends(current_user),
-                    session: Session = Depends(db)):
+    def my_password(body: PasswordIn, request: Request, response: Response,
+                    user: User = Depends(current_user), session: Session = Depends(db)):
         """Change one's own password (the account menu)."""
         u = session.get(User, user.id)
         _users(lambda m: m.change_own_password(u, body.current, body.new))
         _audit(session, request, u, "user.password", f"user:{u.username}")
         session.commit()
+        set_session_cookie(request, response, u)  # other sessions of this user end here
         return {"ok": True}
 
     @app.get("/api/users")
@@ -972,7 +1023,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return users.as_dict(u)
 
     @app.patch("/api/users/{username}")
-    def user_update(username: str, body: UserIn, request: Request,
+    def user_update(username: str, body: UserIn, request: Request, response: Response,
                     user: User = Depends(admin_user), session: Session = Depends(db)):
         from . import users
 
@@ -980,6 +1031,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                                                body.model_dump(exclude_unset=True)))
         _audit(session, request, user, "user.update", f"user:{u.username}", changes)
         session.commit()
+        if u.id == user.id:  # an admin editing themself stays logged in here
+            set_session_cookie(request, response, u)
         return {**users.as_dict(u), "changes": changes}
 
     @app.delete("/api/users/{username}")
@@ -1281,12 +1334,37 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 return current_user(request, session)
 
         user = await run_in_threadpool(who)  # 401 before the stream opens
+        if len(topics) > 1024:
+            raise HTTPException(400, "too many topics")
         want = {t for t in topics.split(",")
                 if t in LIVE_TOPICS or re.fullmatch(r"study:\d{1,12}", t)}
+        if len(want) > LIVE_MAX_TOPICS:
+            raise HTTPException(400, f"at most {LIVE_MAX_TOPICS} topics")
+        open_streams = app.state.live_streams
+        if open_streams.get(user.id, 0) >= LIVE_MAX_STREAMS:
+            raise HTTPException(429, "too many live streams open")
+        uid = user.id
+
+        def still_allowed() -> bool:
+            try:
+                who()
+                return True
+            except HTTPException:
+                return False
         if "his" in want and "admin" not in user.role_set():
             want.discard("his")
 
         async def stream():
+            open_streams[uid] = open_streams.get(uid, 0) + 1
+            try:
+                async for chunk in _stream():
+                    yield chunk
+            finally:
+                open_streams[uid] -= 1
+                if open_streams[uid] <= 0:
+                    open_streams.pop(uid, None)
+
+        async def _stream():
             last: dict = {}
             quiet = elapsed = 0.0
             yield f"retry: {LIVE_RETRY_MS}\n\n"
@@ -1308,6 +1386,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                         yield f"event: {topic}\ndata: {_json.dumps(value, default=str)}\n\n"
                 if elapsed >= LIVE_MAX_S or await request.is_disconnected():
                     return  # the browser reconnects after `retry`, with a fresh state
+                if elapsed and elapsed % LIVE_RECHECK_S < LIVE_EVERY_S \
+                        and not await run_in_threadpool(still_allowed):
+                    return  # logged out, disabled, or the password / roles changed
                 await asyncio.sleep(LIVE_EVERY_S)
                 quiet += LIVE_EVERY_S
                 elapsed += LIVE_EVERY_S
@@ -1395,6 +1476,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                        session: Session = Depends(db)):
         from .. import alerts
 
+        admin_only(user)
         if not body.ids or len(body.ids) > 1000:
             raise HTTPException(400, "1 to 1000 alert ids")
         n = alerts.acknowledge(session, body.ids, user.username, body.note, clock())
@@ -1418,6 +1500,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                   user: User = Depends(current_user), session: Session = Depends(db)):
         from ..db.models import Alert
 
+        admin_only(user)
         a = session.get(Alert, alert_id)
         if a is None:
             raise HTTPException(404, "alert not found")
@@ -1704,6 +1787,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/api/survey/uploads")
     def survey_uploads(user: User = Depends(current_user), session: Session = Depends(db)):
+        _central(user)
         return _agg(lambda a: a.uploads(session))
 
     @app.delete("/api/survey/uploads/{upload_id}")
@@ -1926,13 +2010,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             return RedirectResponse(f"/{OLD_PAGES[page]}{query}", status_code=301)
         if page.startswith(("assets/", "api/")) or page not in PAGES:
             raise HTTPException(404)
-        uid = read_session(secret, request.cookies.get(COOKIE))
-        if not uid or session.get(User, uid) is None:
+        if session_user(request, session) is None:
             return RedirectResponse("/setup" if first_run.needs_admin(session) else "/login",
                                     status_code=303)
         html = (WEB / PAGES[page]).read_text(encoding="utf-8")
-        origin = str(request.base_url).rstrip("/")
-        html = re.sub(r"<html(\s|>)", f'<html data-api="{origin}"\\1', html, count=1)
+        origin = _html.escape(str(request.base_url).rstrip("/"), quote=True)
+        html = re.sub(r"<html(\s|>)", lambda m: f'<html data-api="{origin}"{m.group(1)}', html,
+                      count=1)
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     app.mount("/assets", RevalidatedStatic(directory=WEB / "assets"), name="assets")
@@ -1943,7 +2027,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.exception_handler(HTTPException)
     def http_error(request: Request, exc: HTTPException):
-        return JSONResponse({"error": exc.detail}, status_code=exc.status_code)
+        return JSONResponse({"error": exc.detail}, status_code=exc.status_code,
+                            headers=getattr(exc, "headers", None))
 
     # route order: pages catch-all must come after the API; FastAPI matches in order of
     # registration, and the static mount is checked before routes for /assets.
@@ -1954,6 +2039,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 def _me(user: User) -> dict:
     return {"username": user.username, "name": user.display_name,
             "roles": sorted(user.role_set())}
+
+
+_DUMMY_HASH = hash_password(secrets.token_urlsafe(16))  # verified against for unknown users
 
 
 def _audit(session: Session, request: Request, user: User | None, action: str,

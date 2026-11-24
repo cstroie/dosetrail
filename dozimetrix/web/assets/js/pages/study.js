@@ -9,7 +9,7 @@ import { indicationRow } from '../components/indication.js';
 import '../components/dx-data-grid.js';
 import '../components/dx-chart.js';
 import { baseOption } from '../components/dx-chart.js';
-import { h, toast } from '../core/dom.js';
+import { h, toast, esc } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mgy, mmss, clock, DAP_UNITS } from '../core/format.js';
@@ -136,7 +136,7 @@ function curveOption(s, selected) {
       tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => (
         p.seriesName === 'Σ Ka,r' ? `Σ Ka,r ${mgy(p.value[1])} mGy`
           : p.seriesName === 'Σ DAP' ? `Σ DAP ${dap(p.value[1] / f, 1)} ${dapUnit()}`
-            : `#${p.data.eventIndex + 1} ${p.seriesName} · plane ${s.events[p.data.eventIndex].plane}<br>${clock(s.events[p.data.eventIndex].time)} · ${num(s.events[p.data.eventIndex].duration_s, 1)} s · DAP ${dap(s.events[p.data.eventIndex].dap_gycm2, 1)} ${dapUnit()}`) },
+            : `#${p.data.eventIndex + 1} ${esc(p.seriesName)} · plane ${esc(s.events[p.data.eventIndex].plane)}<br>${clock(s.events[p.data.eventIndex].time)} · ${num(s.events[p.data.eventIndex].duration_s, 1)} s · DAP ${dap(s.events[p.data.eventIndex].dap_gycm2, 1)} ${dapUnit()}`) },
       grid: [{ left: 66, right: 100, top: 34, height: '38%' }, { left: 66, right: 100, top: '60%', bottom: 28 }],
       xAxis: [
         { type: 'value', gridIndex: 0, min: 0, max: xMax, ...base._axis, axisLabel: { show: false }, splitLine: { show: false } },

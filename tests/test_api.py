@@ -420,12 +420,14 @@ def test_plan_of_measures_crud_and_deadline_marking(client):
     assert client.get("/api/actions", params={"year": 2026, "quarter": 3}).json()["rows"] == []
     body = {"year": 2026, "quarter": 3, "finding": "T1 above DRL", "action": "Check the AEC",
             "owner": "physicist"}
-    assert client.post("/api/actions", json=body).status_code == 403  # writing needs exporter
+    assert client.post("/api/actions", json=body).status_code == 403  # writing needs admin
     login(client, "regist", "regist-pass-12")
+    assert client.post("/api/actions", json=body).status_code == 403  # exporter too
+    login(client, "boss", "boss-pass-123")
     assert client.post("/api/actions", json={**body, "quarter": 9}).status_code == 400
     assert client.post("/api/actions", json={**body, "action": " "}).status_code == 400
     a = client.post("/api/actions", json=body).json()
-    assert a["status"] == "open" and a["created_by"] == "regist"
+    assert a["status"] == "open" and a["created_by"] == "boss"
     put = client.put(f"/api/actions/{a['id']}", json={"status": "doing"})
     assert put.json()["status"] == "doing"
     assert client.put(f"/api/actions/{a['id']}", json={"status": "x"}).status_code == 400
@@ -502,9 +504,12 @@ def test_alert_endpoints(client):
     a = next(x for x in open_ if x["rule"] == "fluoro-kar-5gy")
     assert a["study_id"] and a["level"] == "alert"
     assert any(x["id"] == a["id"] for x in client.get("/api/overview").json()["alerts"])
+    assert client.post(f"/api/alerts/{a['id']}/ack", json={}).status_code == 403  # admin only
+    login(client, "boss", "boss-pass-123")
     r = client.post(f"/api/alerts/{a['id']}/ack", json={"note": "seen, patient informed"})
     assert r.json()["status"] == "acknowledged"
     assert all(x["id"] != a["id"] for x in client.get("/api/alerts").json())
+    login(client, "viewer", "viewer-pass-1")
     rules = client.get("/api/alert-rules").json()
     rid = next(x["id"] for x in rules if x["key"] == "drl-2x")
     assert client.patch(f"/api/alert-rules/{rid}", json={"threshold": 3}).status_code == 403
@@ -683,6 +688,8 @@ def test_alerts_page_api(client):
     assert len(one) == 1 and one[0]["modality"] == "XA"
     assert client.get("/api/alerts", params={"since": "bad"}).status_code == 400
     ids = [a["id"] for a in client.get("/api/alerts", params={"modality": "XA"}).json()]
+    assert client.post("/api/alerts/ack", json={"ids": ids}).status_code == 403  # admin only
+    login(client, "boss", "boss-pass-123")
     r = client.post("/api/alerts/ack", json={"ids": ids, "note": "reviewed"}).json()
     assert r["acknowledged"] == len(ids) > 0
     acked = client.get("/api/alerts", params={"status": "acknowledged", "modality": "XA"}).json()

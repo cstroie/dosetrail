@@ -4,7 +4,7 @@
 // "vs DRL" panel uses GET /api/drl/compare.
 
 import { baseOption } from '../components/dx-chart.js';
-import { h } from '../core/dom.js';
+import { h, esc } from '../core/dom.js';
 import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
 import { stats, drlCompare } from '../core/api.js';
 
@@ -194,7 +194,7 @@ async function buildDrl(cfg, q) {
     const tone = { below: th.ok, above: th.warn, well_above: th.alert, insufficient: th.muted };
     return { ...base, grid: { left: 8, right: 24, top: 20, bottom: 40, containLabel: true },
       tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => { const r = rows[p.dataIndex]; const g = r.groups[0];
-        return `${labels[p.dataIndex]}<br>median ${smart(g.median)} / DRL ${smart(r.reference)} ${r.unit} = ${num(g.ratio * 100)}% · n ${g.n}${g.status === 'insufficient' ? ' (n small)' : ''}`; } },
+        return `${esc(labels[p.dataIndex])}<br>median ${smart(g.median)} / DRL ${smart(r.reference)} ${r.unit} = ${num(g.ratio * 100)}% · n ${g.n}${g.status === 'insufficient' ? ' (n small)' : ''}`; } },
       xAxis: { type: 'value', min: 0, max: (v) => Math.max(200, Math.ceil(v.max / 50) * 50), name: '% of DRL (median)', nameLocation: 'middle', nameGap: 24, ...base._axis },
       yAxis: { type: 'category', data: labels, inverse: true, ...base._axis, axisLabel: { ...base._axis.axisLabel, fontFamily: th.sans, color: th.text, width: 260, overflow: 'truncate' } },
       series: [{ type: 'bar', barMaxWidth: 10, data: rows.map((r) => ({ value: r.groups[0].ratio * 100, itemStyle: { color: tone[r.groups[0].status] || th.muted } })),

@@ -74,16 +74,25 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
-def sign_session(secret: bytes, user_id: int, hours: float, now: float | None = None) -> str:
+def session_stamp(secret: bytes, password_hash: str, roles: str) -> str:
+    """Changes when the password or the roles change, so older session tokens stop working."""
+    mac = hmac.new(secret, f"stamp:{password_hash}|{roles}".encode(), hashlib.sha256).digest()
+    return _b64(mac[:9])
+
+
+def sign_session(secret: bytes, user_id: int, hours: float, now: float | None = None,
+                 stamp: str = "") -> str:
     payload = {"uid": user_id, "exp": int((now or time.time()) + hours * 3600),
-               "n": secrets.token_hex(4)}
+               "n": secrets.token_hex(4), "s": stamp}
     body = _b64(json.dumps(payload, separators=(",", ":")).encode())
     mac = hmac.new(secret, b"session:" + body.encode(), hashlib.sha256).digest()
     return f"{body}.{_b64(mac)}"
 
 
-def read_session(secret: bytes, token: str | None, now: float | None = None) -> int | None:
-    if not token or "." not in token:
+def read_session_claims(secret: bytes, token: str | None,
+                        now: float | None = None) -> tuple[int, str] | None:
+    """(user id, stamp) from a valid, unexpired token, else None."""
+    if not token or "." not in token or len(token) > 512:
         return None
     body, mac = token.rsplit(".", 1)
     expected = hmac.new(secret, b"session:" + body.encode(), hashlib.sha256).digest()
@@ -91,11 +100,16 @@ def read_session(secret: bytes, token: str | None, now: float | None = None) -> 
         if not hmac.compare_digest(_unb64(mac), expected):
             return None
         payload = json.loads(_unb64(body))
-    except (ValueError, TypeError):
+        if payload.get("exp", 0) < (now or time.time()):
+            return None
+        return int(payload["uid"]), str(payload.get("s", ""))
+    except (ValueError, TypeError, KeyError, AttributeError):
         return None
-    if payload.get("exp", 0) < (now or time.time()):
-        return None
-    return int(payload["uid"])
+
+
+def read_session(secret: bytes, token: str | None, now: float | None = None) -> int | None:
+    claims = read_session_claims(secret, token, now)
+    return claims[0] if claims else None
 
 
 # ------------------------------------------------------------------------- pseudonyms

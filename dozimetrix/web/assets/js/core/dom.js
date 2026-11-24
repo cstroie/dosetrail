@@ -24,6 +24,10 @@ export function h(tag, attrs = {}, ...children) {
   return el;
 }
 
+const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+/** HTML-escape a value for the few places that build markup strings (ECharts tooltips). */
+export function esc(v) { return String(v ?? '').replace(/[&<>"']/g, (c) => ESC[c]); }
+
 export function append(el, children) {
   for (const c of children.flat(Infinity)) {
     if (c === null || c === undefined || c === false) continue;

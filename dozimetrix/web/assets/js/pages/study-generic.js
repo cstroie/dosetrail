@@ -5,7 +5,7 @@
 
 import '../components/dx-data-grid.js';
 import { indicationRow } from '../components/indication.js';
-import { h, toast } from '../core/dom.js';
+import { h, toast, esc } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, clock, DAP_UNITS } from '../core/format.js';
@@ -103,9 +103,9 @@ function timelinePanel(kind, events, grid) {
       ...base,
       legend: { ...base.legend, left: 'center' },
       tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => {
-        if (p.seriesType === 'line') return `${p.seriesName} ${num(p.value[1], 2)} ${unit}`;
+        if (p.seriesType === 'line') return `${esc(p.seriesName)} ${num(p.value[1], 2)} ${unit}`;
         const e = timed[p.data.i];
-        return `#${e.no} ${cfg.label(e)}<br>${clock(e.time)} · ${cfg.bar} ${num(cfg.value(e) * f, 2)} ${unit}${e.localizer ? ' · localizer' : ''}`;
+        return `#${e.no} ${esc(cfg.label(e))}<br>${clock(e.time)} · ${cfg.bar} ${num(cfg.value(e) * f, 2)} ${unit}${e.localizer ? ' · localizer' : ''}`;
       } },
       grid: { left: 66, right: 70, top: 34, bottom: 30 },
       xAxis: { type: 'value', min: -span * 0.03, max: span * 1.03, ...base._axis, splitLine: { show: false },
@@ -247,9 +247,9 @@ function drlPanel(kind, events, grid, unitOf) {
         const r = rows[p.data.row];
         const part = r.parts[p.data.part];
         const v = (x) => `${num(x * (isDap ? f : 1), r.d)} ${isDap ? dapUnit() : r.unit}`;
-        return `${r.label}${r.parts.length > 1 ? ` · ${p.data.part ? `retake ${p.data.part}` : 'first'}: ${v(part.v)}` : ''}<br>`
-          + `total ${v(total(r))}${r.ref ? ` · DRL ${v(r.ref)} (${Math.round((total(r) / r.ref) * 100)}%)${r.code ? ` · ${r.code}` : ''}` : ' · no DRL'}`
-          + (r.extra ? `<br>${r.extra}` : '');
+        return `${esc(r.label)}${r.parts.length > 1 ? ` · ${p.data.part ? `retake ${p.data.part}` : 'first'}: ${v(part.v)}` : ''}<br>`
+          + `total ${v(total(r))}${r.ref ? ` · DRL ${v(r.ref)} (${Math.round((total(r) / r.ref) * 100)}%)${r.code ? ` · ${esc(r.code)}` : ''}` : ' · no DRL'}`
+          + (r.extra ? `<br>${esc(r.extra)}` : '');
       } },
       grid: { left: 150, right: 30, top: 16, bottom: 30 },
       xAxis: { type: 'value', min: 0, max: (v) => Math.max(v.max, maxX), ...base._axis,
