@@ -197,7 +197,10 @@ class Client:
                  timeout: float = 120, opener=None):
         self.base = base_url.rstrip("/")
         self.timeout = timeout
-        self.headers = {"Accept": "application/fhir+json, application/json"}
+        from .. import __version__
+
+        self.headers = {"Accept": "application/fhir+json, application/json",
+                        "User-Agent": f"Dozimetrix/{__version__}"}  # tells our calls apart in its log
         if username:
             token = base64.b64encode(f"{username}:{password or ''}".encode()).decode()
             self.headers["Authorization"] = f"Basic {token}"

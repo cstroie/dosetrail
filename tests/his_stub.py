@@ -61,6 +61,7 @@ class Stub:
         self.calls: list[str] = []
         self.dts: list[str | None] = []  # dt of each request listing
         self.background: list[str | None] = []
+        self.agents: list[str | None] = []
         self.fail_with: int | None = None
         self.broken_session = False  # login accepted, but whoami 404 and searches empty
         stub = self
@@ -82,6 +83,7 @@ class Stub:
                 q = dict(urllib.parse.parse_qsl(u.query))
                 stub.calls.append(u.path)
                 stub.background.append(q.get("background"))
+                stub.agents.append(self.headers.get("User-Agent"))
                 if stub.fail_with:
                     return self._send(stub.fail_with, {"error": "busy"})
                 good = self.headers.get("Authorization") == "Basic " + base64.b64encode(

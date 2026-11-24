@@ -224,6 +224,9 @@ def test_listings_span_years_without_dt_and_in_background(session, stub, his):
     assert session.get(HisLookup, st.id).request_id == "R-NY"
     assert stub.dts == [None]  # one listing, no dt: the gateway would cut it to ±24 h
     assert set(stub.background) == {"1"}
+    from dozimetrix import __version__
+
+    assert set(stub.agents) == {f"Dozimetrix/{__version__}"}
 
 def test_outputs_study_summary_quality_and_survey(session, stub, his):
     from dozimetrix import quality
