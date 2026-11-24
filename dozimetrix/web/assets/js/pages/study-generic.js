@@ -149,8 +149,8 @@ function timelinePanel(kind, events, grid) {
 
 // ---------------------------------------------------------------- dose vs DRL (bullet chart)
 // For CT and projection X-ray the order in time says little; what matters is each dose
-// against its reference level. One row per item, the bar as % of its DRL (a dashed line at
-// 100 %, red past it); items without a DRL show their value only. CT: the exam's total DLP,
+// against its reference level. One row per item, the bar in dose units with a tick at its own
+// DRL (red past it); items without a DRL show their value only. CT: the exam's total DLP,
 // then each series' DLP against the same exam DRL (they add up to the total). DX/CR: DAP per
 // projection, retakes stacked (the DRL applies per projection), then each exposure against
 // that DRL. MG: AGD per breast, views stacked (no DRL here: absolute mGy).
@@ -216,9 +216,9 @@ function drlPanel(kind, events, grid, unitOf) {
   const option = (th) => {
     const base = baseOption(th);
     const total = (r) => r.parts.reduce((a, p) => a + p.v, 0);
-    // % of the DRL when there is one, else the value itself (on a second axis it would not
-    // compare: rows without a DRL are drawn on the same axis only when none has one)
-    const scale = (r, v) => (withRef ? (r.ref ? (v / r.ref) * 100 : null) : v * (isDap ? f : 1));
+    // every row in its own dose (a row without a DRL is drawn too); a row with a DRL carries
+    // a tick at its DRL, and the tooltip gives the percentage
+    const scale = (r, v) => v * (isDap ? f : 1);
     const cats = rows.map((r) => r.label);
     const series = [];
     for (let k = 0; k < maxParts; k += 1) {
@@ -236,9 +236,10 @@ function drlPanel(kind, events, grid, unitOf) {
               borderColor: p.e.no === selected ? th.text : 'transparent', borderWidth: p.e.no === selected ? 2 : 0 } };
         }) });
     }
-    if (withRef) series[0].markLine = { silent: true, symbol: 'none', label: { formatter: 'DRL', color: th.muted, fontFamily: th.mono, fontSize: 10 },
-      lineStyle: { color: th.text, type: 'dashed', width: 1.5 }, data: [{ xAxis: 100 }] };
-    const maxPct = withRef ? Math.max(110, ...rows.map((r) => scale(r, total(r)) || 0)) : undefined;
+    if (withRef) series.push({ type: 'scatter', name: 'DRL', silent: true, symbol: 'rect', symbolSize: [2.5, 22], z: 5,
+      itemStyle: { color: th.text }, tooltip: { show: false },
+      data: rows.map((r, i) => (r.ref ? [scale(r, r.ref), i] : null)) });
+    const maxX = Math.max(...rows.map((r) => Math.max(scale(r, total(r)), r.ref ? scale(r, r.ref) : 0))) * 1.08;
     return {
       ...base,
       legend: { show: false },
@@ -251,8 +252,8 @@ function drlPanel(kind, events, grid, unitOf) {
           + (r.extra ? `<br>${r.extra}` : '');
       } },
       grid: { left: 150, right: 30, top: 16, bottom: 30 },
-      xAxis: { type: 'value', min: 0, max: maxPct, ...base._axis, axisLabel: { ...base._axis.axisLabel, formatter: withRef ? '{value}%' : '{value}' },
-        name: withRef ? '% of DRL' : (isDap ? dapUnit() : rows[0].unit), nameLocation: 'middle', nameGap: 22 },
+      xAxis: { type: 'value', min: 0, max: (v) => Math.max(v.max, maxX), ...base._axis,
+        name: `${isDap ? dapUnit() : rows[0].unit}${withRef ? ' · ▮ = DRL' : ''}`, nameLocation: 'middle', nameGap: 22 },
       yAxis: { type: 'category', data: cats, inverse: true, ...base._axis, axisLabel: { ...base._axis.axisLabel, width: 140, overflow: 'truncate' } },
       series,
     };
@@ -276,7 +277,7 @@ function drlPanel(kind, events, grid, unitOf) {
   onUnitChange(grid, draw);
   grid.addEventListener('row-focus', (e) => { if (e.detail?.no !== selected) { selected = e.detail?.no ?? null; draw(); } });
   const title = { ct: 'Dose vs DRL · exam and series DLP', rx: 'Dose vs DRL · DAP per projection and exposure', mg: 'AGD per breast' }[kind];
-  const hint = withRef ? 'dashed line = DRL · red = above it' : 'no DRL for this exam';
+  const hint = withRef ? 'tick = DRL · red = above it' : 'no DRL for this exam';
   return h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, title), h('span', { class: 'spacer' }),
       h('span', { class: 'muted small' }, `${hint}${kind === 'rx' ? ' · amber = retake (same projection again)' : kind === 'ct' ? ' · colour = series · amber = repeat' : ' · colour = view'} · click a bar to find it in the table`)),
