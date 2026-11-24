@@ -100,6 +100,13 @@ def test_activity_per_study_and_mammography_per_breast(session, data):
     assert agd["groups"][0]["n"] == 4
     act = stats.compute(session, [S.modality == "PT"], "activity", [])
     assert act["groups"][0]["n"] == 2 and act["groups"][0]["median"] == pytest.approx(360.0)
+    # and through the browser chart rows: MG one row per view, PT one row per study
+    from dosimetrix.api import data as api_data
+
+    mg_rows = api_data.group_rows(session, "", T, "MG")
+    assert len(mg_rows) == 4 and {r["agd"] for r in mg_rows} == {1.0, 1.5, 1.2, 1.4}
+    pt_rows = api_data.group_rows(session, "", T, "PT")
+    assert sorted(r["activity"] or 0 for r in pt_rows) == [0, 300.0, 420.0]
 
 
 def test_european_set_units_bands_and_devices(session, data):

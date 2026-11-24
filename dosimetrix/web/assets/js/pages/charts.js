@@ -1,4 +1,4 @@
-// Charts workspace (CT). One query is shared by every panel. Panels can be added, re-ordered
+// Charts workspace, every modality: each browser panel charts one modality group. One query is shared by every panel. Panels can be added, re-ordered
 // (drag the grip, or ← →), resized (S/M/L/XL), re-configured inline and exported (PNG / CSV).
 // Each panel has a summary table (n, median, P75, IQR, P75/DRL). The workspace layout is saved
 // per browser for now; the server will store workspaces per user, with read-only sharing.
@@ -11,15 +11,38 @@ import { baseOption } from '../components/dx-chart.js';
 import { h, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart } from '../core/format.js';
-import { ctAcquisitions, physicalDevices, drl, isSample } from '../core/api.js';
+import { groupRows, physicalDevices, drl, isSample } from '../core/api.js';
 import { summary, groupBy, histogram } from '../core/stats.js';
 import { prefs } from '../core/prefs.js';
 import { SERVER_TYPES, buildServer, serverOptions, serverSummary, defaultsFor } from './charts-server.js';
 
 const page = document.getElementById('page');
 
-const METRICS = { ctdivol: { label: 'CTDIvol', unit: 'mGy', field: 'ctdivol' }, dlp: { label: 'DLP', unit: 'mGy·cm', field: 'dlp' } };
-const TYPES = { dots: 'CT dots vs DRL', box: 'CT boxplot', bar: 'CT median / mean bar', hist: 'CT histogram', trend: 'CT trend', scatter: 'CT DLP vs weight', heat: 'CT workload' };
+// every browser-panel metric (field names are unique across groups); GROUPS says which a group offers
+const METRICS = {
+  ctdivol: { label: 'CTDIvol', unit: 'mGy' }, dlp: { label: 'DLP', unit: 'mGy·cm' },
+  dap: { label: 'DAP per exposure', unit: 'Gy·cm²' }, kvp: { label: 'kVp', unit: 'kV' }, mas: { label: 'mAs', unit: 'mA·s' },
+  ei: { label: 'Exposure index', unit: '' }, di: { label: 'Deviation index', unit: '' },
+  agd: { label: 'AGD per view', unit: 'mGy' }, thickness: { label: 'Compressed thickness', unit: 'mm' },
+  dap_total: { label: 'DAP total', unit: 'Gy·cm²' }, kar_total: { label: 'Ka,r total', unit: 'mGy' },
+  fluoro_time: { label: 'Fluoroscopy time', unit: 's' }, psd: { label: 'Peak skin dose', unit: 'mGy' },
+  activity: { label: 'Administered activity', unit: 'MBq' }, activity_kg: { label: 'Activity per kg', unit: 'MBq/kg' },
+};
+for (const [k, m] of Object.entries(METRICS)) m.field = k;
+// per group: metrics, scatter axes (x: size of the patient, y: dose), what one row is
+const GROUPS = {
+  CT: { label: 'CT', metrics: ['ctdivol', 'dlp'], scatter: ['weight', 'dlp'], unit: 'acquisitions' },
+  DX: { label: 'DX/CR', metrics: ['dap', 'kvp', 'mas', 'ei', 'di'], scatter: ['weight', 'dap'], unit: 'exposures' },
+  RF: { label: 'RF', metrics: ['dap_total', 'kar_total', 'fluoro_time'], scatter: ['weight', 'dap_total'], unit: 'studies' },
+  XA: { label: 'XA', metrics: ['dap_total', 'kar_total', 'fluoro_time', 'psd'], scatter: ['weight', 'dap_total'], unit: 'studies' },
+  MG: { label: 'MG', metrics: ['agd', 'thickness', 'kvp', 'mas'], scatter: ['thickness', 'agd'], unit: 'views' },
+  NM: { label: 'NM', metrics: ['activity', 'activity_kg'], scatter: ['weight', 'activity'], unit: 'studies' },
+  PT: { label: 'PET', metrics: ['activity', 'activity_kg'], scatter: ['weight', 'activity'], unit: 'studies' },
+};
+const AXIS = { weight: ['weight', 'kg'], thickness: ['compressed thickness', 'mm'] };
+const groupOf = (cfg) => (cfg.group in GROUPS ? cfg.group : 'CT');
+const metricOf = (cfg) => (GROUPS[groupOf(cfg)].metrics.includes(cfg.metric) ? cfg.metric : GROUPS[groupOf(cfg)].metrics[0]);
+const TYPES = { dots: 'Dots vs DRL', box: 'Boxplot', bar: 'Median / mean bar', hist: 'Histogram', trend: 'Trend', scatter: 'Dose vs size', heat: 'Workload' };
 const SPANS = { S: 4, M: 6, L: 8, XL: 12 };
 const PERIODS = { week: 'Week', month: 'Month', quarter: 'Quarter', year: 'Year' };
 const DEFAULT_Q = 'date:2026-07-01..2026-11-21 origin:local';
@@ -36,7 +59,8 @@ const DEFAULT_PANELS = [
 
 Object.assign(TYPES, SERVER_TYPES);
 let ws;         // { name, q, panels }
-let rows = [];  // acquisitions for the current query
+let rows = [];  // rows of the panel being drawn (one modality group)
+const rowsBy = {};  // group → rows for the current query
 let devices = [];
 let drlSet;
 
@@ -53,7 +77,7 @@ function saveWs() { prefs.set(wsKey(ws.name), ws); }
 
 function deviceIndex(id) { return devices.findIndex((d) => d.id === id); }
 function devColor(th, id) { return th.devices[deviceIndex(id) % 8]; }
-function drlFor(metric, protocol) { return (metric === 'ctdivol' ? drlSet.ct_ctdivol_mgy : drlSet.ct_dlp_mgycm)[protocol]; }
+function drlFor(metric, protocol) { return metric === 'ctdivol' ? drlSet.ct_ctdivol_mgy?.[protocol] : metric === 'dlp' ? drlSet.ct_dlp_mgycm?.[protocol] : undefined; }
 /** The DRL that applies to one acquisition. The API sends it per row (exam + patient age or
  *  weight group, national OMS 838/2025 or RP 185); sample data has one value per protocol. */
 function refOf(r, metric) { return r.drl ? r.drl[metric] ?? undefined : drlFor(metric, r.protocol); }
@@ -139,6 +163,7 @@ function period(iso, per) {
 
 function buildDots(cfg) {
   const metric = METRICS[cfg.metric];
+  if (!rows.some((r) => refOf(r, cfg.metric))) return null;  // no per-row DRL: the server 'Median vs DRL' panel covers it
   const withRef = rows.filter((r) => refOf(r, cfg.metric));
   const allProtos = protocolsBy(cfg.sort || 'n', cfg.metric).filter((p) => withRef.some((r) => r.protocol === p));
   const protos = limitTop(cfg, allProtos, DEFAULT_TOP);  // the summary table has every protocol
@@ -290,8 +315,11 @@ function buildTrend(cfg) {
 }
 
 function buildScatter(cfg) {
-  const proto = protoFor(cfg, 'dlp', (r) => r.weight && r.dlp);
-  const rs = rows.filter((r) => r.protocol === proto && r.weight);
+  const [xKey, yKey] = GROUPS[groupOf(cfg)].scatter;
+  const [xName, xUnit] = AXIS[xKey];
+  const y = METRICS[yKey];
+  const proto = protoFor(cfg, yKey, (r) => r[xKey] && r[yKey] != null);
+  const rs = rows.filter((r) => r.protocol === proto && r[xKey] && r[yKey] != null);
   const option = (th) => {
     const base = baseOption(th);
     const byDev = groupBy(rs, (r) => r.device_id);
@@ -299,18 +327,18 @@ function buildScatter(cfg) {
       ...base,
       legend: { ...base.legend, data: [...byDev.keys()].sort().map((d) => devices[deviceIndex(d)]?.display_name) },
       grid: { left: 66, right: 20, top: 34, bottom: 40 },
-      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${p.seriesName}<br>${p.value[0]} kg · ${num(p.value[1])} mGy·cm` },
-      xAxis: { type: 'value', name: 'weight kg', nameLocation: 'middle', nameGap: 24, scale: true, ...base._axis },
-      yAxis: { type: 'value', name: 'DLP mGy·cm', nameLocation: 'middle', nameGap: 50, ...base._axis },
+      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => `${p.seriesName}<br>${p.value[0]} ${xUnit} · ${smart(p.value[1])} ${y.unit}` },
+      xAxis: { type: 'value', name: `${xName} ${xUnit}`, nameLocation: 'middle', nameGap: 24, scale: true, ...base._axis },
+      yAxis: { type: 'value', name: `${y.label} ${y.unit}`, nameLocation: 'middle', nameGap: 50, ...base._axis },
       series: [...byDev.entries()].sort((a, b) => a[0] - b[0]).map(([dev, list]) => ({ name: devices[deviceIndex(dev)]?.display_name, type: 'scatter', symbolSize: 5,
-        itemStyle: { color: devColor(th, dev), opacity: 0.7 }, data: list.map((r) => [r.weight, r.dlp]) })),
+        itemStyle: { color: devColor(th, dev), opacity: 0.7 }, data: list.map((r) => [r[xKey], r[yKey]]) })),
     };
   };
-  return { option, csv: [['device', 'weight_kg', 'dlp_mgycm']].concat(rs.map((r) => [r.device, r.weight, r.dlp])),
-    title: rs.length ? `DLP vs patient weight · ${proto} (n ${num(rs.length)} with weight)` : "DLP vs patient weight · no acquisitions with a patient weight in this query", summary: summaryRows('dlp', proto), protocol: proto };
+  return { option, csv: [['device', `${xKey}_${xUnit}`, `${yKey} ${y.unit}`]].concat(rs.map((r) => [r.device, r[xKey], r[yKey]])),
+    title: rs.length ? `${y.label} vs ${xName} · ${proto} (n ${num(rs.length)})` : `${y.label} vs ${xName} · no rows with a ${xName} in this query`, summary: summaryRows(yKey, proto), protocol: proto };
 }
 
-function buildHeat() {
+function buildHeat(cfg) {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const counts = days.map(() => Array(24).fill(0));
   for (const r of rows) {
@@ -333,7 +361,7 @@ function buildHeat() {
       series: [{ type: 'heatmap', data, itemStyle: { borderColor: th.panel, borderWidth: 1 } }],
     };
   };
-  return { option, csv: [['weekday', 'hour', 'n']].concat(data.map((x) => [days[x[1]], x[0], x[2]])), title: 'Workload · acquisitions by weekday × hour', summary: null };
+  return { option, csv: [['weekday', 'hour', 'n']].concat(data.map((x) => [days[x[1]], x[0], x[2]])), title: `Workload · ${GROUPS[groupOf(cfg)].label} ${GROUPS[groupOf(cfg)].unit} by weekday × hour`, summary: null };
 }
 
 const BUILDERS = { dots: buildDots, box: buildBoxOrBar, bar: buildBoxOrBar, hist: buildHist, trend: buildTrend, scatter: buildScatter, heat: buildHeat };
@@ -359,15 +387,22 @@ function select(label, value, options, onChange) {
 
 function renderPanel(cfg, index) {
   const server = cfg.type in SERVER_TYPES;
+  if (!server) {  // browser panels: this group's rows, and a metric the group has
+    cfg.group = groupOf(cfg);
+    cfg.metric = metricOf(cfg);
+    rows = rowsBy[cfg.group] || [];
+  }
   const built = server ? null : rows.length ? BUILDERS[cfg.type](cfg) : null;
+  const g = GROUPS[groupOf(cfg)];
   const chart = h('dx-chart', { label: built?.title || 'Chart', height: built?.height || (cfg.type === 'sdrl' ? '420' : '320') });
-  const update = (patch) => { Object.assign(cfg, patch); saveWs(); renderAll(); };
-  const protos = Object.fromEntries(protocolsBy('name', 'ctdivol').map((p) => [p, p]));
+  const update = (patch) => { Object.assign(cfg, patch); saveWs(); if (patch.group && !(patch.group in rowsBy)) loadRows(); else renderAll(); };
+  const protos = server ? {} : Object.fromEntries(protocolsBy('name', cfg.metric).map((p) => [p, p]));
   const opts = server ? [select('Type', cfg.type, TYPES, (v) => update({ ...defaultsFor(v), top: undefined, modality: cfg.modality, span: cfg.span, type: v })),
     ...serverOptions(cfg, update, select), h('span', { class: 'spacer' }),
     h('span', { class: 'seg', role: 'group', 'aria-label': 'Panel width' }, Object.keys(SPANS).map((s) => h('button', { type: 'button', 'aria-pressed': String(cfg.span === s), onclick: () => update({ span: s }) }, s)))] : [
-    select('Type', cfg.type, TYPES, (v) => update({ type: v })),
-    cfg.type !== 'scatter' && cfg.type !== 'heat' ? select('Metric', cfg.metric, { ctdivol: 'CTDIvol', dlp: 'DLP' }, (v) => update({ metric: v })) : null,
+    select('Type', cfg.type, Object.fromEntries(Object.entries(TYPES).filter(([k]) => !(k in SERVER_TYPES))), (v) => update({ type: v })),
+    select('Modality', cfg.group, Object.fromEntries(Object.entries(GROUPS).map(([k, x]) => [k, x.label])), (v) => update({ group: v, protocol: undefined })),
+    cfg.type !== 'scatter' && cfg.type !== 'heat' ? select('Metric', cfg.metric, Object.fromEntries(g.metrics.map((k) => [k, METRICS[k].label])), (v) => update({ metric: v })) : null,
     ['hist', 'trend', 'scatter'].includes(cfg.type) ? select('Protocol', built?.protocol, protos, (v) => update({ protocol: v })) : null,
     ['bar', 'trend'].includes(cfg.type) ? select('Stat', cfg.stat || 'median', { median: 'Median', mean: 'Mean' }, (v) => update({ stat: v })) : null,
     cfg.type === 'trend' ? select('Period', cfg.period || 'month', PERIODS, (v) => update({ period: v })) : null,
@@ -384,7 +419,7 @@ function renderPanel(cfg, index) {
     h('button', { class: 'grip', type: 'button', draggable: 'true', 'aria-label': 'Drag to move panel', title: 'Drag to move',
       ondragstart: (e) => { e.dataTransfer.setData('text/plain', String(index)); panel.classList.add('dragging'); },
       ondragend: () => panel.classList.remove('dragging') }, '⋮⋮'),
-    h('h3', {}, built?.title || TYPES[cfg.type]), h('span', { class: 'spacer' }),
+    h('h3', {}, server ? TYPES[cfg.type] : `${g.label} · ${built?.title || TYPES[cfg.type]}`), h('span', { class: 'spacer' }),
     h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Move panel earlier', title: 'Move earlier', disabled: index === 0, onclick: () => move(index, index - 1) }, '←'),
     h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Move panel later', title: 'Move later', disabled: index === ws.panels.length - 1, onclick: () => move(index, index + 1) }, '→'),
     h('button', { class: 'btn xs', type: 'button', onclick: () => chart.downloadPNG(slug(built?.title)) }, 'PNG'),
@@ -392,7 +427,9 @@ function renderPanel(cfg, index) {
     h('button', { class: 'btn xs', type: 'button', 'aria-label': 'Remove panel', title: 'Remove panel', onclick: () => { ws.panels.splice(index, 1); saveWs(); renderAll(); } }, '×')),
   h('div', { class: 'ws-opts' }, opts),
   server ? h('div', { class: 'ws-body' }, chart, h('div', { class: 'srv-summary' }))
-    : h('div', { class: 'ws-body' }, built ? chart : h('p', { class: 'muted' }, t('state.empty')), built ? summaryTable(built.summary) : null));
+    : h('div', { class: 'ws-body' }, built ? chart : h('p', { class: 'muted' },
+      cfg.type === 'dots' && rows.length ? `No per-${g.unit.replace(/s$/, '')} DRL for ${g.label} here: add a “Median vs DRL (server)” panel.` : t('state.empty')),
+    built ? summaryTable(built.summary) : null));
   if (built) {
     chart.csv = built.csv;
     queueMicrotask(() => chart.draw(built.option));
@@ -424,12 +461,12 @@ function move(from, to) {
 let gridHost;
 let countEl;
 function renderAll() {
-  countEl.textContent = `${num(rows.length)} acquisitions`;
+  countEl.textContent = Object.entries(rowsBy).map(([k, rs]) => `${GROUPS[k].label} ${num(rs.length)} ${GROUPS[k].unit}`).join(' · ');
   clear(gridHost);
   ws.panels.forEach((cfg, i) => gridHost.append(renderPanel(cfg, i)));
   gridHost.append(h('div', { class: 'ws-add' }, h('span', {}, `${t('charts.add')}:`),
     Object.entries(TYPES).map(([type, label]) => h('button', { class: 'btn', type: 'button', onclick: () => {
-      ws.panels.push(type in SERVER_TYPES ? defaultsFor(type) : { type, metric: type === 'scatter' ? 'dlp' : 'ctdivol', span: 'M' });
+      ws.panels.push(type in SERVER_TYPES ? defaultsFor(type) : { type, group: 'CT', metric: type === 'scatter' ? 'dlp' : 'ctdivol', span: 'M' });
       saveWs();
       renderAll();
       gridHost.lastElementChild.previousElementSibling.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -437,13 +474,16 @@ function renderAll() {
 }
 
 async function loadRows() {
-  rows = await ctAcquisitions(ws.q);
+  // one request per modality group the browser panels use
+  const groups = [...new Set(ws.panels.filter((p) => !(p.type in SERVER_TYPES)).map(groupOf))];
+  for (const k of Object.keys(rowsBy)) delete rowsBy[k];
+  const got = await Promise.all(groups.map((k) => groupRows(k, ws.q).catch(() => [])));
+  groups.forEach((k, i) => { rowsBy[k] = got[i]; });
   renderAll();
 }
 
 async function init() {
   [devices, drlSet] = await Promise.all([physicalDevices(), drl()]);
-  devices = devices.filter((d) => d.modality === 'CT');
   const names = wsNames();
   const urlQ = new URL(location.href).searchParams.get('q');
   ws = loadWs(prefs.get('workspace.current') || names[0]);

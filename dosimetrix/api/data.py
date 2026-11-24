@@ -542,6 +542,65 @@ def ct_acquisitions(session: Session, q: str, now: dt.datetime, limit: int = 500
     return out
 
 
+# per-exposure modalities chart one row per event, the others one row per study
+_EVENT_FIELDS = {"dap": (Event.dap, 4), "kvp": (Event.kvp, 1), "mas": (Event.mas, 2),
+                 "ei": (Event.exposure_index, 0), "di": (Event.deviation_index, 2),
+                 "agd": (Event.agd, 3), "thickness": (Event.compression_thickness_mm, 0)}
+_STUDY_FIELDS = {"dap_total": (Study.total_dap, 4), "kar_total": (Study.total_rp_dose, 4),
+                 "fluoro_time": (Study.total_fluoro_time, 1), "psd": (Study.psd_mgy, 1),
+                 "activity": (Study.admin_activity_mbq, 1)}
+
+
+def group_rows(session: Session, q: str, now: dt.datetime, group: str,
+               limit: int = 50000) -> list:
+    """Chart rows of one modality group (the browser chart panels): CT keeps its acquisition
+    rows; DX/CR/MG one row per exposure; RF/XA/NM/PT one row per study. Each row carries
+    protocol (the series protocol, else the study description), device, weight, age, time
+    and the group's metric fields."""
+    prof = next((p for p in modality_profiles.PROFILES if p["code"] == group.upper()), None)
+    if prof is None:
+        raise QueryError(f"unknown modality group {group!r}")
+    if prof["code"] == "CT":
+        return ct_acquisitions(session, q, now, limit)
+    allowed = {"date", "device", "proto", "desc", "origin", "weight", "age", "phantom"}
+    tokens = [t for t in parse(q) if t.key in allowed]
+    _refuse_errors(tokens)
+    conds = conditions(tokens, now, overrides(session))
+    ov = overrides(session)
+    mods = prof["modalities"]
+    mod_cond = Study.modality.in_(mods)
+    if ov:
+        mod_cond = (mod_cond & Study.device_id.not_in(list(ov))) | Study.device_id.in_(
+            [d for d, m in ov.items() if m in mods] or [-1])
+    per_event = prof["code"] in ("DX", "MG")
+    fields = _EVENT_FIELDS if per_event else _STUDY_FIELDS
+    cols = [c for c, _ in fields.values()]
+    base = [Study.device_id, Study.weight_kg, Study.age_days, Study.study_datetime,
+            Study.study_description]
+    if per_event:
+        stmt = (select(*base, Event.protocol, Event.event_datetime, *cols)
+                .join(Study, Study.id == Event.study_id))
+    else:
+        stmt = select(*base, Study.procedure_name, Study.study_datetime.label("t"), *cols)
+    rows = session.execute(stmt.where(mod_cond, *conds)
+                           .order_by(Study.study_datetime.desc()).limit(limit)).all()
+    phys = _physical_ids(session)
+    names = device_names(session)
+    out = []
+    for did, w, age, st, desc_, proto, t, *vals in rows:
+        pid = phys.get(did, did)
+        r = {"protocol": proto or desc_ or "(none)", "device_id": pid, "device": names.get(pid),
+             "weight": w, "age": age_years(age), "time": iso_min(t or st), "drl": {}}
+        for (k, (_, nd)), v in zip(fields.items(), vals, strict=True):
+            r[k] = _r(v, nd)
+        if "activity" in r:
+            r["activity_kg"] = _r(r["activity"] / w, 2) if r["activity"] and w else None
+        if "kar_total" in r and r["kar_total"] is not None:
+            r["kar_total"] = _r(r["kar_total"] * 1000, 1)  # Gy → mGy, as the list shows it
+        out.append(r)
+    return out
+
+
 def identify(session: Session, study_id: int) -> dict | None:
     row = session.execute(select(Study, Patient).outerjoin(Patient, Patient.id == Study.patient_id)
                           .where(Study.id == study_id)).first()

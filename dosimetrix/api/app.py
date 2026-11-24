@@ -831,6 +831,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                         session: Session = Depends(db)):
         return data.ct_acquisitions(session, q, clock())
 
+    @app.get("/api/stats/{group}/rows")
+    def group_rows(group: str, q: str = "", user: User = Depends(current_user),
+                   session: Session = Depends(db)):
+        return data.group_rows(session, q, clock(), group)
+
     # ------------------------------------------------------------------ classification
 
     def _review(fn):

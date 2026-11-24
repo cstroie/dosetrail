@@ -220,6 +220,15 @@ export async function ctAcquisitions(q = '') {
     }, tokens, ctx));
 }
 
+/**
+ * GET /api/stats/{group}/rows?q= → chart rows of one modality group (CT: acquisitions;
+ * DX/CR, MG: exposures; RF, XA, NM, PT: studies). Sample mode has CT data only.
+ */
+export async function groupRows(group, q = '') {
+  if (group === 'CT') return ctAcquisitions(q);
+  return isSample ? [] : remote(`/api/stats/${group}/rows`, { q });
+}
+
 /* ---------------- statistics, reference levels, exam classification (server only) ---------------- */
 
 function serverOnly(what) {
