@@ -277,6 +277,7 @@ async function render() {
         skinPanel(s))));
 
   document.title = `${studyLabel(s)} · Dozimetrix`;
+  document.querySelector('dx-shell')?.setSub(s.modality || null);
   refresh();
   chart.on('click', (ev) => {
     if (ev.data?.eventIndex === undefined) return;

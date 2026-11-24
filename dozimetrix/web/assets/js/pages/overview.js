@@ -4,6 +4,7 @@ import '../components/dx-shell.js';
 import { h, append, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
+import { live } from '../core/live.js';
 import { overview, lookup, studyHref, studyLabel, ackAlert, deadlineDone, isSample } from '../core/api.js';
 
 // the API's groups are CT, DX, RF, XA, MG, NM, PT; anything else takes the accent
@@ -147,8 +148,9 @@ function deadlinePanel(list, reload) {
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-dl' }, t('deadline.title'))), h('ul', { class: 'queue' }, rows));
 }
 
-async function render() {
-  page.replaceChildren(h('div', { class: 'state', 'aria-busy': 'true' }, h('span', { class: 'skeleton' }), h('span', { class: 'skeleton', style: { width: '60%' } })));
+async function render(quiet = false) {
+  // a live refresh keeps the page as it is until the new data is in (no skeleton flash)
+  if (!quiet) page.replaceChildren(h('div', { class: 'state', 'aria-busy': 'true' }, h('span', { class: 'skeleton' }), h('span', { class: 'skeleton', style: { width: '60%' } })));
   try {
     const data = await overview();
     page.replaceChildren(
@@ -164,4 +166,18 @@ async function render() {
   }
 }
 
-render();
+// new studies or alerts: refetch (the overview itself is too heavy to stream every few seconds)
+let pulse = null;
+let busy = false;
+const onPulse = async (p) => {
+  const key = JSON.stringify(p);
+  if (pulse === null) { pulse = key; return; }
+  if (key === pulse || busy) return;
+  if (page.contains(document.activeElement)) {  // someone is typing (lookup box): after that
+    page.addEventListener('focusout', () => setTimeout(() => onPulse(p), 0), { once: true });
+    return;
+  }
+  busy = true;
+  try { await render(true); pulse = key; } finally { busy = false; }
+};
+render().then(() => live(['pulse'], { pulse: onPulse }));

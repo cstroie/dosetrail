@@ -637,6 +637,7 @@ async function init() {
     reloadPage();
   } }, isMod(ws.name) ? h('option', { value: '', selected: true }, '— my workspaces —') : null,
   wsNames().map((n) => h('option', { value: n, selected: n === ws.name }, n)), h('option', { value: '__new' }, '+ New workspace…'));
+  document.querySelector('dx-shell')?.setSub(isMod(ws.name) ? (GROUPS[modOf(ws.name)]?.label || modOf(ws.name)) : ws.name);
   const modTabs = h('nav', { class: 'tabs', 'aria-label': 'Modality' }, Object.entries(GROUPS).map(([k, g]) => h('button', {
     type: 'button', 'aria-current': ws.name === `mod-${k}` ? 'page' : false,
     onclick: () => { prefs.set('workspace.current', `mod-${k}`); reloadPage(); } }, g.label)));

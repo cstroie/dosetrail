@@ -50,7 +50,12 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "alerts.html": "alerts.html", "local-drl.html": "local-drl.html",
          "indications.html": "indications.html", "survey-central.html": "survey-central.html",
          "dose-statement.html": "dose-statement.html"}
-OLD_PAGES = {"dicom.html": "integration.html"}  # old name -> page (DICOM, HIS and more now)
+OLD_PAGES = {"dicom.html": "integration.html"}
+LIVE_TOPICS = {"pulse", "dicom", "his"}
+LIVE_EVERY_S = 5  # heartbeats come every minute or so, HIS lookups every few seconds
+LIVE_PING_S = 25
+LIVE_RETRY_MS = 5000
+LIVE_MAX_S = 600  # a stream ends after 10 min and the browser reopens it: no stale sockets  # old name -> page (DICOM, HIS and more now)
 
 
 class RevalidatedStatic(StaticFiles):
@@ -1074,6 +1079,98 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return {"worker": worker, "queue": queue,
                 "servers": [servers.as_dict(s) for s in session.scalars(
                     select(HisServer).order_by(HisServer.name))]}
+
+    # ------------------------------------------------------------------ live (SSE)
+    # The receiver, PACS sync and HIS worker are separate processes that only meet the web
+    # server in the database, so the stream reads a small snapshot every LIVE_EVERY_S and
+    # sends a topic only when it changed. One open tab = one idle async task, no thread.
+
+    def live_snapshot(topics: set[str]) -> dict:
+        from ..db.models import AppSetting, HisLookup, Study
+        from ..his import servers
+        from ..net import nodes
+
+        out: dict = {}
+        with maker() as session:
+            if "pulse" in topics:  # cheap: pages refetch their own data when it moves
+                from .. import alerts as _alerts
+                from ..db.models import Alert
+
+                out["pulse"] = {"study": session.scalar(select(func.max(Study.id))),
+                                "alert": session.scalar(select(func.max(Alert.id))),
+                                "alerts_open": _alerts.open_count(session)}
+            if "dicom" in topics:
+                out["dicom"] = {
+                    "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
+                    "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=300)}
+            if "his" in topics:
+                row = session.get(AppSetting, servers.STATUS_KEY)
+                worker = dict(row.value or {}) if row else None
+                if worker and worker.get("at"):
+                    age = (clock() - dt.datetime.fromisoformat(worker["at"])).total_seconds()
+                    worker["stale"] = age > 600
+                queue = dict(session.execute(select(HisLookup.status, func.count())
+                                             .group_by(HisLookup.status)).all())
+                recent = session.execute(
+                    select(HisLookup, Study.accession, Study.accession_is_hashed,
+                           Study.study_datetime)
+                    .join(Study, Study.id == HisLookup.study_id)
+                    .where(HisLookup.fetched_at.is_not(None))
+                    .order_by(HisLookup.fetched_at.desc()).limit(20)).all()
+                out["his"] = {"worker": worker, "queue": queue, "recent": [{
+                    "study_id": lk.study_id, "status": lk.status,
+                    "at": lk.fetched_at.isoformat(timespec="seconds"),
+                    "study_at": when.isoformat(timespec="minutes") if when else None,
+                    "accession": None if hashed else acc, "request_id": lk.request_id,
+                    "score": lk.match_score, "how": (lk.detail or {}).get("type"),
+                    "written": (lk.detail or {}).get("written"),
+                    "next_try": lk.next_try_at.isoformat(timespec="minutes")
+                    if lk.status == "pending" and lk.next_try_at else None}
+                    for lk, acc, hashed, when in recent]}
+        return out
+
+    @app.get("/api/live")
+    async def live(request: Request, topics: str = "pulse"):
+        import asyncio
+        import json as _json
+
+        from starlette.concurrency import run_in_threadpool
+
+        def who():
+            with maker() as session:
+                return current_user(request, session)
+
+        user = await run_in_threadpool(who)  # 401 before the stream opens
+        want = {t for t in topics.split(",") if t in LIVE_TOPICS}
+        if "his" in want and "admin" not in user.role_set():
+            want.discard("his")
+
+        async def stream():
+            last: dict = {}
+            quiet = elapsed = 0.0
+            yield f"retry: {LIVE_RETRY_MS}\n\n"
+            while True:
+                snap = await run_in_threadpool(live_snapshot, want)
+                for topic, value in snap.items():
+                    # ages tick every second: compare without them, send them along
+                    key = _json.dumps(value, sort_keys=True, default=str,
+                                      separators=(",", ":"))
+                    key = re.sub(r'"age_s":\d+,?', "", key)
+                    if last.get(topic) != key:
+                        last[topic] = key
+                        quiet = 0.0
+                        yield f"event: {topic}\ndata: {_json.dumps(value, default=str)}\n\n"
+                if elapsed >= LIVE_MAX_S or await request.is_disconnected():
+                    return  # the browser reconnects after `retry`, with a fresh state
+                await asyncio.sleep(LIVE_EVERY_S)
+                quiet += LIVE_EVERY_S
+                elapsed += LIVE_EVERY_S
+                if quiet >= LIVE_PING_S:  # keep proxies from closing an idle stream
+                    quiet = 0.0
+                    yield ": ping\n\n"
+
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={
+            "Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     @app.post("/api/his/servers")
     def his_create(body: HisServerIn, request: Request, user: User = Depends(admin_user),

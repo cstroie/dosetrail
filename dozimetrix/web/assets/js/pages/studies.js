@@ -188,6 +188,7 @@ async function init() {
     grid.table?.setAttribute('aria-label', gridLabel(p));
     grid.columns = cols;
     document.title = `${gridLabel(p)} · Dozimetrix`;
+    document.querySelector('dx-shell')?.setSub(p?.label ?? null);  // the crumb follows the query
     if (!cols.some((c) => c.key === grid.state?.sort) && grid.state && grid.state.sort !== 'date') grid.setState({ sort: 'date', dir: 'desc' });
   };
   const apply = (q) => {

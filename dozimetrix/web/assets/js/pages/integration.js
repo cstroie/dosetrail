@@ -9,6 +9,7 @@ import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num } from '../core/format.js';
+import { live } from '../core/live.js';
 import { dicomStatus, createNode, updateNode, deleteNode, echoNode,
   hisStatus, createHisServer, updateHisServer, deleteHisServer, checkHisServer } from '../core/api.js';
 
@@ -40,9 +41,44 @@ async function render() {
   try { st = await dicomStatus(); } catch (e) { clear(page).append(tabs(), h('p', { class: 'error' }, e.message)); return; }
   let his;
   try { his = await hisStatus(); } catch (e) { his = { error: e.message }; }
+  dicomBox = h('div');
+  hisBox = h('div');
+  local = st.local;
+  drawDicom({ receiver: st.receiver, qr: st.qr });
+  append(clear(page), [tabs(),
+    dicomBox,
+    h('div', { class: 'toolbar mt-3' },
+      h('h2', { class: 'section-title m0' }, 'Remote nodes'), h('span', { class: 'spacer' }),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => edit(null) }, 'Add node')),
+    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, nodeTable(st.nodes))),
+    h('h2', { class: 'section-title' }, 'PACS sync coverage · last 120 days'),
+    coverage(st.coverage),
+    hisSection(his),
+    h('dialog', { id: 'node-dlg', class: 'panel', style: { padding: 'var(--sp-3)', 'min-width': '520px' } }),
+    h('dialog', { id: 'his-dlg', class: 'panel', style: { padding: 'var(--sp-3)', 'min-width': '560px' } })]);
+}
+
+// boxes the live stream redraws in place (the rest of the page, dialogs included, stays)
+let dicomBox = null;
+let hisBox = null;
+let local = null;
+let lastDicom = null;
+let lastHis = null;
+
+// heartbeats come about once a minute: age them here between events
+function aged(st) {
+  if (!st?.at) return st;
+  const age = Math.max(0, Math.round((Date.now() - new Date(st.at).getTime()) / 1000));
+  return { ...st, age_s: age };
+}
+
+function drawDicom(v) {
+  lastDicom = v;
+  if (!dicomBox || !local) return;
+  const st = { local, receiver: aged(v.receiver), qr: aged(v.qr) };
   const rx = st.receiver;
   const senders = Object.entries(rx?.by_aet || {}).sort((a, b) => b[1].n - a[1].n);
-  append(clear(page), [tabs(),
+  dicomBox.replaceChildren(
     h('div', { class: 'kpis drl-kpis' },
       h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'This Dozimetrix'), h('span', { class: 'v mono' }, st.local.aet),
         h('span', { class: 'm' }, `port ${st.local.port} · ${st.local.bind}`)),
@@ -54,16 +90,7 @@ async function render() {
       h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'PACS sync'), serviceTag(st.qr, 'qr'),
         h('span', { class: 'm' }, st.qr ? st.qr.message : 'no query/retrieve has run yet'))),
     senders.length ? h('p', { class: 'muted small' }, 'Received since the receiver started: ',
-      senders.map(([aet, x]) => `${aet} ${num(x.n)} (last ${x.last?.slice(11, 16) || '—'})`).join(' · ')) : null,
-    h('div', { class: 'toolbar mt-3' },
-      h('h2', { class: 'section-title m0' }, 'Remote nodes'), h('span', { class: 'spacer' }),
-      h('button', { class: 'btn primary', type: 'button', onclick: () => edit(null) }, 'Add node')),
-    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, nodeTable(st.nodes))),
-    h('h2', { class: 'section-title' }, 'PACS sync coverage · last 120 days'),
-    coverage(st.coverage),
-    hisSection(his),
-    h('dialog', { id: 'node-dlg', class: 'panel', style: { padding: 'var(--sp-3)', 'min-width': '520px' } }),
-    h('dialog', { id: 'his-dlg', class: 'panel', style: { padding: 'var(--sp-3)', 'min-width': '560px' } })]);
+      senders.map(([aet, x]) => `${aet} ${num(x.n)} (last ${x.last?.slice(11, 16) || '—'})`).join(' · ')) : '');
 }
 
 function nodeTable(list) {
@@ -110,15 +137,37 @@ function hisSection(his) {
     h('h2', { class: 'section-title m0' }, 'HIS / RIS servers'), h('span', { class: 'spacer' }),
     his.error ? null : h('button', { class: 'btn primary', type: 'button', onclick: () => editHis(null) }, 'Add server'));
   if (his.error) return [head, h('p', { class: 'muted' }, his.error)];
-  const w = his.worker;
-  const queue = Object.entries(his.queue || {});
-  return [head,
+  drawHis({ worker: his.worker, queue: his.queue, recent: lastHis?.recent || [] });
+  return [head, hisBox,
+    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, hisTable(his.servers)))];
+}
+
+const LOOKUP_TAG = { matched: 'ok', patient_only: 'info', pending: 'warn', no_patient: 'warn', error: 'alert' };
+
+function drawHis(v) {
+  lastHis = v;
+  if (!hisBox) return;
+  const w = v.worker;
+  const queue = Object.entries(v.queue || {});
+  const recent = v.recent || [];
+  hisBox.replaceChildren(
     h('p', { class: 'muted small' },
       w ? [h('span', { class: `tag ${w.stale ? 'warn' : 'ok'}` }, w.stale ? 'worker: not running' : 'worker: running'),
-        ` last seen ${w.at.replace('T', ' ')}${w.message ? ` · ${w.message}` : ''}`]
+        ` last batch ${w.at.replace('T', ' ')}${w.message ? ` · ${w.message}` : ''}`]
         : 'Worker never seen: run dozimetrix his run (or its service).',
       queue.length ? ` · Studies: ${queue.map(([k, n]) => `${QUEUE_LABELS[k] || k} ${num(n)}`).join(' · ')}` : ''),
-    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, hisTable(his.servers)))];
+    recent.length ? h('details', { class: 'mb-3' },
+      h('summary', { class: 'muted small', style: { cursor: 'pointer' } }, `Recent lookups · latest ${recent[0].at.replace('T', ' ')}`),
+      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
+        h('thead', {}, h('tr', {}, ['Time', 'Study', 'Accession', 'Outcome', 'Request', 'Wrote'].map((c) => h('th', {}, c)))),
+        h('tbody', {}, recent.map((r) => h('tr', {},
+          h('td', { class: 'mono' }, r.at.slice(11)),
+          h('td', {}, h('a', { href: `study.html?id=${r.study_id}` }, `#${r.study_id}`), r.study_at ? h('span', { class: 'muted small' }, ` ${r.study_at.replace('T', ' ')}`) : null),
+          h('td', { class: 'mono' }, r.accession || '—'),
+          h('td', {}, h('span', { class: `tag ${LOOKUP_TAG[r.status] || ''}` }, QUEUE_LABELS[r.status] || r.status),
+            r.next_try ? h('span', { class: 'muted small' }, ` next ${r.next_try.slice(11)}`) : null),
+          h('td', { class: 'mono' }, r.request_id ? `${r.request_id}${r.how ? ` · ${r.how}` : ''}${r.score != null ? ` · ${r.score}` : ''}` : '—'),
+          h('td', { class: 'small' }, (r.written || []).join(', ') || '—'))))))))) : null);
 }
 
 function hisTable(list) {
@@ -267,4 +316,7 @@ function edit(node) {
   dlg.showModal();
 }
 
-render();
+render().then(() => {
+  live(['dicom', 'his'], { dicom: drawDicom, his: drawHis });
+  setInterval(() => lastDicom && drawDicom(lastDicom), 15000);  // tick the "… ago" ages
+});

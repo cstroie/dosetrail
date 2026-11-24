@@ -22,6 +22,13 @@ const NAV = [
 function switchLang() { prefs.set('lang', lang() === 'en' ? 'ro' : 'en'); location.reload(); }
 
 class DtShell extends HTMLElement {
+  /** The crumb's second part (e.g. the modality a page shows); null clears it. */
+  setSub(text) {
+    if (this._sub) this._sub.textContent = text ? ` · ${text}` : '';
+    else if (text) this.setAttribute('sub', text);
+    else this.removeAttribute('sub');
+  }
+
   connectedCallback() {
     if (this._built) return;
     this._built = true;
@@ -37,8 +44,9 @@ class DtShell extends HTMLElement {
         key === 'alerts' ? h('span', { class: 'dot', 'aria-hidden': 'true' }) : null,
         icon(ic, 20), t(`nav.${key}.short`))));
 
-    const crumb = h('span', { class: 'crumb' }, this.getAttribute('crumb') || t(`nav.${page}`) || '',
-      this.getAttribute('sub') ? h('span', { class: 'muted' }, ` · ${this.getAttribute('sub')}`) : null);
+    this._sub = h('span', { class: 'muted' });
+    const crumb = h('span', { class: 'crumb' }, this.getAttribute('crumb') || t(`nav.${page}`) || '', this._sub);
+    this.setSub(this.getAttribute('sub'));
 
     const palette = h('dx-command-palette');
     const ctx = h('header', { class: 'ctx' },

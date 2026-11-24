@@ -797,3 +797,25 @@ def test_a_query_that_does_not_parse_is_refused_not_silently_dropped(client):
     assert ok.status_code == 200
     lst = client.get("/api/studies", params={"q": "modalty:CT"})  # the list keeps going
     assert lst.status_code == 200 and lst.json()["errors"]
+
+
+def test_live_stream_sends_current_state_per_topic(client, monkeypatch):
+    from dozimetrix.api import app as app_mod
+
+    monkeypatch.setattr(app_mod, "LIVE_MAX_S", 0)  # one snapshot, then the stream ends
+    client.cookies.clear()
+    assert client.get("/api/live").status_code == 401
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/live?topics=dicom,his")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/event-stream")
+    assert r.text.startswith("retry: ") and "event: dicom" in r.text
+    assert "event: his" not in r.text  # HIS state is for admins
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/live?topics=his,bogus")
+    assert "event: his" in r.text and "bogus" not in r.text
+    data = r.text.split("event: his\ndata: ", 1)[1].split("\n", 1)[0]
+    import json
+    assert set(json.loads(data)) == {"worker", "queue", "recent"}
+    r = client.get("/api/live")  # default: the pulse
+    pulse = json.loads(r.text.split("event: pulse\ndata: ", 1)[1].split("\n", 1)[0])
+    assert set(pulse) == {"study", "alert", "alerts_open"} and pulse["study"]

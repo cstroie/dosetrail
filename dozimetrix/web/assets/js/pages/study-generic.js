@@ -215,6 +215,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
   grid.reload();  // the grid fetches once it is in the document
   adminGrid?.reload();
   document.title = `${s.accession || s.id} · Dozimetrix`;
+  document.querySelector('dx-shell')?.setSub(s.modality || null);
 }
 
 function exportRows(s, kind) {
