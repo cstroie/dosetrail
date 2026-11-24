@@ -81,7 +81,8 @@ function drawDicom(v) {
   dicomBox.replaceChildren(
     h('div', { class: 'kpis drl-kpis' },
       h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'This Dozimetrix'), h('span', { class: 'v mono' }, st.local.aet),
-        h('span', { class: 'm' }, `port ${st.local.port} · ${st.local.bind}`)),
+        h('span', { class: 'm mono' }, `DICOM ${(st.local.ips?.length ? st.local.ips : [st.local.bind]).map((ip) => `${ip}:${st.local.port}`).join(', ')}`),
+        h('span', { class: 'm mono', title: `the web server listens on ${st.local.web_listen}` }, `web ${st.local.web_listen}${st.local.web && !st.local.web_listen.startsWith(st.local.web.split(':')[0]) ? ` · via ${st.local.web}` : ''}`)),
       h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Receiver'), serviceTag(rx, 'receiver'),
         h('span', { class: 'm' }, rx ? `${num(rx.received)} objects since start · ${ago(rx.age_s)}` : 'start it with dozimetrix receive')),
       h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Accepted callers'),
@@ -167,7 +168,7 @@ function drawHis(v) {
           h('td', {}, h('span', { class: `tag ${LOOKUP_TAG[r.status] || ''}` }, QUEUE_LABELS[r.status] || r.status),
             r.next_try ? h('span', { class: 'muted small' }, ` next ${r.next_try.slice(11)}`) : null),
           h('td', { class: 'mono' }, r.request_id ? `${r.request_id}${r.how ? ` · ${r.how}` : ''}${r.score != null ? ` · ${r.score}` : ''}` : '—'),
-          h('td', { class: 'small' }, (r.written || []).join(', ') || '—'))))))))) : null);
+          h('td', { class: 'small' }, (r.written || []).join(', ') || '—')))))))) : null);
 }
 
 function hisTable(list) {

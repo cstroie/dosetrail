@@ -51,11 +51,30 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "indications.html": "indications.html", "survey-central.html": "survey-central.html",
          "dose-statement.html": "dose-statement.html"}
 OLD_PAGES = {"dicom.html": "integration.html"}
-LIVE_TOPICS = {"pulse", "dicom", "his"}
+LIVE_TOPICS = {"pulse", "services", "dicom", "his"}
 LIVE_EVERY_S = 5  # heartbeats come every minute or so, HIS lookups every few seconds
 LIVE_PING_S = 25
 LIVE_RETRY_MS = 5000
 LIVE_MAX_S = 600  # a stream ends after 10 min and the browser reopens it: no stale sockets  # old name -> page (DICOM, HIS and more now)
+
+
+def _host_ips() -> list[str]:
+    """This machine's IPv4 addresses (what modalities and PACS must be told to send to)."""
+    import socket
+
+    ips: set[str] = set()
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ips.add(info[4][0])
+    except OSError:
+        pass
+    try:  # the address of the default route, no packet is sent
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
+            sk.connect(("10.255.255.255", 1))
+            ips.add(sk.getsockname()[0])
+    except OSError:
+        pass
+    return sorted(ip for ip in ips if not ip.startswith("127."))
 
 
 class RevalidatedStatic(StaticFiles):
@@ -997,7 +1016,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(400, str(e)) from e
 
     @app.get("/api/dicom/status")
-    def dicom_status(user: User = Depends(current_user), session: Session = Depends(db)):
+    def dicom_status(request: Request, user: User = Depends(current_user),
+                     session: Session = Depends(db)):
         import datetime as _dt
 
         from ..net import nodes, qr
@@ -1009,7 +1029,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         days = [(today - _dt.timedelta(days=i)).isoformat() for i in range(119, -1, -1)]
         return {
             "local": {"aet": settings.dicom_aet, "port": settings.dicom_port,
-                      "bind": settings.dicom_bind,
+                      "bind": settings.dicom_bind, "ips": _host_ips(),
+                      "web": f"{request.url.hostname}:{request.url.port or (443 if request.url.scheme == 'https' else 80)}",
+                      "web_listen": f"{settings.web_host}:{settings.web_port}",
                       "allowed": nodes.allowed_senders(session, settings.dicom_allowed_aets)},
             "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
             "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=300),
@@ -1099,6 +1121,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 out["pulse"] = {"study": session.scalar(select(func.max(Study.id))),
                                 "alert": session.scalar(select(func.max(Alert.id))),
                                 "alerts_open": _alerts.open_count(session)}
+            if "services" in topics:
+                out["services"] = services_health(session)
             if "dicom" in topics:
                 out["dicom"] = {
                     "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
@@ -1128,6 +1152,53 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                     if lk.status == "pending" and lk.next_try_at else None}
                     for lk, acc, hashed, when in recent]}
         return out
+
+    def services_health(session: Session) -> list[dict]:
+        """The background services, for any signed-in user: state ok | warn | alert | idle."""
+        from .. import __version__
+        from ..db.models import AppSetting, HisLookup
+        from ..his import servers
+        from ..net import nodes
+
+        out = [{"key": "web", "name": "Web server", "state": "ok", "detail": f"v{__version__}"}]
+        rx = nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120)
+        spool = (rx or {}).get("spool") or {}
+        out.append({"key": "receiver", "name": "DICOM receiver",
+                    "state": "alert" if not rx or not rx["running"] else
+                    "warn" if spool.get("derive_gave_up") else "ok",
+                    "at": rx and rx["at"], "age_s": rx and rx["age_s"],
+                    "detail": "never started" if not rx else
+                    f"{rx.get('aet')} :{rx.get('port')} · {rx.get('received', 0)} received"
+                    + (f" · {spool['derive_pending']} to process" if spool.get("derive_pending")
+                       else "")})
+        qr = nodes.read_status(session, nodes.QR_KEY, stale_after=300)
+        out.append({"key": "qr", "name": "PACS sync",
+                    "state": "ok" if qr and qr["running"] else "idle",
+                    "at": qr and qr["at"], "age_s": qr and qr["age_s"],
+                    "detail": _qr_detail(qr)})
+        if servers.active(session):
+            row = session.get(AppSetting, servers.STATUS_KEY)
+            w = dict(row.value or {}) if row else {}
+            age = int((clock() - dt.datetime.fromisoformat(w["at"])).total_seconds()) \
+                if w.get("at") else None
+            waiting = session.scalar(select(func.count()).select_from(HisLookup)
+                                     .where(HisLookup.status == "pending")) or 0
+            out.append({"key": "his", "name": "HIS worker",
+                        "state": "alert" if w.get("error") or age is None or age > 600 else "ok",
+                        "at": w.get("at"), "age_s": age,
+                        "detail": w.get("error") or (f"{waiting} waiting" if waiting else "queue empty")})
+        else:
+            out.append({"key": "his", "name": "HIS worker", "state": "idle",
+                        "detail": "no HIS server enabled"})
+        return out
+
+    def _qr_detail(qr: dict | None) -> str:
+        """'2013-01-17: {…counters…}; imported {…}' -> 'at 2013-01-17'; other messages as is."""
+        msg = (qr or {}).get("message") or ""
+        if not msg:
+            return "not run yet"
+        m = re.match(r"(\d{4}-\d{2}-\d{2}):", msg)
+        return f"{'at' if qr['running'] else 'last'} {m.group(1)}" if m else msg[:80]
 
     @app.get("/api/live")
     async def live(request: Request, topics: str = "pulse"):

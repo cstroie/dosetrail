@@ -819,3 +819,8 @@ def test_live_stream_sends_current_state_per_topic(client, monkeypatch):
     r = client.get("/api/live")  # default: the pulse
     pulse = json.loads(r.text.split("event: pulse\ndata: ", 1)[1].split("\n", 1)[0])
     assert set(pulse) == {"study", "alert", "alerts_open"} and pulse["study"]
+    login(client, "viewer", "viewer-pass-1")  # services: for every signed-in user
+    r = client.get("/api/live?topics=services")
+    svc = json.loads(r.text.split("event: services\ndata: ", 1)[1].split("\n", 1)[0])
+    assert [x["key"] for x in svc] == ["web", "receiver", "qr", "his"]
+    assert svc[0]["state"] == "ok" and svc[1]["state"] == "alert"  # receiver never started

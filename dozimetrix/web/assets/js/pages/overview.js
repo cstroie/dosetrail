@@ -103,6 +103,37 @@ function feedHealth(feeds, now) {
     grid, h('p', { class: 'muted', style: { 'font-size': '11px', padding: '0 12px 10px' } }, `${t('overview.feed.hint')} * today, still filling.`));
 }
 
+// background services (live): redrawn in place by the `services` topic
+const servicesBody = h('div', { class: 'services' }, h('p', { class: 'muted', style: { padding: '0 12px 10px' } }, t('state.loading')));
+const SVC_TAG = { ok: ['ok', 'running'], warn: ['warn', 'check'], alert: ['alert', 'down'], idle: ['', 'idle'] };
+
+function sinceText(at) {
+  if (!at) return '';
+  const s = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 1000));
+  return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 172800 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
+}
+
+let lastServices = null;
+function drawServices(list) {
+  lastServices = list;
+  servicesBody.replaceChildren(h('table', { class: 'grid' }, h('tbody', {}, list.map((x) => {
+    const [cls, label] = SVC_TAG[x.state] || ['', x.state];
+    return h('tr', {},
+      h('td', {}, x.name),
+      h('td', {}, h('span', { class: `tag ${cls}` }, label)),
+      h('td', { class: 'muted small' }, x.detail || ''),
+      h('td', { class: 'muted small mono', style: { 'text-align': 'right', 'white-space': 'nowrap' }, title: x.at ? `last heartbeat ${x.at.replace('T', ' ')}` : null }, sinceText(x.at)));
+  }))));
+}
+setInterval(() => lastServices && drawServices(lastServices), 15000);  // tick the ages
+
+function servicesPanel() {
+  return h('section', { class: 'panel', 'aria-labelledby': 'h-svc' },
+    h('div', { class: 'panel-head' }, h('h2', { id: 'h-svc' }, t('overview.services')),
+      h('a', { class: 'muted small', href: 'integration.html' }, 'Integration →')),
+    servicesBody);
+}
+
 function lookupPanel() {
   const results = h('div', { class: 'lookup-results', style: { display: 'flex', 'flex-direction': 'column', gap: '6px' }, 'aria-live': 'polite' });
   let seq = 0;
@@ -159,7 +190,7 @@ async function render(quiet = false) {
       // replaceChildren() would print a null as the text "null" (no deadline left to show)
       ...[deadlinePanel(data.deadlines, render),
         kpis(data.modalities),
-        h('div', { class: 'cols mt-3' }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), lookupPanel())].filter(Boolean));
+        h('div', { class: 'cols mt-3' }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), servicesPanel(), lookupPanel())].filter(Boolean));
   } catch (err) {
     page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'),
       h('span', { class: 'muted mono' }, err.message), h('button', { class: 'btn', type: 'button', onclick: render }, t('state.retry'))));
@@ -180,4 +211,4 @@ const onPulse = async (p) => {
   busy = true;
   try { await render(true); pulse = key; } finally { busy = false; }
 };
-render().then(() => live(['pulse'], { pulse: onPulse }));
+render().then(() => live(['pulse', 'services'], { pulse: onPulse, services: drawServices }));
