@@ -45,7 +45,7 @@ class DxSkin3d extends HTMLElement {
     this.canvas.addEventListener('pointerdown', (e) => { drag = [e.clientX, e.clientY, this.yaw, this.pitch]; this.canvas.setPointerCapture(e.pointerId); this.canvas.style.cursor = 'grabbing'; });
     this.canvas.addEventListener('pointermove', (e) => {
       if (drag) {
-        this.yaw = drag[2] + (e.clientX - drag[0]) * 0.6;
+        this.yaw = drag[2] - (e.clientX - drag[0]) * 0.6;  // the surface follows the pointer
         this.pitch = Math.max(-80, Math.min(80, drag[3] + (e.clientY - drag[1]) * 0.4));
         this.draw();
       } else this.hover(e);
@@ -53,7 +53,7 @@ class DxSkin3d extends HTMLElement {
     this.canvas.addEventListener('pointerup', () => { drag = null; this.canvas.style.cursor = 'grab'; });
     this.canvas.addEventListener('wheel', (e) => { e.preventDefault(); this.zoom = Math.max(0.5, Math.min(3, this.zoom * (e.deltaY < 0 ? 1.1 : 0.9))); this.draw(); }, { passive: false });
     this.canvas.addEventListener('keydown', (e) => {
-      const k = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[e.key];
+      const k = { ArrowLeft: [10, 0], ArrowRight: [-10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[e.key];
       if (k) { e.preventDefault(); this.yaw += k[0]; this.pitch = Math.max(-80, Math.min(80, this.pitch + k[1])); this.draw(); }
       if (e.key === '+' || e.key === '-') { this.zoom = Math.max(0.5, Math.min(3, this.zoom * (e.key === '+' ? 1.1 : 0.9))); this.draw(); }
     });
