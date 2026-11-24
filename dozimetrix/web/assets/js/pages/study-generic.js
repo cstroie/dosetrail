@@ -139,7 +139,7 @@ function timelinePanel(kind, events, grid) {
     });
   };
   queueMicrotask(draw);  // once the panel is in the page
-  document.addEventListener('dx-unit-change', draw);
+  onUnitChange(grid, draw);
   grid.addEventListener('row-focus', (e) => { if (e.detail?.no !== selected) { selected = e.detail?.no ?? null; draw(); } });
   return h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
     h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, cfg.title), h('span', { class: 'spacer' }),
@@ -273,7 +273,7 @@ function drlPanel(kind, events, grid, unitOf) {
     });
   };
   queueMicrotask(draw);
-  document.addEventListener('dx-unit-change', draw);
+  onUnitChange(grid, draw);
   grid.addEventListener('row-focus', (e) => { if (e.detail?.no !== selected) { selected = e.detail?.no ?? null; draw(); } });
   const title = { ct: 'Dose vs DRL · exam and series DLP', rx: 'Dose vs DRL · DAP per projection and exposure', mg: 'AGD per breast' }[kind];
   const hint = withRef ? 'dashed line = DRL · red = above it' : 'no DRL for this exam';
@@ -366,6 +366,12 @@ function glandularityRow(s) {
     try { await setGlandularity(s.id, e.target.value === '' ? null : Number(e.target.value)); toast('Saved'); } catch (err) { toast(err.message); }
   } }, steps.map((v) => h('option', { value: v, selected: String(s.glandularity_pct ?? '') === v }, v === '' ? '—' : `${v} %`)));
   return [h('dt', {}, 'Glandularity'), h('dd', {}, sel)];
+}
+
+/** Redraw on a DAP unit change while `el` is in the page (a live re-render replaces it). */
+export function onUnitChange(el, fn) {
+  const handler = () => (el.isConnected ? fn() : document.removeEventListener('dx-unit-change', handler));
+  document.addEventListener('dx-unit-change', handler);
 }
 
 export function renderStudy(page, s, { revealButton, ackAlert }) {

@@ -828,3 +828,14 @@ def test_live_stream_sends_current_state_per_topic(client, monkeypatch):
     studies_ = json.loads(r.text.split("event: studies\ndata: ", 1)[1].split("\n", 1)[0])
     assert studies_ and all(isinstance(v, int) for v in studies_.values())
     assert "event: alerts" in r.text
+
+
+def test_live_study_topic_stamps_one_study(client, monkeypatch):
+    from dozimetrix.api import app as app_mod
+
+    monkeypatch.setattr(app_mod, "LIVE_MAX_S", 0)
+    login(client, "viewer", "viewer-pass-1")
+    sid = client.get("/api/studies").json()["rows"][0]["id"]
+    r = client.get(f"/api/live?topics=study:{sid},study:x1")
+    assert f"event: study:{sid}" in r.text and '"events": [' in r.text
+    assert "study:x1" not in r.text

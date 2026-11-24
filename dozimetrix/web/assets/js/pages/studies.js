@@ -171,11 +171,7 @@ async function init() {
   let profile = profileOf(profiles, currentQ);
   const gridKey = (p) => `grid.${p ? p.code.toLowerCase() : 'all'}`;
   const gridLabel = (p) => (p ? `${p.label} studies` : 'Studies');
-  // new studies of the modality shown (checked once a minute): offer a refresh, never jump
-  const fresh = h('button', { slot: 'actions', class: 'btn primary', type: 'button', style: { display: 'none' }, title: 'New studies arrived for this list',
-    onclick: () => { fresh.style.display = 'none'; grid.reload(); } }, 'New studies · Refresh');
   const grid = h('dx-data-grid', { label: gridLabel(profile), noun: t('studies.count'), 'storage-key': gridKey(profile) },
-    fresh,
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows('csv') }, 'CSV'),
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows('xlsx') }, 'XLSX'),
     h('a', { slot: 'actions', class: 'btn primary', href: '#', onclick: (e) => { e.currentTarget.href = `charts.html?q=${encodeURIComponent(currentQ)}`; } }, t('studies.chart')));
@@ -203,17 +199,24 @@ async function init() {
     if (p !== profile) setProfile(p);
     grid.setState({ page: 1 });
     renderTabs();
-    fresh.style.display = 'none';
     grid.reload();
   };
 
   setProfile(profile);
+  // new studies of the modality shown (checked every 15 s): the list reloads in place and
+  // keeps the row that had the focus (and its preview)
   let seen = null;  // newest study id per modality when the list was loaded
-  live(['studies'], { studies: (newest) => {
+  let focused = null;
+  grid.addEventListener('row-focus', (e) => { focused = grid.rowId(e.detail); });
+  live(['studies'], { studies: async (newest) => {
     if (seen === null) { seen = newest; return; }
     const mods = profile?.modalities || Object.keys(newest);
-    if (mods.some((m) => (newest[m] || 0) > (seen[m] || 0))) fresh.style.display = '';
+    const moved = mods.some((m) => (newest[m] || 0) > (seen[m] || 0));
     seen = newest;
+    if (!moved) return;
+    const keep = focused;
+    await grid.reload();
+    if (keep != null) grid.focusById(keep);
   } });
   grid.rowId = (s) => s.id ?? s.accession;
   grid.setState({ sort: initial.sort, dir: initial.dir, page: initial.page, size: 50 });

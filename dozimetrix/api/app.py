@@ -52,7 +52,7 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "dose-statement.html": "dose-statement.html"}
 OLD_PAGES = {"dicom.html": "integration.html"}
 LIVE_TOPICS = {"pulse", "services", "dicom", "his", "studies", "alerts"}
-LIVE_TOPIC_EVERY_S = {"studies": 60, "alerts": 60}  # list pages: scarce updates are enough
+LIVE_TOPIC_EVERY_S = {"studies": 15, "alerts": 60}  # list pages: scarce updates are enough
 LIVE_EVERY_S = 5  # heartbeats come every minute or so, HIS lookups every few seconds
 LIVE_PING_S = 25
 LIVE_RETRY_MS = 5000
@@ -1108,6 +1108,23 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     # server in the database, so the stream reads a small snapshot every LIVE_EVERY_S and
     # sends a topic only when it changed. One open tab = one idle async task, no thread.
 
+    def study_stamp(session, sid: int) -> dict | None:
+        """A fingerprint of one study: its row, events, alerts, HIS outcome and patient."""
+        from ..db.models import Alert, Event, HisLookup, Patient, Study
+
+        st = session.get(Study, sid)
+        if st is None:
+            return None
+        ev = session.execute(select(func.count(Event.id), func.max(Event.id))
+                             .where(Event.study_id == sid)).one()
+        al = session.execute(select(Alert.id, Alert.status).where(Alert.study_id == sid)
+                             .order_by(Alert.id)).all()
+        his = session.get(HisLookup, sid)
+        pat = session.get(Patient, st.patient_id) if st.patient_id else None
+        return {"at": st.updated_at, "events": list(ev), "alerts": [list(a) for a in al],
+                "his": [his.status, his.fetched_at] if his else None,
+                "patient": pat.updated_at if pat else None}
+
     def live_snapshot(topics: set[str]) -> dict:
         from ..db.models import AppSetting, HisLookup, Study
         from ..his import servers
@@ -1130,6 +1147,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                                                 .order_by(Study.id.desc()).limit(500)):
                     newest.setdefault(mod or "?", sid)
                 out["studies"] = newest
+            for t in topics:  # "study:<id>": what an open study page shows changed
+                if t.startswith("study:"):
+                    out[t] = study_stamp(session, int(t[6:]))
             if "alerts" in topics:
                 from .. import alerts as _alerts
                 from ..db.models import Alert
@@ -1225,7 +1245,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 return current_user(request, session)
 
         user = await run_in_threadpool(who)  # 401 before the stream opens
-        want = {t for t in topics.split(",") if t in LIVE_TOPICS}
+        want = {t for t in topics.split(",")
+                if t in LIVE_TOPICS or re.fullmatch(r"study:\d{1,12}", t)}
         if "his" in want and "admin" not in user.role_set():
             want.discard("his")
 
