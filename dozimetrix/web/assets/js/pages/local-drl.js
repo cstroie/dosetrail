@@ -10,7 +10,7 @@ import { num, smart, shown, shownUnit } from '../core/format.js';
 import { localDrlPropose, adoptLocalDrl, deleteDrlSet, localDrlReview, localDrlReviewUrl, drlSets } from '../core/api.js';
 
 const page = document.getElementById('page');
-const QTY = { dlp: 'DLP', ctdivol: 'CTDIvol', dap: 'DAP', mgd: 'MGD' };
+const QTY = { dlp: 'DLP', dlp_study: 'DLP (study)', ctdivol: 'CTDIvol', dap: 'DAP', mgd: 'MGD' };
 const TONE = { below: 'ok', above: 'warn', well_above: 'alert' };
 const iso = (d) => d.toISOString().slice(0, 10);
 const today = new Date();
@@ -71,7 +71,7 @@ async function propose() {
     body.append(h('tr', {},
       h('td', {}, box),
       h('td', { title: x.exam }, x.exam === last && x.projection === lastProj ? '' : x.exam_meaning + (x.projection ? ` (${x.projection})` : ''), x.local_only && !(x.exam === last && x.projection === lastProj) ? h('span', { class: 'tag', title: 'no national or European DRL for this exam: local only' }, ' local only') : null),
-      h('td', {}, x.band_label), h('td', {}, QTY[x.quantity] || x.quantity),
+      h('td', {}, x.band_label), h('td', { title: x.series_factor ? `the whole examination: about ${x.series_factor} times one series (several phases or regions); no published DRL is per examination` : '' }, (QTY[x.quantity] || x.quantity) + (x.series_factor ? ` ≈ ${x.series_factor}× series` : '')),
       h('td', { class: 'r' }, num(x.n)), h('td', { class: 'r', title: rooms }, `${x.n_rooms}/${x.rooms.length}`),
       h('td', { class: 'r' }, value), h('td', {}, shownUnit(x.unit).unit),
       h('td', { class: 'muted small' }, x.value == null && x.indicative ? `indicative (n ${x.indicative.n}): P50 ${shown(x.indicative.p50, x.unit)} · P75 ${shown(x.indicative.p75, x.unit)}` : x.method === 'p75' ? 'P75' : x.method === 'median' ? 'median (P50)' : x.method === 'p75_rooms' ? 'P75 rooms' : x.method === 'median_room' ? 'median (1 room)' : 'too few'),

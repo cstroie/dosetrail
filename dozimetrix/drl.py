@@ -54,6 +54,9 @@ from .stats import EXPOSURE_EXAM, BandLookup, describe, own_codes
 QUANTITY = {
     "dlp": (Event.dlp, {"mGy.cm": 1.0}),
     "ctdivol": (Event.ctdivol, {"mGy": 1.0}),
+    # CT: the DLP of the whole examination (series summed), used with applies_to "study";
+    # no published reference is per examination, so it is a local value (localdrl.py)
+    "dlp_study": (Event.dlp, {"mGy.cm": 1.0}),
     "dap": (Event.dap, {"Gy.cm2": 1.0, "mGy.cm2": 1000.0, "cGy.cm2": 100.0, "Gy.m2": 1e-4}),
     "mgd": (Event.agd, {"mGy": 1.0}),
     "activity": (Study.admin_activity_mbq, {"MBq": 1.0}),
@@ -163,7 +166,7 @@ def compare(session: Session, conds: list, set_key: str, *, by_device: bool = Fa
 
 
 # the modality group a reference value belongs to, when its exam code names no modality
-_QUANTITY_GROUP = {"dlp": "CT", "ctdivol": "CT", "mgd": "MG", "activity": "NM"}
+_QUANTITY_GROUP = {"dlp": "CT", "dlp_study": "CT", "ctdivol": "CT", "mgd": "MG", "activity": "NM"}
 
 
 def _group(modality: str | None, quantity: str) -> str:

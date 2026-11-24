@@ -52,7 +52,8 @@ NATIONAL_SET = "ro-ms838-2025"
 NATIONAL_SCHEME = "ro-drl-age"
 # modality family -> [(quantity, unit, applies_to)], as the national set measures them
 QUANTITIES = {
-    "CT": [("dlp", "mGy.cm", "series"), ("ctdivol", "mGy", "series")],
+    "CT": [("dlp", "mGy.cm", "series"), ("ctdivol", "mGy", "series"),
+           ("dlp_study", "mGy.cm", "study")],
     "RX": [("dap", "Gy.cm2", "study")],
     "RF": [("dap", "Gy.cm2", "study")],
     "MG": [("mgd", "mGy", "study")],
@@ -160,7 +161,8 @@ def _collect(session: Session, conds: list, items: list[Item], exams: list[tuple
 
     g = Grid(session)
     head = {it.key for it, (system, exam) in zip(items, exams, strict=True)
-            if it.quantity in ("dlp", "ctdivol") and g.parameter(system, exam) == "age"}
+            if it.quantity in ("dlp", "dlp_study", "ctdivol")
+            and g.parameter(system, exam) == "age"}
     heads = [it for it in items if it.key in head]
     rest = [it for it in items if it.key not in head]
     got = collect(session, conds, rest, by_device=True, estimated_weights=estimated_weights)
@@ -261,6 +263,7 @@ def propose(session: Session, conds: list, grid: str = "national", min_n: int = 
             "n_phantom32": p32.get(i, 0),  # left out: head series on the 32 cm phantom
             "ratio": res["value"] / ref if res["value"] and ref else None,
             "status": _status(res["value"], ref)})
+    rows = _study_dlp_where_it_differs(rows)
     return {"grid": grid, "scope": scope, "min_n": min_n, "rule": rule, "p75_n": p75_n,
             "estimated_weights": estimated_weights,
             "reference_kind":
@@ -279,6 +282,28 @@ def _notes(rule: str, min_n: int, p75_n: int) -> str:
 def _parse_notes(notes: str | None) -> tuple[str, int]:
     m = re.search(r"\[rule=(\w+) p75_n=(\d+)", notes or "")
     return (m.group(1), int(m.group(2))) if m else ("rooms", P75_N)  # sets made before the rule
+
+
+STUDY_DLP_MIN_FACTOR = 1.2
+
+
+def _study_dlp_where_it_differs(rows: list[dict]) -> list[dict]:
+    """The study DLP row stays only where it says something the series DLP does not: the
+    examination's DLP at least 1.2 times a series' (several phases or regions in one study).
+    Each kept row says how many series' worth it is (``series_factor``). Where it is the same
+    as a series (a head scan), the extra row is noise and is dropped."""
+    series = {(r["system"], r["exam"], r["band"], r["projection"]): r["pooled_median"]
+              for r in rows if r["quantity"] == "dlp"}
+    out = []
+    for r in rows:
+        if r["quantity"] != "dlp_study":
+            out.append(r)
+            continue
+        one = series.get((r["system"], r["exam"], r["band"], r["projection"]))
+        if one and r["pooled_median"] and r["pooled_median"] >= STUDY_DLP_MIN_FACTOR * one:
+            r["series_factor"] = round(r["pooled_median"] / one, 1)
+            out.append(r)
+    return out
 
 
 def adopt(session: Session, rows: list[dict], *, name: str, grid: str, start: dt.date,

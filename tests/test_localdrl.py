@@ -161,3 +161,36 @@ def test_local_only_radiography_per_view(session, data):  # noqa: F811
     assert got["AP/PA"] == pytest.approx(0.03) and got["LL"] == pytest.approx(0.01)
     rev = localdrl.review(session, rs.key, [], min_n=1)
     assert {r["projection"] for r in rev["rows"]} == {"AP/PA", "LL"}
+
+
+def test_study_dlp_for_multiphase_exams(session, data):  # noqa: F811
+    """The whole-examination DLP is proposed where it is more than a series' (several phases
+    in one study); a single series is not repeated as a study row."""
+    from dozimetrix.classify import run
+    from dozimetrix.db.models import Device, Event, Study
+
+    dev = session.query(Device).filter_by(display_name="CT A").one()
+    for i in range(3):  # abdomen: a native and a contrast phase in each study
+        s = Study(study_uid=f"ph.{i}", modality="CT", device_id=dev.id,
+                  study_datetime=dt.datetime(2026, 6, 4), source_kind="test",
+                  study_description="CT abdomen nativ + contrast", age_days=int(2 * 365.25) + 30)
+        s.events = [Event(protocol="Topogram", is_localizer=True, dlp=5.0),
+                    Event(protocol="Abd nativ", dlp=100.0 + i, ctdivol=5.0),
+                    Event(protocol="Abd contrast", dlp=200.0 + i, ctdivol=6.0)]
+        session.add(s)
+    session.flush()
+    run(session)
+    rows = localdrl.propose(session, [], "national", min_n=1, p75_n=3)["rows"]
+    one = _row(rows, "CT-ABDOMEN", "1-4y", "dlp")
+    whole = _row(rows, "CT-ABDOMEN", "1-4y", "dlp_study")
+    assert one["applies_to"] == "series" and whole["applies_to"] == "study"
+    assert whole["pooled_median"] == pytest.approx(302)  # 101 + 201 and its neighbours: 301..303
+    assert whole["series_factor"] == pytest.approx(2.0, abs=0.1)
+    assert whole["reference"] is None  # no published DRL is per examination
+    # head: one series per study, so no study row
+    assert not [r for r in rows if r["exam"] == "CT-CAP" and r["quantity"] == "dlp_study"]
+    # adopt and review it like any other value
+    rs = localdrl.adopt(session, [whole], name="Abd", grid="national", start=dt.date(2026, 1, 1),
+                        end=dt.date(2026, 12, 31), min_n=1, query="", p75_n=3)
+    (r,) = localdrl.review(session, rs.key, [], min_n=1)["rows"]
+    assert r["quantity"] == "dlp_study" and r["local_drl"] == pytest.approx(whole["value"])

@@ -18,7 +18,7 @@ const STATUS = {
   no_data: ['', 'No data'],
   unavailable: ['', 'Not collected'],
 };
-const QUANTITY = { dlp: 'DLP', ctdivol: 'CTDIvol', dap: 'DAP', kae: 'Ka,e', mgd: 'MGD', activity: 'Activity' };
+const QUANTITY = { dlp: 'DLP', dlp_study: 'DLP (study)', ctdivol: 'CTDIvol', dap: 'DAP', kae: 'Ka,e', mgd: 'MGD', activity: 'Activity' };
 
 const state = {
   q: prefs.get('drl.q') || 'origin:local date:365d',
