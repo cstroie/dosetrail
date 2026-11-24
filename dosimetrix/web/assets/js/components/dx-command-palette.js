@@ -2,7 +2,7 @@
 // (navigation, theme, language, DAP unit). Native <dialog>, so focus is trapped and Esc closes.
 
 import { h, clear } from '../core/dom.js';
-import { lookup, studyHref } from '../core/api.js';
+import { lookup, studyHref, studyLabel } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { lang } from '../core/i18n.js';
 
@@ -53,7 +53,7 @@ class DtCommandPalette extends HTMLElement {
     if (seq !== this._seq) return; // a newer keystroke won
     const cmds = COMMANDS.filter((c) => !q || c.label.toLowerCase().includes(q.toLowerCase()));
     this.items = [
-      ...studies.map((s) => ({ group: 'studies', kind: s.modality, label: `${s.accession} · ${s.description}`, extra: s.dose,
+      ...studies.map((s) => ({ group: 'studies', kind: s.modality, label: `${studyLabel(s)} · ${s.description}`, extra: s.dose,
         run: () => { location.href = s.id != null || s.modality === 'XA' ? studyHref(s) : `studies.html?q=${encodeURIComponent('acc:' + s.accession)}`; } })),
       ...cmds.map((c) => ({ ...c, kind: c.group, extra: c.keys || '' })),
     ];

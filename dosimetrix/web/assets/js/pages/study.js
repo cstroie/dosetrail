@@ -13,7 +13,7 @@ import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mgy, mmss, clock, DAP_UNITS } from '../core/format.js';
-import { rdsrUrl, doseStatementHref, study, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
+import { rdsrUrl, doseStatementHref, study, studyLabel, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
 import { renderStudy } from './study-generic.js';
 import { prefs } from '../core/prefs.js';
 
@@ -246,7 +246,7 @@ async function render() {
       h('div', { class: 'side' },
         h('section', { class: 'panel', 'aria-label': 'Patient and exam' },
           h('dl', { class: 'kv' },
-            h('dt', {}, 'Accession'), h('dd', { class: 'mono' }, s.accession),
+            h('dt', {}, 'Accession'), h('dd', { class: 'mono' }, s.accession || '—'),
             h('dt', {}, 'Patient'), h('dd', {}, identity, ' ', revealBtn),
             ...indicationRow(s),
             h('dt', {}, 'Age · sex'), h('dd', { class: 'mono' }, `${p.age} y · ${p.sex}`),
@@ -261,13 +261,13 @@ async function render() {
         h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
           h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, t('study.curve')), h('span', { class: 'spacer' }),
             h('span', { class: 'muted small' }, 'faded bar = plane B · click a bar to find it in the table'),
-            h('button', { class: 'btn xs no-print', type: 'button', onclick: () => chart.downloadPNG(`${s.accession}-dose-curve`) }, 'PNG')),
+            h('button', { class: 'btn xs no-print', type: 'button', onclick: () => chart.downloadPNG(`${(s.accession || `study-${s.id}`).replace(/[^\w.-]/g, '_')}-dose-curve`) }, 'PNG')),
           h('div', { class: 'panel-body' }, chart)),
         grid,
         selInfo,
         skinPanel(s))));
 
-  document.title = `${s.accession} · Dosimetrix`;
+  document.title = `${studyLabel(s)} · Dosimetrix`;
   refresh();
   chart.on('click', (ev) => {
     if (ev.data?.eventIndex === undefined) return;
@@ -333,7 +333,7 @@ function exportEvents(s) {
   const val = (e, c) => (c === 'dap_mgycm2' ? (e.dap_gycm2 == null ? '' : +(e.dap_gycm2 * 1000).toPrecision(6)) : e[c]);
   const text = [cols.join(',')].concat(s.events.map((e) => cols.map((c) => val(e, c)).join(','))).join('\r\n');
   const href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
-  h('a', { href, download: `${s.accession}-events.csv` }).click();
+  h('a', { href, download: `${(s.accession || `study-${s.id}`).replace(/[^\w.-]/g, '_')}-events.csv` }).click();
   toast('Exported events (DAP in mGy·cm², Ka,r in mGy)');
 }
 

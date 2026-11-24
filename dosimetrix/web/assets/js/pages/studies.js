@@ -7,7 +7,7 @@ import '../components/dx-data-grid.js';
 import { h, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
-import { studies, deviceMap, drl, studyHref, exportUrl, modalities, profileOf } from '../core/api.js';
+import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 
 const DEFAULT_Q = 'modality:CT date:90d age:>=18 origin:local -phantom';
@@ -52,7 +52,7 @@ const COMMON = [
   { key: 'flag', srLabel: 'Flag', sortable: false, width: '22px', render: flagCell },
   { key: 'date', label: 'Date', width: '118px', render: (s) => h('span', { class: 'mono' }, dateTime(s.date).slice(5)) },
   { key: 'device', label: 'Device', render: (s) => s.device_name },
-  { key: 'accession', label: 'Accession', width: '140px', render: (s) => h('a', { class: 'mono', href: studyHref(s) }, s.accession) },
+  { key: 'accession', label: 'Accession', width: '140px', render: (s) => h('a', { class: `mono${s.accession ? '' : ' muted'}`, href: studyHref(s), title: s.accession ? null : 'No accession number from the device' }, studyLabel(s)) },
   { key: 'patient', label: 'Patient', width: '130px', render: (s) => h('span', { class: 'mono' }, patientSummary(s.patient)) },
   { key: 'description', label: 'Study description' },
 ];
@@ -133,7 +133,7 @@ function preview(s, profile, profiles) {
   if (!s) return h('p', { class: 'muted', style: { padding: '12px' } }, 'Select a study.');
   const flags = s.flags.map((f) => h('span', { class: `tag ${f.level}` }, f.text));
   const kv = [
-    ['Accession', s.accession, true], ['Study', s.description], ['Protocol', s.protocol],
+    ['Accession', s.accession || '—', true], ['Study', s.description], ['Protocol', s.protocol],
     ['Device', s.device_name], ['Patient', `${patientSummary(s.patient)} · ${s.patient.pseudo_id}`, true],
   ];
   const p = profile || profiles.find((x) => x.code === s.group);
@@ -144,6 +144,7 @@ function preview(s, profile, profiles) {
     kv.push([c.unit ? `${c.label} (${c.unit})` : c.label, typeof v === 'string' ? v : v.textContent, true]);
   }
   return h('div', {},
+    h('div', { class: 'row', style: { padding: '12px 12px 0' } }, h('a', { class: 'btn xs', href: studyHref(s) }, `Open ${studyLabel(s)}`)),
     h('dl', { class: 'kv' }, kv.flatMap(([k, v, mono]) => [h('dt', {}, k), h('dd', mono ? { class: 'mono' } : {}, v ?? '—')])),
     flags.length ? h('div', { class: 'row', style: { padding: '0 12px 12px' } }, flags) : null);
 }

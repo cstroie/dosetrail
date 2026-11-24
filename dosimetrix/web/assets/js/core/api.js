@@ -197,6 +197,12 @@ export async function study(ref) {
 }
 
 /** Link to a study's detail page: by id when the API provides one, else by accession. */
+/** How a study is named in lists: its accession, else its Dosimetrix id (some devices,
+ *  e.g. the Artis and the Luminos, send no accession number). */
+export function studyLabel(s) {
+  return s.accession || (s.id != null ? `study ${s.id}` : '—');
+}
+
 export function studyHref(s) {
   return s.id != null ? `study.html?id=${s.id}` : `study.html?acc=${encodeURIComponent(s.accession)}`;
 }

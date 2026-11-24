@@ -4,7 +4,7 @@ import '../components/dx-shell.js';
 import { h, append, clear, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
-import { overview, lookup, studyHref, ackAlert, deadlineDone, isSample } from '../core/api.js';
+import { overview, lookup, studyHref, studyLabel, ackAlert, deadlineDone, isSample } from '../core/api.js';
 
 // the API's groups are CT, DX, RF, XA, MG, NM, PT; anything else takes the accent
 const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', CR: '--m-dx', RF: '--m-rf', XA: '--m-xa', MG: '--m-mg', NM: '--m-nm', PT: '--m-pt' };
@@ -47,7 +47,7 @@ function alertQueue(allAlerts, now, total) {
     const li = h('li', {},
       h('span', { class: `tag ${a.level}` }, a.kind),
       h('span', {}, h('a', { class: 't', href: alertHref(a) }, a.title), h('br'),
-        h('span', { class: 'm mono' }, `${a.accession} · ${dateTime(a.time)} · ${ago(a.time, now)} ago`)),
+        h('span', { class: 'm mono' }, `${a.accession || (a.study_id != null ? `study ${a.study_id}` : '—')} · ${dateTime(a.time)} · ${ago(a.time, now)} ago`)),
       h('span', { class: 'v' }, a.value, h('br'), h('span', { class: 'm' }, a.limit)),
       h('span'),
       h('span', { class: 'acts' },
@@ -113,7 +113,7 @@ function lookupPanel() {
       clear(results);
       for (const s of found) {
         results.append(h('a', { class: 'res', href: s.id != null || s.modality === 'XA' ? studyHref(s) : `studies.html?q=${encodeURIComponent('acc:' + s.accession)}` },
-          h('span', { class: 'tag info' }, s.modality), h('span', { class: 'mono' }, s.accession), h('span', { class: 'mono' }, s.dose),
+          h('span', { class: 'tag info' }, s.modality), h('span', { class: 'mono' }, studyLabel(s)), h('span', { class: 'mono' }, s.dose),
           h('span', { class: 'd' }, `${s.description} · ${s.device_name} · ${dateTime(s.date)}`)));
       }
       if (input.value.trim().length >= 3 && !found.length) results.append(h('span', { class: 'muted' }, t('state.empty')));
