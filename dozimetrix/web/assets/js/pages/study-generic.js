@@ -24,9 +24,35 @@ function ratioTag(value, ref) {
   return h('span', { class: `tag ${cls}`, title: `${smart(value)} / DRL ${smart(ref)}` }, `${num(r, 2)}×`);
 }
 
-function readout(label, value, unit, sub) {
-  return h('div', { class: 'readout' }, h('span', { class: 'l' }, label),
-    h('span', { class: 'v' }, value, unit ? h('span', { class: 'unit' }, ` ${unit}`) : null), sub ? h('span', { class: 'sub' }, sub) : null);
+function readout(label, value, unit, sub, opts = {}) {
+  return h('div', { class: `readout ${opts.hot ? 'hot' : ''}` }, h('span', { class: 'l' }, label),
+    h('span', { class: `v ${opts.sm ? 'sm' : ''}` }, value, unit ? h('span', { class: 'unit' }, ` ${unit}`) : null), sub ? h('span', { class: 'sub' }, sub) : null);
+}
+
+// summaries of one event field: the values present, their range and the highest ratio to a DRL
+const vals = (ev, k) => ev.map((e) => e[k]).filter((v) => v != null && v !== '' && !Number.isNaN(v));
+function range(ev, k, d = 0) {
+  const x = vals(ev, k);
+  if (!x.length) return null;
+  const lo = Math.min(...x);
+  const hi = Math.max(...x);
+  return lo === hi ? num(lo, d) : `${num(lo, d)}–${num(hi, d)}`;
+}
+function topRatio(ev, value, ref) {  // the event furthest above (or nearest to) its DRL
+  let best = null;
+  for (const e of ev) {
+    const v = value(e);
+    const r = ref(e);
+    if (v == null || !r) continue;
+    const q = v / r;
+    if (!best || q > best.q) best = { q, e };
+  }
+  return best;
+}
+function drlReadout(best, what) {
+  if (!best) return readout(`${what} / DRL`, '—', '', 'no DRL for this exam');
+  const pct = Math.round(best.q * 100);
+  return readout(`${what} / DRL`, `${pct}%`, '', `highest: ${best.e.protocol || best.e.projection || best.e.view || `#${best.e.no ?? ''}`}${best.e.drl?.code ? ` · ${best.e.drl.code}` : ''}`, { hot: best.q > 1 });
 }
 
 function ctColumns() {
@@ -126,22 +152,42 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
   const placeholder = !s.description || /^[-\s.0/]*$/.test(s.description);
   const examName = (s.exams || []).find((x) => x.system.startsWith('ro-nom'))?.meaning;
   const title = placeholder ? (examName || `${s.modality_label || s.modality} study`) : s.description;
+  const sumOf = (list, k) => vals(list, k).reduce((a, v) => a + v, 0);
+  const ssde = vals(series, 'ssde_mgy');
+  const lengthCm = sumOf(series, 'scan_length_mm') / 10;
+  const dis = vals(ev, 'deviation_index');
+  const diOut = dis.filter((v) => Math.abs(v) > 3).length;
+  const forces = range(ev, 'force_n');
+  const targets = [...new Set(ev.map((e) => [e.target, e.filter].filter(Boolean).join('/')).filter(Boolean))];
+  const agents = [...new Set(ev.map((e) => [e.agent, e.nuclide].filter(Boolean).join(' · ')).filter(Boolean))];
+  const eSum = sumOf(ev, 'e_msv');
   const ro = ct ? [
     ...(T.activity_mbq != null ? [readout('Administered activity', num(T.activity_mbq, 0), 'MBq')] : []),
     readout('Total DLP', num(T.dlp_mgycm, 1), 'mGy·cm', `${series.length} series + ${ev.filter((e) => e.localizer).length} localizer`),
     readout('Highest CTDIvol', num(T.ctdivol_max, 2), 'mGy', [...new Set(series.map((e) => e.phantom_cm).filter(Boolean))].map((x) => `${x} cm phantom`).join(' · ')),
+    readout('Highest SSDE', ssde.length ? num(Math.max(...ssde), 2) : '—', ssde.length ? 'mGy' : '', ssde.length ? 'size-specific dose estimate' : 'no patient size (SSDE needs it)'),
+    drlReadout(topRatio(series, (e) => e.dlp, (e) => e.drl?.dlp), 'DLP'),
+    readout('Scan length', lengthCm ? num(lengthCm, 1) : '—', lengthCm ? 'cm' : '', `kV ${range(series, 'kvp') || '—'} · pitch ${range(series, 'pitch', 2) || '—'}`, { sm: true }),
     readout('Contrast', { N: 'native', C: 'contrast', NC: 'native + contrast', MF: 'multiphase' }[s.contrast] || '—'),
   ] : s.modality === 'MG' ? [
     readout('AGD left', T.agd_left_mgy != null ? num(T.agd_left_mgy, 2) : '—', 'mGy', 'per breast: the sum of its views'),
     readout('AGD right', T.agd_right_mgy != null ? num(T.agd_right_mgy, 2) : '—', 'mGy'),
+    readout('Highest view AGD', vals(ev, 'agd_mgy').length ? num(Math.max(...vals(ev, 'agd_mgy')), 2) : '—', 'mGy', ev.length ? `of ${ev.length} views` : ''),
     readout('Views', views.length ? views.join(', ') : `${ev.length}`, '', `${ev.length} exposures`),
-    readout('Thickness', (() => { const x = ev.map((e) => e.thickness_mm).filter((v) => v != null); return x.length ? `${num(Math.min(...x))}–${num(Math.max(...x))}` : '—'; })(), 'mm'),
+    readout('Thickness', range(ev, 'thickness_mm') || '—', 'mm', forces ? `compression ${forces} N` : ''),
+    readout('kV · target/filter', range(ev, 'kvp') || '—', 'kV', targets.join(', ') || '', { sm: true }),
   ] : ['PT', 'NM'].includes(s.modality) ? [
     readout('Administered activity', T.activity_mbq != null ? num(T.activity_mbq, 0) : '—', 'MBq', T.activity_counted_on ? h('a', { href: studyHref({ id: T.activity_counted_on }) }, 'same administration: counted on the earlier study') : `${ev.length} administration${ev.length === 1 ? '' : 's'}`),
+    readout('Per kg', T.activity_mbq != null && p.weight_kg ? num(T.activity_mbq / p.weight_kg, 2) : '—', T.activity_mbq != null && p.weight_kg ? 'MBq/kg' : '', p.weight_kg ? `weight ${num(p.weight_kg, 1)} kg` : 'no weight'),
+    readout('Radiopharmaceutical', agents.join(', ') || '—', '', '', { sm: true }),
+    readout('Effective dose (est.)', eSum ? num(eSum, 2) : '—', eSum ? 'mSv' : '', eSum ? 'from the activity, by coefficient' : 'no coefficient for this agent'),
   ] : [
     readout('Total DAP', dap(T.dap_gycm2, 3), dapUnit(), `${ev.length} exposures`),
-    readout('Projections', views.length ? views.join(', ') : '—'),
-    readout('Highest kV', num(Math.max(0, ...ev.map((e) => e.kvp || 0)), 0), 'kV'),
+    drlReadout(topRatio(ev, (e) => e.dap_gycm2, (e) => e.drl?.dap), 'DAP'),
+    readout('Highest ESD', vals(ev, 'esd_mgy').length ? num(Math.max(...vals(ev, 'esd_mgy')), 2) : '—', vals(ev, 'esd_mgy').length ? 'mGy' : '', 'entrance surface dose'),
+    readout('Projections', views.length ? views.join(', ') : '—', '', `SID ${range(ev, 'sid_cm') || '—'} cm`, { sm: true }),
+    readout('kV · mAs', range(ev, 'kvp') || '—', 'kV', `mAs ${range(ev, 'mas', 1) || '—'} · total ${num(sumOf(ev, 'mas'), 1)}`, { sm: true }),
+    readout('Exposure index', range(ev, 'exposure_index') || '—', '', dis.length ? `DI ${range(ev, 'deviation_index', 1)}${diOut ? ` · ${diOut} outside ±3` : ''}` : 'no deviation index', { hot: diOut > 0 }),
   ];
   // which events this page lists: CT series; NM/PET administrations; MG views; DX/CR exposures
   const kind = ct ? 'ct' : ['PT', 'NM'].includes(s.modality) ? 'nm' : s.modality === 'MG' ? 'mg' : 'rx';
