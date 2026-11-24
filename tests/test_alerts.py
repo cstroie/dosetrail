@@ -54,7 +54,7 @@ def test_threshold_cumulative_and_reevaluation(session, world):
     got = _alerts(session, second)
     assert set(got) == {"fluoro-kar-5gy", "fluoro-kar-cumulative-90d"}
     assert got["fluoro-kar-5gy"].severity == "alert"
-    assert got["fluoro-kar-5gy"].message == "Ka,r total 5.5 Gy ≥ 5 Gy"
+    assert got["fluoro-kar-5gy"].message == "Ka,r total 5500 mGy ≥ 5000 mGy"
     assert got["fluoro-kar-cumulative-90d"].value == pytest.approx(8.5)
 
     # acknowledged alerts survive re-evaluation unchanged; open ones follow the value
@@ -83,7 +83,7 @@ def test_paediatric_ct_and_drl_ratio(session, world):
     alerts.evaluate(session, [s.id, adult.id])
     got = _alerts(session, s)
     assert set(got) == {"ct-ctdivol-paed-50", "drl-2x"}
-    assert got["drl-2x"].message.startswith("CT-CAP: 1.7e+03 mGy·cm = 2.1 × DRL")
+    assert got["drl-2x"].message.startswith("CT-CAP: 1700 mGy·cm = 2.1 × DRL 800 mGy·cm")
     assert "ct-ctdivol-paed-50" not in _alerts(session, adult)  # adult: paediatric rule off
 
 
@@ -203,7 +203,7 @@ def test_cumulative_peak_skin_dose(session, world):
     assert "fluoro-psd-cumulative-90d" not in _alerts(session, a)
     got = _alerts(session, b)["fluoro-psd-cumulative-90d"]
     assert got.severity == "alert" and got.value == pytest.approx(3300.0)
-    assert got.message == "Σ 3.3e+03 mGy in 2 studies / 90 d ≥ 3e+03 mGy"
+    assert got.message == "Σ 3300 mGy in 2 studies / 90 d ≥ 3000 mGy"
 
 
 def test_pregnant_patient(session, world):

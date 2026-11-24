@@ -80,7 +80,7 @@ def test_rows_pseudonymous_by_default(session, data):
     (row,) = list(lists.rows(session, [], "study"))
     r = dict(zip(cols, row, strict=True))
     assert r["Patient"] == "P-AAAAA-BBBBB" and "Patient ID" not in r
-    assert r["Exam code"] == "RG-TH" and r["DAP total [Gy.cm2]"] == 0.03
+    assert r["Exam code"] == "RG-TH" and r["DAP total [mGy.cm2]"] == 30
     assert r["Device"] == "Room 1" and r["Origin"] == "local" and r["Age"] == "6 y"
     assert "123" not in [str(v) for v in row] and "POP^ION" not in row
 

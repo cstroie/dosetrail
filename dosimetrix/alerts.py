@@ -40,8 +40,10 @@ PREFETCH_MIN = 5  # studies in a chunk from which the window rules prefetch
 STUDY_METRICS = {k: m.column for k, m in METRICS.items() if m.level == "study"}
 # per-series / per-exposure metrics: a threshold rule takes the study's highest value
 EVENT_VALUE = {"ssde": lambda e: e.ssde if e.ssde is not None else e.ssde_calc}
-UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "s": "s",
-         "MBq": "MBq"}
+UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "mGy.cm2": "mGy·cm²",
+         "s": "s", "MBq": "MBq"}
+# stored in Gy / Gy·cm² (DICOM); written in mGy / mGy·cm², as the web pages show them
+SHOWN = {"Gy": (1000.0, "mGy"), "Gy.cm2": (1000.0, "mGy.cm2")}
 BATCH = 1000
 DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained")
 RETIRED_DAYS = 90  # a device silent for longer is retired, not broken (it alerted at day 4)
@@ -56,10 +58,17 @@ def _num(v: float) -> str:
     return f"{v:.0f}" if abs(v) >= 100 else f"{v:.3g}"
 
 
+def _shown(v: float, unit: str | None) -> tuple[float, str | None]:
+    """A value in its stored unit → the value and unit code it is written in."""
+    f, u = SHOWN.get(unit or "", (1.0, unit))
+    return v * f, u
+
+
 def _fmt(v: float, unit: str | None) -> str:
     if unit == "s" and v >= 60:
         return f"{v / 60:.1f} min"
-    return f"{v:.3g} {UNITS.get(unit or '', unit or '')}".strip()
+    v, unit = _shown(v, unit)
+    return f"{_num(v)} {UNITS.get(unit or '', unit or '')}".strip()
 
 
 def _applies(rule: AlertRule, s: Study) -> bool:
@@ -601,12 +610,12 @@ def _drift(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
                        Alert.study_datetime > now - quiet, Alert.study_datetime <= now,
                        Alert.message.startswith(key + ":"))):
             continue
-        unit = "mGy·cm" if code.startswith("CT") else "Gy·cm²"
+        f, unit = (1.0, "mGy·cm") if code.startswith("CT") else (1000.0, "mGy·cm²")
         out.append({"study_id": max(g["w1"])[2], "value": r1, "limit_value": rule.threshold,
                     "unit": None,
-                    "message": f"{key}: median {_num(_median([v for _, v, _ in g['w1']]))} "
+                    "message": f"{key}: median {_num(f * _median([v for _, v, _ in g['w1']]))} "
                                f"{unit} this week ({len(g['w1'])}), {r2:.2f}× the week "
-                               f"before; 12 weeks before {_num(ref)} {unit} "
+                               f"before; 12 weeks before {_num(f * ref)} {unit} "
                                f"({len(g['base'])})"})
     return out
 
@@ -655,11 +664,12 @@ def _sustained(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict
         if session.scalar(select(func.count()).select_from(Alert)
                           .where(Alert.rule_id == rule.id, Alert.message.startswith(key + ":"))):
             continue
-        unit = UNITS.get(r["unit"], r["unit"])
+        f, code_u = SHOWN.get(r["unit"], (1.0, r["unit"]))
+        unit = UNITS.get(code_u, code_u)
         out.append({"study_id": _latest_study(session, did, q2, _quarter_start(now), None),
                     "value": g["ratio"], "limit_value": rule.threshold, "unit": None,
-                    "message": f"{key}: median {_num(g['median'])} {unit} = {g['ratio']:.2f}× "
-                               f"DRL {_num(r['reference'])} ({g['n']}); quarter before "
+                    "message": f"{key}: median {_num(f * g['median'])} {unit} = {g['ratio']:.2f}× "
+                               f"DRL {_num(f * r['reference'])} ({g['n']}); quarter before "
                                f"{g0['ratio']:.2f}× ({g0['n']})"})
     return out
 

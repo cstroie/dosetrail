@@ -754,7 +754,8 @@ def lookup(session: Session, text: str, limit: int) -> list[dict]:
     out = []
     for s, d, _p in rows:
         dose = (f"{s.total_dlp:.0f} mGy·cm" if s.total_dlp else
-                f"{s.total_dap:.3g} Gy·cm²" if s.total_dap else "")
+                f"{s.total_dap * 1000:.3g} mGy·cm²" if s.total_dap and s.total_dap < 0.1 else
+                f"{s.total_dap * 1000:.0f} mGy·cm²" if s.total_dap else "")
         out.append({"id": s.id, "accession": accession_display(s), "modality": s.modality,
                     "description": s.study_description, "date": iso_min(s.study_datetime),
                     "device_name": names.get(d.id) if d else None,

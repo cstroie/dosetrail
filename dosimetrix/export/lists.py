@@ -33,10 +33,20 @@ def _f(x, nd=6):
     return round(x, nd) if isinstance(x, float) else x
 
 
+def _m(x, nd=3):
+    """Stored Gy / Gy·cm² → mGy / mGy·cm², the units the web pages show."""
+    return round(x * 1000, nd) if isinstance(x, float) else x
+
+
 Col = tuple[str, Callable[[dict], object]]
 
 
+_MILLI = {"dap", "rp_dose"}  # stored in Gy·cm² / Gy, exported in mGy·cm² / mGy
+
+
 def _attr(name: str, nd: int | None) -> Callable[[dict], object]:
+    if name in _MILLI:
+        return lambda r: _m(getattr(r["e"], name), nd)
     if nd:
         return lambda r: _f(getattr(r["e"], name), nd)
     return lambda r: getattr(r["e"], name)
@@ -67,10 +77,10 @@ STUDY_COLUMNS: list[Col] = [
     ("Events", lambda r: r["s"].n_events),
     ("DLP total [mGy.cm]", lambda r: _f(r["s"].total_dlp, 3)),
     ("CTDIvol max [mGy]", lambda r: _f(r["s"].ctdivol_max, 3)),
-    ("DAP total [Gy.cm2]", lambda r: _f(r["s"].total_dap)),
-    ("DAP fluoroscopy [Gy.cm2]", lambda r: _f(r["s"].total_fluoro_dap)),
-    ("DAP acquisition [Gy.cm2]", lambda r: _f(r["s"].total_acq_dap)),
-    ("Ka,r total [Gy]", lambda r: _f(r["s"].total_rp_dose)),
+    ("DAP total [mGy.cm2]", lambda r: _m(r["s"].total_dap)),
+    ("DAP fluoroscopy [mGy.cm2]", lambda r: _m(r["s"].total_fluoro_dap)),
+    ("DAP acquisition [mGy.cm2]", lambda r: _m(r["s"].total_acq_dap)),
+    ("Ka,r total [mGy]", lambda r: _m(r["s"].total_rp_dose)),
     ("Fluoroscopy time [s]", lambda r: _f(r["s"].total_fluoro_time, 1)),
     ("AGD left [mGy]", lambda r: _f(r["s"].agd_left, 3)),
     ("AGD right [mGy]", lambda r: _f(r["s"].agd_right, 3)),
@@ -91,8 +101,8 @@ _EV = [
     ("Rotation time [s]", "rotation_time_s", 3), ("SSDE [mGy]", "ssde", 3),
     ("SSDE calculated [mGy]", "ssde_calc", 3), ("SSDE method", "ssde_method", None),
     ("kVp [kV]", "kvp", 1), ("mA", "ma", 2), ("mAs", "mas", 3),
-    ("Exposure time [s]", "exposure_time_s", 4), ("DAP [Gy.cm2]", "dap", 8),
-    ("Ka,r [Gy]", "rp_dose", 8), ("Fluoroscopy time [s]", "fluoro_time_s", 2),
+    ("Exposure time [s]", "exposure_time_s", 4), ("DAP [mGy.cm2]", "dap", 5),
+    ("Ka,r [mGy]", "rp_dose", 5), ("Fluoroscopy time [s]", "fluoro_time_s", 2),
     ("Pulse rate [/s]", "pulse_rate", 2), ("Pulses", "n_pulses", None),
     ("Cu filter [mm]", "filter_cu_mm", 2), ("Al filter [mm]", "filter_al_mm", 2),
     ("SID [mm]", "sid_mm", 1), ("Field width [mm]", "field_w_mm", 1),

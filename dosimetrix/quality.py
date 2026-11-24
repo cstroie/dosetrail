@@ -189,9 +189,9 @@ class Checker:
             else:
                 limit = ABSURD["dap_rx"] if rx else ABSURD["dap"]
                 if e.dap and e.dap > limit:
-                    out.append(Finding("dose_absurd", f"DAP {e.dap:g} Gy·cm²"))
+                    out.append(Finding("dose_absurd", f"DAP {e.dap * 1000:g} mGy·cm²"))
                 if e.rp_dose and e.rp_dose > ABSURD["kar"]:
-                    out.append(Finding("dose_absurd", f"Ka,r {e.rp_dose:g} Gy"))
+                    out.append(Finding("dose_absurd", f"Ka,r {e.rp_dose * 1000:g} mGy"))
                 code = national.get(e.id) if rx else national.get(None)
                 if code and e.dap:
                     per_code[code] += e.dap
