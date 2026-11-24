@@ -13,7 +13,7 @@ export const SERVER_TYPES = {
   shist: 'Histogram (server)', sdrl: 'Median vs DRL (server)',
 };
 
-const MODALITIES = { CT: 'CT', DX: 'Radiography DX', CR: 'Radiography CR', RF: 'Fluoroscopy RF', XA: 'Angiography XA', MG: 'Mammography', NM: 'Nuclear medicine', PT: 'PET' };
+const MODALITIES = { CT: 'CT', 'DX,CR': 'Radiography DX + CR', DX: 'Radiography DX', CR: 'Radiography CR', RF: 'Fluoroscopy RF', XA: 'Angiography XA', MG: 'Mammography', NM: 'Nuclear medicine', PT: 'PET' };
 const METRICS = {
   CT: { dlp_total: 'DLP study total', ctdivol_max: 'CTDIvol max', dlp: 'DLP per series', ctdivol: 'CTDIvol per series', scan_length: 'Scan length' },
   DX: { dap: 'DAP per exposure', dap_total: 'DAP study total', kvp: 'kVp', mas: 'mAs', ei: 'Exposure index', di: 'Deviation index', exposures: 'Exposures per study' },
@@ -22,6 +22,7 @@ const METRICS = {
   NM: { activity: 'Administered activity', activity_kg: 'Activity per kg' },
 };
 METRICS.CR = METRICS.DX;
+METRICS['DX,CR'] = METRICS.DX;
 METRICS.PT = METRICS.NM;
 METRICS.XA = { ...METRICS.RF, psd: 'Peak skin dose (estimate)' };
 const DIMS = { exam: 'Exam', device: 'Device', age_band: 'Age group', weight_band: 'Weight group', ref_group: 'ICRP 135 group', view: 'Projection', protocol: 'Protocol (raw)', sex: 'Sex', indication: 'Clinical indication', year: 'Year' };

@@ -58,6 +58,70 @@ const DEFAULT_PANELS = [
   { ...defaultsFor('sbox'), modality: 'DX', metric: 'dap', by: 'exam', series: 'age_band', system: 'ro-drl-ms838-2025', span: 'L' },
 ];
 
+// One ready-made audit per modality (tabs, like the Studies list): the charts that suit it.
+// Each is the user's own once changed (saved like any workspace); Reset brings these back.
+const srv = (type, modality, metric, extra = {}) => ({ ...defaultsFor(type), modality, metric, ...extra });
+const MOD_PANELS = {
+  CT: DEFAULT_PANELS.filter((p) => (p.group || 'CT') === 'CT' && p.modality !== 'DX'),
+  DX: [
+    { type: 'dots', group: 'DX', metric: 'dap', span: 'L' },
+    srv('sbox', 'DX,CR', 'dap', { by: 'exam', series: 'age_band', system: 'ro-drl-ms838-2025', span: 'L' }),
+    { type: 'box', group: 'DX', metric: 'dap', span: 'M', sort: 'n' },
+    { type: 'trend', group: 'DX', metric: 'dap', span: 'M', period: 'month', stat: 'median' },
+    { type: 'hist', group: 'DX', metric: 'di', span: 'M' },
+    { type: 'box', group: 'DX', metric: 'ei', span: 'M', sort: 'n' },
+    { type: 'scatter', group: 'DX', span: 'M' },
+    { type: 'heat', group: 'DX', span: 'M' },
+    srv('sdrl', 'DX,CR', 'dap', { span: 'L' }),
+  ],
+  RF: [
+    { type: 'dots', group: 'RF', metric: 'dap_total', span: 'L' },
+    { type: 'box', group: 'RF', metric: 'dap_total', span: 'M', sort: 'n' },
+    { type: 'box', group: 'RF', metric: 'fluoro_time', span: 'M', sort: 'n' },
+    { type: 'trend', group: 'RF', metric: 'kar_total', span: 'M', period: 'month', stat: 'median' },
+    srv('sbox', 'RF', 'dap_total', { by: 'exam', series: 'age_band', span: 'M' }),
+    { type: 'scatter', group: 'RF', span: 'M' },
+    { type: 'heat', group: 'RF', span: 'M' },
+    srv('sdrl', 'RF', 'dap_total', { span: 'L' }),
+  ],
+  XA: [
+    { type: 'box', group: 'XA', metric: 'dap_total', span: 'M', sort: 'n' },
+    { type: 'box', group: 'XA', metric: 'kar_total', span: 'M', sort: 'n' },
+    { type: 'hist', group: 'XA', metric: 'psd', span: 'M' },
+    { type: 'trend', group: 'XA', metric: 'fluoro_time', span: 'M', period: 'month', stat: 'median' },
+    srv('sbox', 'XA', 'kar_total', { by: 'device', span: 'M' }),
+    { type: 'heat', group: 'XA', span: 'M' },
+  ],
+  MG: [
+    { type: 'box', group: 'MG', metric: 'agd', span: 'M', sort: 'n' },
+    { type: 'scatter', group: 'MG', span: 'M' },
+    { type: 'hist', group: 'MG', metric: 'thickness', span: 'M' },
+    { type: 'trend', group: 'MG', metric: 'agd', span: 'M', period: 'month', stat: 'median' },
+    srv('sbox', 'MG', 'agd_breast', { by: 'device', span: 'M' }),
+    { type: 'heat', group: 'MG', span: 'M' },
+    srv('sdrl', 'MG', 'agd', { span: 'L' }),
+  ],
+  NM: [
+    { type: 'dots', group: 'NM', metric: 'activity', span: 'L' },
+    { type: 'box', group: 'NM', metric: 'activity', span: 'M', sort: 'n' },
+    { type: 'box', group: 'NM', metric: 'activity_kg', span: 'M', sort: 'n' },
+    { type: 'scatter', group: 'NM', span: 'M' },
+    { type: 'trend', group: 'NM', metric: 'activity', span: 'M', period: 'month', stat: 'median' },
+    srv('sdrl', 'NM', 'activity', { span: 'L' }),
+  ],
+  PT: [
+    { type: 'dots', group: 'PT', metric: 'activity', span: 'L' },
+    { type: 'box', group: 'PT', metric: 'activity', span: 'M', sort: 'n' },
+    { type: 'box', group: 'PT', metric: 'activity_kg', span: 'M', sort: 'n' },
+    { type: 'scatter', group: 'PT', span: 'M' },
+    { type: 'trend', group: 'PT', metric: 'activity', span: 'M', period: 'month', stat: 'median' },
+    srv('sdrl', 'PT', 'activity', { span: 'L' }),
+  ],
+};
+const MOD_Q = 'date:90d origin:local';
+const isMod = (name) => /^mod-[A-Z]+$/.test(name || '');
+const modOf = (name) => name.slice(4);
+
 Object.assign(TYPES, SERVER_TYPES);
 let ws;         // { name, q, panels }
 let rows = [];  // rows of the panel being drawn (one modality group)
@@ -68,9 +132,13 @@ let drlSet;
 function wsKey(name) { return `workspace.${name}`; }
 const DEFAULT_WS = 'My audit · CT 2026 H2';
 function wsNames() { const n = prefs.get('workspaces'); return n?.length ? n : [DEFAULT_WS]; }
+function defaultsOf(name) {
+  return isMod(name) ? { q: MOD_Q, panels: structuredClone(MOD_PANELS[modOf(name)] || []) }
+    : { q: DEFAULT_Q, panels: structuredClone(DEFAULT_PANELS) };
+}
 function loadWs(name) {
   const saved = prefs.get(wsKey(name));
-  return saved ? structuredClone(saved) : { name, q: DEFAULT_Q, panels: structuredClone(DEFAULT_PANELS) };
+  return saved ? structuredClone(saved) : { name, ...defaultsOf(name) };
 }
 function saveWs() { prefs.set(wsKey(ws.name), ws); }
 
@@ -467,7 +535,12 @@ function renderAll() {
   ws.panels.forEach((cfg, i) => gridHost.append(renderPanel(cfg, i)));
   gridHost.append(h('div', { class: 'ws-add' }, h('span', {}, `${t('charts.add')}:`),
     Object.entries(TYPES).map(([type, label]) => h('button', { class: 'btn', type: 'button', onclick: () => {
-      ws.panels.push(type in SERVER_TYPES ? defaultsFor(type) : { type, group: 'CT', metric: type === 'scatter' ? 'dlp' : 'ctdivol', span: 'M' });
+      // a new panel starts on the modality of the tab it is added to
+      const g = isMod(ws.name) ? modOf(ws.name) : 'CT';
+      const srvMod = g === 'DX' ? 'DX,CR' : g === 'PT' ? 'PT' : g;
+      ws.panels.push(type in SERVER_TYPES ? { ...defaultsFor(type), modality: srvMod, metric: g === 'CT' ? 'dlp_total' : undefined }
+        : { type, group: g, metric: GROUPS[g].metrics[g === 'CT' && type === 'scatter' ? 1 : 0], span: 'M' });
+      if (!(type in SERVER_TYPES) && !(g in rowsBy)) { saveWs(); loadRows(); return; }
       saveWs();
       renderAll();
       gridHost.lastElementChild.previousElementSibling.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -529,7 +602,11 @@ async function init() {
   [devices, drlSet] = await Promise.all([physicalDevices(), drl()]);
   const names = wsNames();
   const urlQ = new URL(location.href).searchParams.get('q');
-  ws = loadWs(prefs.get('workspace.current') || names[0]);
+  // a link from the Studies list names its modality: open that modality's charts
+  const urlMod = /(?:^|\s)modality:(\S+)/.exec(urlQ || '')?.[1]?.toUpperCase().split(',')[0];
+  const fromUrl = urlMod && Object.entries(GROUPS).find(([k]) => k === urlMod || (k === 'DX' && urlMod === 'CR'))?.[0];
+  const current = fromUrl ? `mod-${fromUrl}` : prefs.get('workspace.current') || 'mod-CT';
+  ws = loadWs(isMod(current) || names.includes(current) ? current : 'mod-CT');
   if (urlQ) ws.q = urlQ.split(' ').filter((x) => !/^(modality|age|acc|pid|spiral|axial|loc|dlp|ctdi|flag):/.test(x) && x !== '-phantom').join(' ');
 
   const qb = h('dx-query-bar', { value: ws.q });
@@ -547,17 +624,22 @@ async function init() {
       prefs.set('workspace.current', name);
     } else prefs.set('workspace.current', e.target.value);
     reloadPage();
-  } }, wsNames().map((n) => h('option', { value: n, selected: n === ws.name }, n)), h('option', { value: '__new' }, '+ New workspace…'));
+  } }, isMod(ws.name) ? h('option', { value: '', selected: true }, '— my workspaces —') : null,
+  wsNames().map((n) => h('option', { value: n, selected: n === ws.name }, n)), h('option', { value: '__new' }, '+ New workspace…'));
+  const modTabs = h('nav', { class: 'tabs', 'aria-label': 'Modality' }, Object.entries(GROUPS).map(([k, g]) => h('button', {
+    type: 'button', 'aria-current': ws.name === `mod-${k}` ? 'page' : false,
+    onclick: () => { prefs.set('workspace.current', `mod-${k}`); reloadPage(); } }, g.label)));
 
   page.replaceChildren(
+    modTabs,
     h('div', { class: 'row' },
       h('span', { class: 'pill' }, `${t('charts.workspace')}:`, wsSelect),
       h('span', { class: 'muted small' }, isSample ? 'saved in this browser' : 'auto-saved to your account'),
       h('span', { class: 'spacer' }),
-      h('a', { class: 'btn', href: '#', onclick: (e) => { e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:CT ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
+      h('a', { class: 'btn', href: '#', onclick: (e) => { const g = isMod(ws.name) ? modOf(ws.name) : 'CT'; e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:${g === 'DX' ? 'DX,CR' : g} ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
       h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied. Sharing whole workspaces needs the server.'); } }, 'Share'),
-      h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog('Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { ws.panels = structuredClone(DEFAULT_PANELS); ws.q = DEFAULT_Q; saveWs(); reloadPage(); } } }, t('charts.reset')),
-      h('button', { class: 'btn danger', type: 'button', onclick: async () => {
+      h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog('Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { Object.assign(ws, defaultsOf(ws.name)); saveWs(); reloadPage(); } } }, t('charts.reset')),
+      isMod(ws.name) ? null : h('button', { class: 'btn danger', type: 'button', onclick: async () => {
         if (!await confirmDialog(`Delete the workspace “${ws.name}” and its panels? This cannot be undone.`, { title: 'Delete workspace', label: 'Delete', danger: true })) return;
         const left = wsNames().filter((n) => n !== ws.name);
         prefs.set(wsKey(ws.name), null);
