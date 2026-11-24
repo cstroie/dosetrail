@@ -113,6 +113,8 @@ class LocalDRLIn(BaseModel):
     start: dt.date
     end: dt.date
     min_n: int = 10
+    rule: str = "pooled"
+    p75_n: int = 30
     q: str = "origin:local"
     estimated: bool = False
     rows: list[dict]
@@ -561,16 +563,38 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.get("/api/drl/local/propose")
     def local_drl_propose(q: str = "origin:local", start: dt.date | None = None,
                           end: dt.date | None = None, grid: str = "national",
-                          min_n: int = 10, estimated: bool = False,
+                          min_n: int = 10, estimated: bool = False, rule: str = "pooled",
+                          p75_n: int = 30, scope: str = "all",
                           user: User = Depends(current_user), session: Session = Depends(db)):
-        """Proposed local DRLs: P75 of the room medians (ICRP 135); see localdrl.py."""
+        """Proposed local DRLs: P75 from p75_n values, else the median (rule pooled), or the
+        ICRP 135 room rule; see localdrl.py."""
         from .. import localdrl
 
         start, end = _period(start, end)
         try:
             out = localdrl.propose(session, _period_conds(q, start, end, session), grid,
-                                   max(min_n, 1), estimated)
+                                   max(min_n, 1), estimated, rule, max(p75_n, 1), scope)
         except localdrl.LocalDRLError as e:
+            raise HTTPException(400, str(e)) from e
+        return {**out, "start": start.isoformat(), "end": end.isoformat(), "q": q}
+
+    @app.get("/api/protocols/compare")
+    def protocols_compare(region: str, system: str = "ro-drl-ms838-2025",
+                          q: str = "origin:local", start: dt.date | None = None,
+                          end: dt.date | None = None, grid: str = "icrp",
+                          by: str = "protocol", by_device: bool = True, min_n: int = 10,
+                          estimated: bool = False, user: User = Depends(current_user),
+                          session: Session = Depends(db)):
+        """The protocols of one CT region side by side, per ICRP 135 patient group:
+        distributions of dose and technique, dose rank; see protocols.py."""
+        from .. import protocols
+
+        start, end = _period(start, end)
+        try:
+            out = protocols.compare(session, _period_conds(q, start, end, session), region,
+                                    system=system, grid=grid, by=by, by_device=by_device,
+                                    min_n=max(min_n, 1), estimated_weights=estimated)
+        except protocols.ProtocolsError as e:
             raise HTTPException(400, str(e)) from e
         return {**out, "start": start.isoformat(), "end": end.isoformat(), "q": q}
 
@@ -584,7 +608,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                                 start=body.start, end=body.end, min_n=body.min_n,
                                 query=body.q + ("" if body.estimated
                                                 else " (estimated weights left out)"),
-                                now=clock())
+                                now=clock(), rule=body.rule, p75_n=body.p75_n)
         except localdrl.LocalDRLError as e:
             session.rollback()
             raise HTTPException(400, str(e)) from e

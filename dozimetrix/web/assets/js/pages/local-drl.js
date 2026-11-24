@@ -15,7 +15,7 @@ const TONE = { below: 'ok', above: 'warn', well_above: 'alert' };
 const iso = (d) => d.toISOString().slice(0, 10);
 const today = new Date();
 const yearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate() + 1);
-const state = { start: iso(yearAgo), end: iso(today), grid: 'national', min_n: 10, q: 'origin:local', estimated: false };
+const state = { start: iso(yearAgo), end: iso(today), grid: 'national', min_n: 10, p75_n: 30, rule: 'pooled', scope: 'all', q: 'origin:local', estimated: false };
 
 function field(label, input) { return h('label', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'muted small' }, label), input); }
 
@@ -24,16 +24,23 @@ function periodBar(onRun, label) {
   return h('div', { class: 'toolbar' },
     field('From', inp('start', { type: 'date' })), field('to', inp('end', { type: 'date' })),
     field('Selection', inp('q', { class: 'w-160', type: 'text' })),
-    field('Min. values per room', inp('min_n', { class: 'w-70', type: 'number', min: 1 })),
+    field('Min. values (median)', inp('min_n', { class: 'w-70', type: 'number', min: 1 })),
+    field('Values for P75', inp('p75_n', { class: 'w-70', type: 'number', min: 1 })),
     h('button', { class: 'btn primary', type: 'button', onclick: onRun }, label));
 }
 
 async function render() {
   clear(page).append(adminTabs('local-drl.html'),
     h('h1', { class: 'section-title' }, 'Propose local DRLs'),
-    h('p', { class: 'muted small' }, 'Per examination and patient group: the median of each room (device) with enough values; the local DRL is the P75 of the room medians, or the median when one room qualifies (ICRP 135). CT per series; radiography, fluoroscopy and mammography per study. Studies excluded from DRL statistics (weight outside P5–P95, prematurity) are left out.'),
+    h('p', { class: 'muted small' }, 'Per examination and patient group, all rooms pooled: the local DRL is the P75 when there are enough values, otherwise the median (P50); fewer than the minimum: no value. The ICRP 135 room rule (P75 of the room medians) can be chosen below. CT per series; radiography, fluoroscopy and mammography per study. Studies excluded from DRL statistics (weight outside P5–P95, prematurity) are left out.'),
     periodBar(propose, 'Propose'),
     h('div', { class: 'toolbar' },
+      field('Rule', h('select', { class: 'input', onchange: (e) => { state.rule = e.target.value; } },
+        h('option', { value: 'pooled', selected: state.rule === 'pooled' }, 'Pooled: P75 if enough values, else median'),
+        h('option', { value: 'rooms', selected: state.rule === 'rooms' }, 'ICRP 135: P75 of the room medians'))),
+      field('Exams', h('select', { class: 'input', onchange: (e) => { state.scope = e.target.value; } },
+        h('option', { value: 'all', selected: state.scope === 'all' }, 'All, including those without a national DRL'),
+        h('option', { value: 'national', selected: state.scope === 'national' }, 'Only those with a national DRL'))),
       field('Groups', h('select', { class: 'input', onchange: (e) => { state.grid = e.target.value; } },
         h('option', { value: 'national', selected: state.grid === 'national' }, 'National age groups (OMS 838/2025)'),
         h('option', { value: 'icrp', selected: state.grid === 'icrp' }, 'ICRP 135 / RP 185: head by age, body by weight'))),
@@ -62,13 +69,14 @@ async function propose() {
     const rooms = x.rooms.map((d) => `${d.device_name}: median ${shown(d.median, x.unit)} (n ${d.n})${d.counts ? '' : ' — too few'}`).join('\n');
     body.append(h('tr', {},
       h('td', {}, box),
-      h('td', { title: x.exam }, x.exam === last ? '' : x.exam_meaning),
+      h('td', { title: x.exam }, x.exam === last ? '' : x.exam_meaning, x.local_only && x.exam !== last ? h('span', { class: 'tag', title: 'no national or European DRL for this exam: local only' }, ' local only') : null),
       h('td', {}, x.band_label), h('td', {}, QTY[x.quantity] || x.quantity),
       h('td', { class: 'r' }, num(x.n)), h('td', { class: 'r', title: rooms }, `${x.n_rooms}/${x.rooms.length}`),
       h('td', { class: 'r' }, value), h('td', {}, shownUnit(x.unit).unit),
-      h('td', { class: 'muted small' }, x.method === 'p75_rooms' ? 'P75 rooms' : x.method === 'median_room' ? 'median (1 room)' : 'too few'),
+      h('td', { class: 'muted small' }, x.method === 'p75' ? 'P75' : x.method === 'median' ? 'median (P50)' : x.method === 'p75_rooms' ? 'P75 rooms' : x.method === 'median_room' ? 'median (1 room)' : 'too few'),
       h('td', { class: 'r' }, x.reference == null ? '—' : shown(x.reference, x.unit)),
       h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, `${num(x.ratio, 2)}×`) : '',
+        x.outlier_rooms.length ? h('span', { class: 'tag warn', title: `room median over 3× or under ⅓ of the pooled median — check the classification and units before adopting: ${x.outlier_rooms.join(', ')}` }, ' room outlier') : null,
         x.n_phantom32 ? h('span', { class: 'tag warn', title: 'head CT series reported on the 32 cm (body) phantom (about half the 16 cm value): left out of the proposal' }, ` 32 cm left out: ${x.n_phantom32}`) : null)));
     last = x.exam;
   }
@@ -78,7 +86,7 @@ async function propose() {
     if (!chosen.length) { toast('Choose at least one value.'); return; }
     if (!(await confirmDialog(`Adopt ${chosen.length} values as "${name.value}"?`, { title: 'Adopt values', label: 'Adopt' }))) return;
     try {
-      const res = await adoptLocalDrl({ name: name.value, grid: r.grid, start: r.start, end: r.end, min_n: r.min_n, q: r.q, estimated: r.estimated_weights, rows: chosen });
+      const res = await adoptLocalDrl({ name: name.value, grid: r.grid, start: r.start, end: r.end, min_n: r.min_n, rule: r.rule, p75_n: r.p75_n, q: r.q, estimated: r.estimated_weights, rows: chosen });
       toast(`Adopted: ${res.name} (${res.values} values)`); loadSets();
     } catch (e) { toast(e.message); }
   };
