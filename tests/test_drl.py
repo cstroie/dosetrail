@@ -55,6 +55,9 @@ def test_national_set_per_series_and_per_study(session, data):
     assert ap["groups"][0]["n"] == 1 and ap["groups"][0]["median"] == pytest.approx(0.15)
     assert _row(out, "CT-TORACE", "1-4y", "dlp")["status"] == "no_data"
     assert _row(out, "NM-RENAL-DMSA", "1-4y", "activity")["status"] == "no_data"
+    # each row belongs to one modality group: the page shows one table per group
+    assert ct["group"] == "CT" and ap["group"] == "DX"
+    assert _row(out, "NM-RENAL-DMSA", "1-4y", "activity")["group"] == "NM"
 
 
 def test_activity_per_study_and_mammography_per_breast(session, data):

@@ -28,7 +28,9 @@ const state = {
   minN: prefs.get('drl.minN') || 20,
   estimated: false,
   showEmpty: false,
+  group: prefs.get('drl.group') || null,
 };
+const GROUP_LABEL = { CT: 'CT', DX: 'DX/CR', RF: 'RF', XA: 'XA', MG: 'MG', NM: 'NM', PT: 'PT' };
 
 function unit(u) { return UNITS[u] || u; }
 
@@ -82,6 +84,7 @@ async function render() {
       h('button', { class: 'btn', type: 'button', title: 'Per room and facility: n, median, quartiles, DRL ratio (XLSX)', onclick: download('summary') }, 'ICRP 135 summary'),
       h('button', { class: 'btn', type: 'button', title: 'One row per study and DRL exam, pseudonymous, with a data dictionary (XLSX)', onclick: download('dataset') }, 'DRL dataset')),
     qb,
+    h('nav', { id: 'drl-groups', class: 'tabs', 'aria-label': 'Modality' }),
     h('div', { id: 'drl-kpis', class: 'kpis drl-kpis' }),
     h('p', { id: 'drl-source', class: 'muted small' }),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid', id: 'drl-table' }))),
@@ -106,9 +109,18 @@ async function load() {
 
 function draw() {
   if (!last) return;
-  const rows = last.rows.filter((r) => state.showEmpty || r.groups.length);
+  // one table per modality group: a DLP row never sits next to a DAP or MGD row
+  const present = Object.keys(GROUP_LABEL).filter((k) => last.rows.some((r) => r.group === k));
+  if (!present.includes(state.group)) state.group = present.find((k) => last.rows.some((r) => r.group === k && r.groups.length)) || present[0] || null;
+  append(clear(document.getElementById('drl-groups')), present.map((k) => {
+    const n = last.rows.filter((r) => r.group === k && r.groups.length).length;
+    return h('button', { type: 'button', 'aria-current': k === state.group ? 'page' : false,
+      onclick: () => { state.group = k; prefs.set('drl.group', k); draw(); } }, `${GROUP_LABEL[k]} `, h('span', { class: 'muted' }, `(${n})`));
+  }));
+  const mine = last.rows.filter((r) => r.group === state.group);
+  const rows = mine.filter((r) => state.showEmpty || r.groups.length);
   const counts = {};
-  for (const r of last.rows) for (const g of r.groups) counts[g.status] = (counts[g.status] || 0) + 1;
+  for (const r of mine) for (const g of r.groups) counts[g.status] = (counts[g.status] || 0) + 1;
   append(clear(document.getElementById('drl-kpis')), 
     ['well_above', 'above', 'below', 'insufficient'].map((s) => h('div', { class: 'kpi' },
       h('span', { class: 'code' }, STATUS[s][1]), h('span', { class: 'v' }, num(counts[s] || 0)),
@@ -136,7 +148,7 @@ function draw() {
         h('td', {}, tag(g ? g.status : r.status))));
     });
   }
-  if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, 'No exam of this reference set has data for the query.')));
+  if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, `No ${GROUP_LABEL[state.group] || ''} exam of this reference set has data for the query.`)));
   clear(document.getElementById('drl-table')).append(head, body);
 }
 
