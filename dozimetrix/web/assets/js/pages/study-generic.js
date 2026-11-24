@@ -8,9 +8,11 @@ import { indicationRow } from '../components/indication.js';
 import { h, toast } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
-import { num, smart, dap, dapUnit, clock } from '../core/format.js';
+import { num, smart, dap, dapUnit, clock, DAP_UNITS } from '../core/format.js';
 import { studyHref, setGlandularity, isSample } from '../core/api.js';
 import { studyNav } from '../core/study-nav.js';
+import '../components/dx-chart.js';
+import { baseOption } from '../components/dx-chart.js';
 
 const SYSTEMS = { 'ro-nom-ct': 'Nomenclator CT', 'ro-nom-rx': 'Nomenclator radiologie', 'ro-drl-ms838-2025': 'NRD OMS 838/2025',
   'ec-rp185': 'EU RP 185', 'ro-insp-1255-ct': 'INSP 1255 CT', 'ro-insp-1255-rx': 'INSP 1255 radiologie',
@@ -53,6 +55,96 @@ function drlReadout(best, what) {
   if (!best) return readout(`${what} / DRL`, '—', '', 'no DRL for this exam');
   const pct = Math.round(best.q * 100);
   return readout(`${what} / DRL`, `${pct}%`, '', `highest: ${best.e.protocol || best.e.projection || best.e.view || `#${best.e.no ?? ''}`}${best.e.drl?.code ? ` · ${best.e.drl.code}` : ''}`, { hot: best.q > 1 });
+}
+
+// ---------------------------------------------------------------- timeline chart
+// Like the RF/XA "Running Ka,r" panel: each event as a bar at its time (its dose), and the
+// running total as a step line. CT: series DLP (localizers faded) and Σ DLP; DX/CR: DAP
+// per exposure and Σ DAP; MG: AGD per view, coloured by breast, and Σ AGD per breast;
+// NM/PET: activity per administration (only with two or more). Needs event times.
+const TIMELINE = {
+  ct: { title: 'Running DLP and series', bar: 'DLP', unit: 'mGy·cm', value: (e) => e.dlp, label: (e) => e.protocol || 'series' },
+  rx: { title: 'Running DAP and exposures', bar: 'DAP', unit: null, value: (e) => e.dap_gycm2, label: (e) => [e.projection, e.anatomy].filter(Boolean).join(' · ') || 'exposure' },
+  mg: { title: 'Running AGD and views', bar: 'AGD', unit: 'mGy', value: (e) => e.agd_mgy, label: (e) => [e.laterality, e.view].filter(Boolean).join(' ') || 'view' },
+  nm: { title: 'Administrations', bar: 'Activity', unit: 'MBq', value: (e) => e.activity_mbq, label: (e) => e.agent || 'administration' },
+};
+
+function timelinePanel(kind, events, grid) {
+  const cfg = TIMELINE[kind];
+  const timed = events.filter((e) => e.time && cfg.value(e) != null);
+  if (timed.length < 2) return null;  // one event: the readouts say it all
+  timed.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+  const t0 = new Date(timed[0].time).getTime();
+  const mins = (e) => (new Date(e.time).getTime() - t0) / 60000;
+  const isDap = kind === 'rx';
+  const f = isDap ? DAP_UNITS[dapUnit()].factor : 1;
+  const unit = cfg.unit || dapUnit();
+  let selected = null;
+  const option = (th) => {
+    const base = baseOption(th);
+    const side = (e) => (kind === 'mg' ? (e.laterality === 'L' ? 1 : 0) : 0);
+    const colors = [th.devices[0], th.devices[1]];
+    // running totals: one line, or one per breast
+    const lines = kind === 'mg' ? ['R', 'L'] : [null];
+    const runs = lines.map((lat) => {
+      let acc = 0;
+      const pts = [[0, 0]];
+      for (const e of timed) {
+        if (lat && e.laterality !== lat) continue;
+        pts.push([mins(e), acc]);
+        acc += cfg.value(e) * f;
+        pts.push([mins(e), acc]);
+      }
+      return { lat, pts };
+    });
+    const span = Math.max(mins(timed[timed.length - 1]), 0.5);
+    const clockAt = (v) => { const d = new Date(t0 + v * 60000); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+    return {
+      ...base,
+      legend: { ...base.legend, left: 'center' },
+      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => {
+        if (p.seriesType === 'line') return `${p.seriesName} ${num(p.value[1], 2)} ${unit}`;
+        const e = timed[p.data.i];
+        return `#${e.no} ${cfg.label(e)}<br>${clock(e.time)} · ${cfg.bar} ${num(cfg.value(e) * f, 2)} ${unit}${e.localizer ? ' · localizer' : ''}`;
+      } },
+      grid: { left: 66, right: 70, top: 34, bottom: 30 },
+      xAxis: { type: 'value', min: -span * 0.03, max: span * 1.03, ...base._axis, splitLine: { show: false },
+        axisLabel: { ...base._axis.axisLabel, formatter: clockAt, hideOverlap: true } },
+      yAxis: [
+        { type: 'value', name: `${cfg.bar} ${unit}`, nameLocation: 'middle', nameGap: 48, nameRotate: 90, min: 0, splitNumber: 3, ...base._axis },
+        { type: 'value', name: `Σ ${cfg.bar}`, nameLocation: 'middle', nameGap: 52, nameRotate: 90, min: 0, splitNumber: 3, position: 'right', ...base._axis, splitLine: { show: false } },
+      ],
+      series: [
+        { name: cfg.bar, type: 'bar', yAxisIndex: 0, barWidth: 6, barGap: '-100%',
+          data: timed.map((e, i) => ({ value: [mins(e), cfg.value(e) * f], i,
+            itemStyle: { color: colors[side(e)], opacity: e.localizer ? 0.35 : 1,
+              borderColor: e.no === selected ? th.text : 'transparent', borderWidth: e.no === selected ? 2 : 0 } })) },
+        ...runs.map((r, k) => ({ name: r.lat ? `Σ ${cfg.bar} ${r.lat === 'L' ? 'left' : 'right'}` : `Σ ${cfg.bar}`, type: 'line', yAxisIndex: 1,
+          data: r.pts, showSymbol: false, z: 3, lineStyle: { color: r.lat ? colors[k === 0 ? 0 : 1] : th.accent, width: 2, type: r.lat ? 'dashed' : 'solid' },
+          itemStyle: { color: r.lat ? colors[k === 0 ? 0 : 1] : th.accent } })),
+      ],
+    };
+  };
+  const chart = h('dx-chart', { label: `${cfg.title}: each ${cfg.bar} as a bar at its time, the running total as a line`, height: '280' });
+  let bound = false;
+  const draw = () => {
+    chart.draw(option);
+    if (bound || !chart.instance) return;  // on() needs the chart drawn once
+    bound = true;
+    chart.on('click', (ev) => {
+      if (ev.data?.i === undefined) return;
+      selected = timed[ev.data.i].no;
+      grid.focusById(selected);
+      draw();
+    });
+  };
+  queueMicrotask(draw);  // once the panel is in the page
+  document.addEventListener('dx-unit-change', draw);
+  grid.addEventListener('row-focus', (e) => { if (e.detail?.no !== selected) { selected = e.detail?.no ?? null; draw(); } });
+  return h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
+    h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, cfg.title), h('span', { class: 'spacer' }),
+      h('span', { class: 'muted small' }, kind === 'mg' ? 'colour = breast · click a bar to find it in the table' : kind === 'ct' ? 'faded = localizer · click a bar to find it in the table' : 'click a bar to find it in the table')),
+    h('div', { class: 'panel-body' }, chart));
 }
 
 function ctColumns() {
@@ -253,7 +345,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
         hisPanel(s),
         alerts.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Alerts')), ...alerts) : null,
         findings.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Data quality')), ...findings) : null),
-      h('div', { class: 'main' }, grid, adminGrid,
+      h('div', { class: 'main' }, timelinePanel(kind, shown, grid), grid, adminGrid,
         h('p', { class: 'muted small' }, ct
           ? 'DRL per series: national OMS 838/2025 DLP for the exam and age group, else RP 185; CTDIvol from RP 185 (head by age, body by weight). Localizers excluded.'
           : kind === 'nm' ? 'Administered activity per injection; a delayed scan of the same injection counts it once, on the first study.'
