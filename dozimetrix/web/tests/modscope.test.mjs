@@ -2,7 +2,7 @@
 //   node --test dozimetrix/web/tests/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitModality, scopeQuery, groupOf, retab, withoutAuto, normaliseSaved } from '../assets/js/core/query.js';
+import { parse, splitModality, scopeQuery, groupOf, retab, withoutAuto, normaliseSaved, scopeWarnings } from '../assets/js/core/query.js';
 
 const P = [
   { code: 'CT', modalities: ['CT'] }, { code: 'DX', modalities: ['DX', 'CR'] }, { code: 'RF', modalities: ['RF'] },
@@ -87,4 +87,19 @@ test('normaliseSaved: old queries get a mod, new ones are kept', () => {
   assert.deepEqual(normaliseSaved({ name: 'd', q: 'modality:CR' }, P), { name: 'd', q: 'modality:CR', mod: 'DX' });
   const kept = { name: 'e', q: 'x', mod: null };
   assert.equal(normaliseSaved(kept, P), kept);
+});
+
+test('scopeWarnings explains an empty list without changing the query', () => {
+  const devs = new Map([[1, { display_name: 'CT 1', model: 'X', station: 'S1', modality: 'CT' }],
+    [2, { display_name: 'Room 2', model: 'Y', station: 'S2', modality: 'DX' }]]);
+  const w = (q, mod, o) => scopeWarnings(parse(q), mod, P, devs, o);
+  assert.deepEqual(w('age:>=18 dlp:>500', 'DX'), [null, 'only for CT, NM, PT: nothing on DX has it']);
+  assert.deepEqual(w('~ctdi:>5', 'DX'), [null]);
+  assert.deepEqual(w('dlp:>500', null), [null]);
+  assert.match(w('device:"CT 1"', 'DX')[0], /no DX device matches \(CT only\)/);
+  assert.deepEqual(w('device:"CT 1","Room 2"', 'DX'), [null]);
+  assert.deepEqual(w('device:nowhere', 'DX'), [null]);
+  assert.match(w('modality:CT modality:DX', null)[1], /exclude each other/);
+  assert.deepEqual(w('modality:CT,DX modality:DX', null), [null, null]);
+  assert.match(w('modality:CT date:7d', null, { tabsOwn: true })[0], /tabs choose/);
 });

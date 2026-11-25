@@ -5,6 +5,7 @@
 import '../components/dx-shell.js';
 import '../components/dx-query-bar.js';
 import { h, clear, append, toast } from '../core/dom.js';
+import { scopeWarnings } from '../core/query.js';
 import { num, smart, shown, shownUnit } from '../core/format.js';
 import { drlSets, drlCompare, drlDownloadUrl } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
@@ -69,6 +70,7 @@ async function render() {
     onchange: (e) => { state.minN = Math.max(1, Number(e.target.value) || 20); prefs.set('drl.minN', state.minN); load(); } });
   const empty = h('label', { class: 'chk' }, h('input', { type: 'checkbox', onchange: (e) => { state.showEmpty = e.target.checked; draw(); } }), ' show groups without data');
   const qb = h('dx-query-bar', { value: state.q });
+  qb.check = (toks) => scopeWarnings(toks, null, [], null, { tabsOwn: true });
   qb.addEventListener('query-change', (e) => { state.q = e.detail; prefs.set('drl.q', state.q); load(); });
 
   const download = (kind) => () => {

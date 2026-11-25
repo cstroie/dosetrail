@@ -12,7 +12,7 @@ import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
 import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, dropCache, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
-import { splitModality, scopeQuery, retab, withoutAuto, normaliseSaved } from '../core/query.js';
+import { splitModality, scopeQuery, retab, withoutAuto, normaliseSaved, scopeWarnings } from '../core/query.js';
 import { live } from '../core/live.js';
 import { rememberList } from '../core/study-nav.js';
 
@@ -264,6 +264,7 @@ async function init() {
 
   const qb = h('dx-query-bar', { value: currentQ });
   qb.context = { devices: physical, drl: drlSet.ct_dlp_mgycm };
+  qb.check = (toks) => scopeWarnings(toks, mod, profiles, physical);  // why a filter may empty this tab
   const tabsHost = h('div');
   const previewBody = h('div');
   let profile = profileOf(profiles, eff());
@@ -324,6 +325,7 @@ async function init() {
     mod = target;
     currentQ = text;
     if (qb.value !== currentQ) qb.value = currentQ;
+    else qb.refresh();  // the notes depend on the tab
     const p = profileOf(profiles, eff());
     if (p !== profile) setProfile(p);
     grid.setState({ page: 1 });

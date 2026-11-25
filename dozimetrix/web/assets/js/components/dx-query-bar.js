@@ -5,6 +5,9 @@
 // the token being typed gets suggestions (Tab / Enter completes). Fires
 // `query-change` with detail = the full query string whenever the tokens change.
 // Set `.context = { devices: Map, drl: {protocol: value} }` to enrich suggestions.
+// Set `.check = (tokens) => [note | null, …]` for notes that explain an empty result (a filter
+// that cannot match on the tab open, …): shown on the chip and under the bar, nothing changed.
+// Call `.refresh()` when what the notes depend on changes (the page's tab).
 
 import { h, clear } from '../core/dom.js';
 import { parse, serialize, suggest, tokenToString, KEYS } from '../core/query.js';
@@ -29,21 +32,28 @@ class DtQueryBar extends HTMLElement {
   get value() { return serialize(this.tokens); }
   set value(v) { this.tokens = parse(v); if (this.chips) this.renderChips(); }
 
+  refresh() { if (this.chips) this.renderChips(); }
+
   renderChips() {
     clear(this.chips);
+    let notes = [];
+    try { notes = this.check ? this.check(this.tokens) || [] : []; } catch { notes = []; }
     this.tokens.forEach((tok, i) => {
+      const note = !tok.error && !tok.off ? notes[i] : null;
       const def = KEYS[tok.key];
       const key = tok.key === 'text' ? 'text' : (tok.neg ? '−' : '') + tok.key;
       const val = def?.kind === 'flag' ? '' : tok.value;
       const what = tokenToString({ ...tok, off: false });
-      this.chips.append(h('span', { class: `qb-tok ${tok.neg ? 'neg' : ''} ${tok.error ? 'bad' : ''} ${tok.off ? 'off' : ''}`, title: tok.error || def?.hint || '' },
+      this.chips.append(h('span', { class: `qb-tok ${tok.neg ? 'neg' : ''} ${tok.error ? 'bad' : ''} ${tok.off ? 'off' : ''} ${note ? 'warn' : ''}`, title: tok.error || note || def?.hint || '' },
         h('button', { type: 'button', class: 'qb-key', 'aria-pressed': String(!tok.off),
           'aria-label': `${what}: ${tok.off ? 'off' : 'on'}`, title: tok.off ? `Off. Click to apply ${what}` : `On. Click to switch off ${what} (it stays here)`,
           onclick: () => this.toggle(i) }, key), val ? h('span', {}, val.replace(/"/g, '')) : null,
         h('button', { type: 'button', 'aria-label': `Remove ${tokenToString(tok)}`, title: `Remove ${tokenToString(tok)}`, onclick: () => this.remove(i) }, '×')));
     });
     const bad = this.tokens.find((x) => x.error && !x.off);
-    this.error.textContent = bad ? `${tokenToString(bad)}: ${bad.error}` : '';
+    const w = this.tokens.findIndex((x, i) => !x.error && !x.off && notes[i]);
+    this.error.textContent = bad ? `${tokenToString(bad)}: ${bad.error}` : w >= 0 ? `${tokenToString(this.tokens[w])}: ${notes[w]}` : '';
+    this.error.classList.toggle('warn', !bad && w >= 0);
   }
 
   /** Switch a filter off or on without losing it ("~" in the query string). */

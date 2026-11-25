@@ -337,3 +337,30 @@ export function normaliseSaved(s, profiles) {
   const r = splitModality(s?.q || '', profiles);
   return { ...s, q: r.q, mod: r.multi ? 'all' : r.mod };
 }
+
+/**
+ * Why a filter may empty the list on the tab `mod` (null = All): one note per token, or null.
+ * Notes only: nothing is changed or left out. `devices` = Map(id → {display_name, model,
+ * station, modality}). With `tabsOwn` (pages whose tabs split the results by modality: Charts,
+ * DRL) any modality filter gets a note.
+ */
+export function scopeWarnings(tokens, mod, profiles, devices = null, { tabsOwn = false } = {}) {
+  const p = profiles.find((x) => x.code === mod);
+  const label = (codes) => codes.map((c) => profiles.find((x) => x.code === c)?.label ?? c).join(', ');
+  const pos = tokens.filter((t) => isMod(t) && !t.off && !t.neg);
+  const clash = pos.length > 1 && !pos.map(modSet).reduce((a, s) => a.filter((m) => s.includes(m))).length;
+  return tokens.map((t) => {
+    if (t.off || t.error) return null;
+    if (tabsOwn && t.key === 'modality') return 'the tabs choose the modality: this filter leaves the other tabs empty';
+    if (isMod(t) && !t.neg && clash) return 'these modality filters exclude each other: nothing can match';
+    if (p && GROUP_KEYS[t.key] && !GROUP_KEYS[t.key].includes(p.code)) return `only for ${label(GROUP_KEYS[t.key])}: nothing on ${p.label ?? p.code} has it`;
+    if (p && t.key === 'device' && !t.neg && devices) {
+      const want = splitList(t.value).map((x) => x.toLowerCase());
+      const hit = [...devices.values()].filter((d) => want.some((w) => `${d.display_name || ''} ${d.model || ''} ${d.station || ''}`.toLowerCase().includes(w)));
+      if (hit.length && !hit.some((d) => !d.modality || p.modalities.includes(String(d.modality).toUpperCase()))) {
+        return `no ${p.label ?? p.code} device matches (${[...new Set(hit.map((d) => d.modality))].join(', ')} only)`;
+      }
+    }
+    return null;
+  });
+}

@@ -23,6 +23,8 @@ dx-query-bar { display: block; position: relative; }
 .qb-tok .qb-key:hover { color: var(--text); background: var(--accent-soft); }
 .qb-tok .qb-key:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .qb-tok.off { border-style: dotted; }
+.qb-tok.warn { border-color: var(--warn); }
+.qb-error.warn { color: var(--warn); }
 .qb-tok.off .qb-key, .qb-tok.off span { opacity: .5; }
 .qb-tok span { padding: 0 6px; }
 .qb-tok button:not(.qb-key) { height: 100%; width: 22px; border: 0; border-left: 1px solid var(--line-2); background: none; color: var(--muted); cursor: pointer; }
@@ -44,7 +46,7 @@ dx-query-bar { display: block; position: relative; }
 .tabs .tab-x { padding: 7px 8px 7px 2px; color: var(--muted); }
 .tabs .tab-x:hover { color: var(--alert); }
 .tabs .tab-share:hover { color: var(--accent, var(--text)); }
-.tabs .tab-other { appearance: none; -webkit-appearance: none; padding: 7px 12px; font: inherit; font-size: var(--fs-sm); color: var(--muted); border: 0; background: none; cursor: pointer; }
+.tabs .tab-other { field-sizing: content; appearance: none; -webkit-appearance: none; padding: 7px 12px; font: inherit; font-size: var(--fs-sm); color: var(--muted); border: 0; background: none; cursor: pointer; }
 .tabs .tab-other:hover, .tabs .tab-other:focus-visible { color: var(--text); }
 .tabs .tab-other option { color: var(--text); background: var(--panel, var(--bg)); }
 .tabs [aria-current="page"] { color: var(--text); border-color: var(--accent); }

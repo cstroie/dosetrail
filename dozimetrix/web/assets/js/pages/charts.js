@@ -9,6 +9,7 @@ import '../components/dx-query-bar.js';
 import '../components/dx-chart.js';
 import { baseOption } from '../components/dx-chart.js';
 import { h, clear, toast, esc } from '../core/dom.js';
+import { scopeWarnings } from '../core/query.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
 import { groupRows, physicalDevices, drl, isSample, getPref, putPref, me, sharedViews, createView, updateView, deleteView } from '../core/api.js';
@@ -684,6 +685,7 @@ async function init() {
   if (urlQ) ws.q = urlQ.split(' ').filter((x) => !/^(modality|age|acc|pid|spiral|axial|loc|dlp|ctdi|flag):/.test(x) && x !== '-phantom').join(' ');
 
   const qb = h('dx-query-bar', { value: ws.q });
+  qb.check = (toks) => scopeWarnings(toks, null, [], null, { tabsOwn: true });
   qb.context = { devices: new Map(devices.map((d) => [d.id, d])), drl: drlSet.ct_dlp_mgycm };
   qb.addEventListener('query-change', (e) => { ws.q = e.detail; saveWs(); loadRows(); });
   countEl = h('span', { class: 'muted mono' });
@@ -743,7 +745,7 @@ async function init() {
       h('span', { class: 'muted small' }, note),
       dirtyEl,
       h('span', { class: 'spacer' }),
-      h('a', { class: 'btn', href: '#', onclick: (e) => { const g = isMod(ws.name) ? modOf(ws.name) : 'CT'; e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:${g === 'DX' ? 'DX,CR' : g} ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
+      h('a', { class: 'btn', href: '#', onclick: (e) => { const g = isMod(ws.name) ? modOf(ws.name) : 'CT'; e.currentTarget.href = `studies.html?mod=${g}&q=${encodeURIComponent(`${ws.q} -phantom`.trim())}`; } }, 'Studies ↗'),
       h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied.'); } }, 'Copy link'),
       isShared && !isAdmin ? h('button', { class: 'btn', type: 'button', onclick: saveMine }, 'Copy to mine')
         : h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog(isShared ? 'Reset this shared workspace to the default panels, for everyone?' : 'Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { Object.assign(ws, defaultsOf(ws.name)); saveWs(); reloadPage(); } } }, t('charts.reset')),
