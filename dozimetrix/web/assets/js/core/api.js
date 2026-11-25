@@ -35,8 +35,13 @@ function remember(url, promise) {
 async function getJSON(url) {
   let promise = cached(url);
   if (!promise) {
-    promise = fetch(url, { headers: { Accept: 'application/json' } }).then((r) => {
-      if (!r.ok) throw new Error(`${r.status} ${r.statusText} — ${url}`);
+    promise = fetch(url, { headers: { Accept: 'application/json' } }).then(async (r) => {
+      if (!r.ok) {
+        // the server's own words ("query not understood: …") rather than the bare status
+        const body = await r.json().catch(() => ({}));
+        const said = body.error || (typeof body.detail === 'string' ? body.detail : null);
+        throw new Error(said || `${r.status} ${r.statusText} — ${url}`);
+      }
       return r.json();
     });
     remember(url, promise);
