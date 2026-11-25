@@ -802,7 +802,17 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(400, "end is too far in the future")
         return start, end
 
+    def _no_period_in(q: str) -> None:
+        """Local DRLs take their period from start/end, which the set records: a date: in the
+        selection would narrow it without saying so."""
+        from .query import parse
+
+        if any(t.key == "date" for t in parse(q)):
+            raise data.QueryError("the period is set by From and To: remove date: from the "
+                                  "selection")
+
     def _period_conds(q: str, start: dt.date, end: dt.date, session: Session) -> list:
+        _no_period_in(q)
         return [*data.checked_conditions(q, clock(), data.overrides(session)),
                 Study.study_datetime >= dt.datetime.combine(start, dt.time()),
                 Study.study_datetime < dt.datetime.combine(end + dt.timedelta(days=1),
@@ -854,6 +864,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                         session: Session = Depends(db)):
         from .. import localdrl
 
+        _no_period_in(body.q)
         try:
             rs = localdrl.adopt(session, body.rows, name=body.name, grid=body.grid,
                                 start=body.start, end=body.end, min_n=body.min_n,

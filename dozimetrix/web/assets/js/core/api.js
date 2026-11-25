@@ -382,7 +382,7 @@ export function localDrlReview(params) {
 export function localDrlReviewUrl(params) {
   if (isSample) return null;
   const u = new URL('/api/drl/local/review', MODE);
-  for (const [k, v] of Object.entries({ ...params, format: 'xlsx' })) if (v != null && v !== '') u.searchParams.set(k, String(v));
+  for (const [k, v] of Object.entries({ ...params, q: active(params.q ?? ''), format: 'xlsx' })) if (v != null && v !== '') u.searchParams.set(k, String(v));
   return u.href;
 }
 

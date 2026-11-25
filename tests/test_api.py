@@ -1244,3 +1244,19 @@ def test_heavy_endpoints_reuse_their_answer_until_something_changes(client, monk
     login(client, "boss", "boss-pass-123")  # a login is audited: the answers are recomputed
     client.get("/api/stats/DX/rows", params={"q": "modality:DX"})
     assert len(calls) == 3
+
+
+def test_local_drl_refuses_a_date_in_the_selection(client):
+    """Local DRLs take their period from start/end (recorded with the set): a date: in the
+    selection would narrow it without the set saying so."""
+    login(client, "viewer", "viewer-pass-1")
+    p = {"start": "2025-01-01", "end": "2025-12-31"}
+    assert client.get("/api/drl/local/propose", params={**p, "q": "origin:local"}).status_code == 200
+    r = client.get("/api/drl/local/propose", params={**p, "q": "origin:local date:30d"})
+    assert r.status_code == 400 and "From and To" in r.json()["error"]
+    r = client.get("/api/drl/local/review", params={**p, "set": "x", "q": "date:30d"})
+    assert r.status_code == 400
+    login(client, "boss", "boss-pass-123")
+    r = client.post("/api/drl/local", json={"name": "t", "start": "2025-01-01", "end": "2025-12-31",
+                                            "q": "date:2025-06-01..", "rows": []})
+    assert r.status_code == 400

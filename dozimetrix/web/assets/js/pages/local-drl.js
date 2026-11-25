@@ -4,6 +4,7 @@
 
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
+import '../components/dx-query-bar.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, section, toast } from '../core/dom.js';
 import { num, smart, shown, shownUnit } from '../core/format.js';
@@ -19,11 +20,20 @@ const state = { start: iso(yearAgo), end: iso(today), grid: 'national', min_n: 1
 
 function field(label, input) { return h('label', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'muted small' }, label), input); }
 
+// the studies the values come from (the typed query of the Studies list); the period is From/To:
+// a date: here would narrow it without the adopted set saying so, and the server refuses it
+function selectionBar() {
+  const qb = h('dx-query-bar', { value: state.q, style: { 'min-width': '280px' } });
+  qb.check = (toks) => toks.map((t) => (t.key === 'date' ? 'the period is From and To: remove this filter' : null));
+  qb.addEventListener('query-change', (e) => { state.q = e.detail; });
+  return qb;
+}
+
 function periodBar(onRun, label) {
   const inp = (k, attrs) => h('input', { class: 'input', value: state[k], ...attrs, onchange: (e) => { state[k] = attrs.type === 'number' ? Number(e.target.value) : e.target.value; } });
   return h('div', { class: 'toolbar' },
     field('From', inp('start', { type: 'date' })), field('to', inp('end', { type: 'date' })),
-    field('Selection', inp('q', { class: 'w-160', type: 'text' })),
+    field('Selection', selectionBar()),
     field('Min. values (median)', inp('min_n', { class: 'w-70', type: 'number', min: 1 })),
     field('Values for P75', inp('p75_n', { class: 'w-70', type: 'number', min: 1 })),
     h('button', { class: 'btn primary', type: 'button', onclick: onRun }, label));
