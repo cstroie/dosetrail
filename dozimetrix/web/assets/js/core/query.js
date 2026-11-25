@@ -226,3 +226,112 @@ export function suggest(partial, ctx = {}) {
     .slice(0, 8)
     .map((o) => ({ insert: `${neg}${key}:${o.v}`, label: `${key}:${o.v}`, hint: o.hint }));
 }
+
+// ---------------------------------------------------------------- modality scope
+// Pages with modality tabs (Studies) keep the modality out of the query text: the tab owns
+// it. `profiles` are /api/modalities groups: [{code, modalities: ['DX', 'CR'], …}].
+// One rule everywhere: never broaden. A token naming a group's whole set becomes the tab;
+// a token naming part of one group (modality:CR) picks that tab and stays as a narrowing.
+
+const modSet = (t) => splitList(t.value).map((m) => m.toUpperCase());
+const isMod = (t) => t.key === 'modality' && !t.error;
+
+/** Keys that only mean something for some groups (by profile code); absent = every group. */
+export const GROUP_KEYS = { dlp: ['CT', 'NM', 'PT'], ctdi: ['CT'], spiral: ['CT'], axial: ['CT'], loc: ['CT'] };
+
+/** The one group the active modality tokens of `q` restrict it to, or null (none, or several). */
+export function groupOf(q, profiles) {
+  let allowed = null;
+  for (const t of parse(q)) {
+    if (!isMod(t) || t.off || t.neg) continue;
+    const s = modSet(t);
+    allowed = allowed ? allowed.filter((m) => s.includes(m)) : s;
+  }
+  if (!allowed || !allowed.length) return null;
+  const hit = profiles.filter((p) => allowed.some((m) => p.modalities.includes(m)));
+  const stray = allowed.some((m) => !profiles.some((p) => p.modalities.includes(m)));
+  return hit.length === 1 && !stray ? hit[0] : null;
+}
+
+/**
+ * Split the modality out of a query. Returns {mod, q, dropped}:
+ * mod = profile code, null when the query names no modality (or several groups: then the
+ * tokens stay in q and `multi` is true). Tokens made redundant by the tab are removed:
+ * positive ones covering the whole group, negated ones not touching it (listed in `dropped`).
+ * `current` = the tab open now: used when q names no modality (a negation is checked against it).
+ */
+export function splitModality(q, profiles, current = null) {
+  const toks = parse(q);
+  const pos = toks.filter((t) => isMod(t) && !t.off && !t.neg);
+  let mod = current;
+  let multi = false;
+  if (pos.length) {
+    const g = groupOf(q, profiles);
+    mod = g ? g.code : null;
+    multi = !g;
+  }
+  const p = profiles.find((x) => x.code === mod);
+  const dropped = [];
+  const keep = !p ? toks : toks.filter((t) => {
+    if (!isMod(t) || t.off) return true;
+    const s = modSet(t);
+    if (!t.neg) return !p.modalities.every((m) => s.includes(m));  // covers the group: the tab says it
+    if (s.some((m) => p.modalities.includes(m))) return true;      // -modality:CR on DX narrows
+    dropped.push(tokenToString(t));
+    return false;
+  });
+  return { mod, q: serialize(keep), dropped, multi };
+}
+
+/** The query as the server gets it: the tab's modality, then the filters. */
+export function scopeQuery(mod, q, profiles) {
+  const p = profiles.find((x) => x.code === mod);
+  if (!p) return q || '';
+  return [`modality:${p.modalities.join(',')}`, q].filter(Boolean).join(' ');
+}
+
+// does an (active-form) token apply on the tab `code` (null = All)?
+function fits(t, code, profiles) {
+  if (code == null) return true;
+  if (GROUP_KEYS[t.key]) return GROUP_KEYS[t.key].includes(code);
+  if (isMod(t) && !t.neg) {
+    const p = profiles.find((x) => x.code === code);
+    return !p || modSet(t).some((m) => p.modalities.includes(m));
+  }
+  return true;
+}
+
+/**
+ * Moving to tab `code`: filters that make no sense there are switched off ("~", kept visible),
+ * and the ones an earlier tab switch turned off (`auto`, a Set of their active form) come back
+ * when they fit again. Filters switched off by hand are left alone.
+ * Returns {q, off: [token strings switched off], on: [switched back on], auto: new Set}.
+ */
+export function retab(q, code, profiles, auto = new Set()) {
+  const next = new Set(auto);
+  const off = [];
+  const on = [];
+  const toks = parse(q).map((t) => {
+    const plain = tokenToString({ ...t, off: false });
+    if (!t.off && !fits(t, code, profiles)) { off.push(plain); next.add(plain); return { ...t, off: true }; }
+    if (t.off && next.has(plain) && fits(t, code, profiles)) { on.push(plain); next.delete(plain); const { off: _, ...rest } = t; return rest; }
+    return t;
+  });
+  return { q: serialize(toks), off, on, auto: next };
+}
+
+/** A query to keep: filters a tab switch turned off are left out (they did not apply). */
+export function withoutAuto(q, auto) {
+  if (!auto || !auto.size) return q;
+  return serialize(parse(q).filter((t) => !(t.off && auto.has(tokenToString({ ...t, off: false })))));
+}
+
+/**
+ * A saved query in the current form {name, q, mod}: older ones kept the modality in q.
+ * mod = a profile code, 'all' (several groups, for the All tab) or null (any tab).
+ */
+export function normaliseSaved(s, profiles) {
+  if (s && 'mod' in s) return s;
+  const r = splitModality(s?.q || '', profiles);
+  return { ...s, q: r.q, mod: r.multi ? 'all' : r.mod };
+}

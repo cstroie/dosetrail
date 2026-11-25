@@ -5,7 +5,7 @@
 //   anything else      → treated as the base URL of the Dozimetrix REST API (planned endpoints
 //                        are noted per function; the response shapes are the same).
 
-import { parse, matchStudy, active } from './query.js';
+import { parse, matchStudy, active, groupOf } from './query.js';
 
 const MODE = document.documentElement.dataset.api || 'sample';
 const SAMPLE = new URL('../../../data/sample/', import.meta.url);
@@ -185,11 +185,7 @@ export async function modalities() {
 
 /** The profile a query is about: its modality: token names one group only, else null. */
 export function profileOf(profiles, q) {
-  const m = /(?:^|\s)(?:modality|modalitate):(\S+)/i.exec(q || '');
-  if (!m) return null;
-  const mods = m[1].toUpperCase().split(',');
-  const hit = profiles.filter((p) => mods.some((x) => p.modalities.includes(x)));
-  return hit.length === 1 ? hit[0] : null;
+  return groupOf(q, profiles);  // every active modality token counts, intersected
 }
 
 /** GET /api/drl → local DRL set */
