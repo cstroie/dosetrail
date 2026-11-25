@@ -157,3 +157,12 @@ def test_open_ended_date_filters_do_not_crash():
     now = dt.datetime(2026, 11, 25)
     for q in ("date:2026-01-01..", "date:..2026-01-01", "date:99999999d"):
         assert query.conditions(query.parse(q), now)
+
+
+def test_logout_ends_every_session_of_the_user(client):
+    login(client, "viewer", "viewer-pass-1")
+    copied = client.cookies.get("dt_session")
+    assert client.post("/api/logout").status_code == 200
+    client.cookies.clear()
+    client.cookies.set("dt_session", copied)
+    assert client.get("/api/me").status_code == 401  # the copied token is dead

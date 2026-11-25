@@ -354,6 +354,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     throttle = LoginThrottle()
     app.state.login_throttle = throttle
 
+    def _stamp(user: User) -> str:
+        return session_stamp(secret, user.password_hash, user.roles or "",
+                             user.session_epoch or 0)
+
     def session_user(request: Request, session: Session) -> User | None:
         """The active user a valid cookie names, if its password and roles are unchanged."""
         claims = read_session_claims(secret, request.cookies.get(COOKIE))
@@ -362,14 +366,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         user = session.get(User, claims[0])
         if user is None or not user.is_active:
             return None
-        if claims[1] != session_stamp(secret, user.password_hash, user.roles or ""):
+        if claims[1] != _stamp(user):
             return None
         return user
 
     def set_session_cookie(request: Request, response: Response, user: User) -> None:
         response.set_cookie(
             COOKIE, sign_session(secret, user.id, settings.session_hours,
-                                 stamp=session_stamp(secret, user.password_hash, user.roles or "")),
+                                 stamp=_stamp(user)),
             httponly=True, samesite="strict",
             # always Secure over HTTPS (X-Forwarded-Proto from a trusted proxy)
             secure=settings.secure_cookies or request.url.scheme == "https",
@@ -524,7 +528,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return _me(user)
 
     @app.post("/api/logout")
-    def logout(response: Response):
+    def logout(request: Request, response: Response, session: Session = Depends(db)):
+        """Sign out: the cookie goes, and so does every session of this user (a token that was
+        copied stops working), by raising the user's session epoch."""
+        user = session_user(request, session)
+        if user is not None:
+            user.session_epoch = (user.session_epoch or 0) + 1
+            session.commit()
         response.delete_cookie(COOKIE, path="/")
         return {"ok": True}
 

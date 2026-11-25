@@ -74,9 +74,11 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
-def session_stamp(secret: bytes, password_hash: str, roles: str) -> str:
-    """Changes when the password or the roles change, so older session tokens stop working."""
-    mac = hmac.new(secret, f"stamp:{password_hash}|{roles}".encode(), hashlib.sha256).digest()
+def session_stamp(secret: bytes, password_hash: str, roles: str, epoch: int = 0) -> str:
+    """Changes when the password or the roles change, or the user signs out (the epoch), so
+    older session tokens stop working."""
+    tail = f"|{epoch}" if epoch else ""  # epoch 0 keeps the tokens issued before it existed
+    mac = hmac.new(secret, f"stamp:{password_hash}|{roles}{tail}".encode(), hashlib.sha256).digest()
     return _b64(mac[:9])
 
 

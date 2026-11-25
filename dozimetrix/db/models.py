@@ -526,6 +526,7 @@ class User(TimestampMixin, Base):
     roles: Mapped[str] = mapped_column(AsciiId(255), default="viewer")  # comma-separated
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_login_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    session_epoch: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # +1 at sign-out
 
     def role_set(self) -> set[str]:
         return {r.strip() for r in (self.roles or "").split(",") if r.strip()}
