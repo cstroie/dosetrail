@@ -251,6 +251,7 @@ class Study(TimestampMixin, Base):
         Index("ix_study_mod_dt", "modality", "study_datetime"),
         Index("ix_study_dt", "study_datetime"),
         Index("ix_study_device_dt", "device_id", "study_datetime"),
+        Index("ix_study_device_mod", "device_id", "modality"),  # covers modalities per device
     )
 
 

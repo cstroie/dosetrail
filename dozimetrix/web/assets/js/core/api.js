@@ -9,19 +9,42 @@ import { parse, matchStudy, active } from './query.js';
 
 const MODE = document.documentElement.dataset.api || 'sample';
 const SAMPLE = new URL('../../../data/sample/', import.meta.url);
-const cache = new Map();
+// Reads are remembered by URL, so several panels asking the same thing share one request. An entry
+// lives CACHE_TTL_MS (a page left open must not keep showing old rows) and the map holds at most
+// CACHE_MAX (the chart rows of one query are tens of thousands of objects); a write drops all.
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_MAX = 40;
+const cache = new Map();  // url -> { at, promise }, oldest first
+
+function cached(url) {
+  const hit = cache.get(url);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+    cache.delete(url);
+    cache.set(url, hit);  // most recently used last
+    return hit.promise;
+  }
+  return null;
+}
+
+function remember(url, promise) {
+  cache.delete(url);
+  cache.set(url, { at: Date.now(), promise });
+  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+}
 
 async function getJSON(url) {
-  if (!cache.has(url)) {
-    cache.set(url, fetch(url, { headers: { Accept: 'application/json' } }).then((r) => {
+  let promise = cached(url);
+  if (!promise) {
+    promise = fetch(url, { headers: { Accept: 'application/json' } }).then((r) => {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText} — ${url}`);
       return r.json();
-    }));
+    });
+    remember(url, promise);
   }
   try {
-    return await cache.get(url);
+    return await promise;
   } catch (e) {
-    cache.delete(url);
+    if (cache.get(url)?.promise === promise) cache.delete(url);
     throw e;
   }
 }

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, aliased
 
 from .. import classify
 from ..db.models import (
+    AppSetting,
     Classification,
     ClassificationStatus,
     Code,
@@ -103,6 +106,84 @@ def mappings(session: Session) -> list[dict]:
             for m, code, meaning, sys in rows]
 
 
+# ---------------------------------------------------------------------------- stored results
+# Counting what is classified (610k radiography studies) takes 6 s and finding the unclassified
+# texts 5 s, so the page reads them from app_setting; the nightly maintenance refreshes them
+# (``refresh``) and a decision edits the stored list at once (``decide``). Older than MAX_AGE
+# or missing: computed on the spot and stored.
+
+SUMMARY_KEY = "review.summary"
+TODO_KEY = "review.todo."  # + family
+MAX_AGE = dt.timedelta(hours=12)
+STORE_LIMIT = 500  # the most the endpoint serves
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now()
+
+
+def _stored(session: Session, key: str) -> dict | None:
+    row = session.get(AppSetting, key)
+    v = row.value if row else None
+    if not v or "at" not in v:
+        return None
+    return v if _now() - dt.datetime.fromisoformat(v["at"]) < MAX_AGE else None
+
+
+def _save(session: Session, key: str, value: dict) -> None:
+    row = session.get(AppSetting, key) or AppSetting(key=key)
+    row.value = value
+    session.add(row)
+
+
+def refresh_summary(session: Session) -> list[dict]:
+    at = _now().isoformat(timespec="seconds")
+    rows = [{**r, "counted_at": at} for r in summary(session)]
+    _save(session, SUMMARY_KEY, {"at": at, "rows": rows})
+    return rows
+
+
+def refresh_todo(session: Session, family: str) -> list[dict]:
+    items = unclassified(session, family, STORE_LIMIT)
+    _save(session, TODO_KEY + family, {"at": _now().isoformat(timespec="seconds"), "items": items})
+    return items
+
+
+def refresh(session: Session) -> dict:
+    """Recount everything the review page shows (the nightly maintenance)."""
+    refresh_summary(session)
+    return {"families": {fam: len(refresh_todo(session, fam)) for fam in FAMILIES}}
+
+
+def cached_summary(session: Session) -> list[dict]:
+    v = _stored(session, SUMMARY_KEY)
+    return v["rows"] if v else refresh_summary(session)
+
+
+def cached_unclassified(session: Session, family: str, limit: int = 100) -> list[dict]:
+    if family not in FAMILIES:
+        raise ReviewError(f"unknown family {family!r}")
+    v = _stored(session, TODO_KEY + family)
+    items = v["items"] if v else refresh_todo(session, family)
+    return items[:limit]
+
+
+def _forget(session: Session, family: str, field: str, text: str, decided: bool) -> None:
+    """After a decision: the stored list of the family loses the items with this text (they are
+    classified now); clearing a decision can make texts unclassified again: recount then."""
+    row = session.get(AppSetting, TODO_KEY + family)
+    if row is None or not row.value:
+        return
+    if not decided:
+        session.delete(row)
+        session.flush()
+        return
+    key = classify.normalise(text)
+    items = [it for it in row.value.get("items", [])
+             if classify.normalise((it.get("texts") or {}).get(field)) != key]
+    row.value = {**row.value, "items": items}
+
+
 def decide(session: Session, family: str, field: str, text: str, code: str | None) -> dict:
     """Map one text to a nomenclator code (or clear the decision) and reclassify."""
     if family not in FAMILIES:
@@ -121,6 +202,7 @@ def decide(session: Session, family: str, field: str, text: str, code: str | Non
     classify.set_mapping(session, family, field, text, target)
     ids = classify.studies_with_text(session, family, field, text)
     stats = classify.run(session, ids) if ids else {}
+    _forget(session, family, field, text, bool(code))
     return {"family": family, "field": field, "text": text, "code": code,
             "studies_reclassified": len(ids),
             "classified": stats.get("classified", 0) if stats else 0}

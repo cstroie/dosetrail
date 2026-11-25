@@ -436,9 +436,10 @@ def run_batch(session: Session, secret: bytes, *, limit: int = 20, dry_run: bool
     client = client or servers.client(server, secret)
     ctx = Context(canary=_canary(session))
     helpers = Helpers(session)
+    when_of = dict(session.execute(select(Study.id, Study.study_datetime)
+                                   .where(Study.id.in_([r.study_id for r in rows]))).all())
     for row in rows:
-        study_when = session.scalar(select(Study.study_datetime)
-                                    .where(Study.id == row.study_id))
+        study_when = when_of.get(row.study_id)
         calls = client.calls
         try:
             with session.begin_nested():

@@ -299,14 +299,14 @@ def load(session: Session, event_ids: list[int], chunk: int = 5000) -> dict[int,
 
     out: dict[int, Bands] = {}
     ids = sorted(set(event_ids))
+    eb = ExposureBand  # columns, not entities: 45k rows of a chart would be 45k ORM objects
     for i in range(0, len(ids), chunk):
         for r in session.execute(
-                select(ExposureBand, Code.code, Code.meaning)
-                .outerjoin(Code, Code.id == ExposureBand.exam_code_id)
-                .where(ExposureBand.event_id.in_(ids[i:i + chunk]))):
-            e = r[0]
-            out[e.event_id] = Bands(r[1], r[2], e.projection or "", e.name_kind, e.name_lo, e.name_hi,
-                                    e.name_label, e.age_eu, e.weight_eu, e.age_nat)
+                select(eb.event_id, Code.code, Code.meaning, eb.projection, eb.name_kind,
+                       eb.name_lo, eb.name_hi, eb.name_label, eb.age_eu, eb.weight_eu, eb.age_nat)
+                .outerjoin(Code, Code.id == eb.exam_code_id)
+                .where(eb.event_id.in_(ids[i:i + chunk]))):
+            out[r[0]] = Bands(r[1], r[2], r[3] or "", *r[4:])
     return out
 
 

@@ -55,18 +55,25 @@ def relabel_hybrid(session: Session) -> int:
         Study.modality == "CT",
         select(Event.id).where(Event.study_id == Study.id,
                                Event.event_type == "radiopharmaceutical").exists())))
+    sops: dict[int, set] = {}
+    half: dict[int, list[float]] = {}
+    for i in range(0, len(ids), 1000):
+        part = ids[i:i + 1000]
+        for sid, sop in session.execute(select(IngestedObject.study_id, IngestedObject.sop_class_uid)
+                                        .where(IngestedObject.study_id.in_(part)).distinct()):
+            sops.setdefault(sid, set()).add(sop)
+        for sid, extra in session.execute(select(Event.study_id, Event.extra_json).where(
+                Event.study_id.in_(part), Event.event_type == "radiopharmaceutical")):
+            if (extra or {}).get("half_life_s"):
+                half.setdefault(sid, []).append(extra["half_life_s"])
     for sid in ids:
-        sops = set(session.scalars(select(IngestedObject.sop_class_uid).where(
-            IngestedObject.study_id == sid).distinct()))
-        if sops & PET_SOP:
+        got = sops.get(sid, set())
+        if got & PET_SOP:
             mod = "PT"
-        elif NM_SOP in sops:
+        elif NM_SOP in got:
             mod = "NM"
         else:
-            hl = [(e.extra_json or {}).get("half_life_s") for e in session.scalars(
-                select(Event).where(Event.study_id == sid,
-                                    Event.event_type == "radiopharmaceutical"))]
-            hl = [h for h in hl if h]
+            hl = half.get(sid)
             mod = "PT" if hl and min(hl) < PET_HALF_LIFE_S else "NM"
         session.execute(update(Study).where(Study.id == sid).values(modality=mod),
                         execution_options={"synchronize_session": False})
@@ -279,7 +286,9 @@ def run_periodic(maker, days: int = 90, full: bool = False, progress=None) -> di
        for the same studies, after the codes;
     3. **indications** of those studies (the HIS may have added requests);
     4. **retry** the studies whose derive step failed at import;
-    5. **device counters** (studies, first and last).
+    5. **device counters** (studies, first and last);
+    6. **review counts**: the coverage figures and unclassified texts of Admin → Protocol
+       mappings, which the page reads from storage (counting them takes 10 s).
 
     Returns ``{"mode", "tasks": {name: {"ok", "detail", "seconds"}}, ...}`` and records it in
     ``app_setting`` ``maintenance.status`` (Admin pages can show it)."""
@@ -328,6 +337,11 @@ def run_periodic(maker, days: int = 90, full: bool = False, progress=None) -> di
     def devices(session):
         return {"devices": recompute_device_stats(session)}
 
+    def review_counts(session):
+        from .api import review
+
+        return review.refresh(session)
+
     task("reclassify", reclassify)
     if result["tasks"]["reclassify"]["ok"]:
         task("bands", bands)
@@ -336,6 +350,7 @@ def run_periodic(maker, days: int = 90, full: bool = False, progress=None) -> di
     task("indications", indic)
     task("retry-derive", retry)
     task("device-counters", devices)
+    task("review-counts", review_counts)
     result["ok"] = all(t["ok"] for t in result["tasks"].values())
     result["seconds"] = round(time.monotonic() - started, 1)
     with maker() as session:

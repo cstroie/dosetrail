@@ -83,7 +83,8 @@ systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
 2. **bands**: refill `exposure_band` for the same studies (below);
 3. **indications** of those studies (the HIS may have added requests);
 4. **retry** the studies whose derive step failed at import;
-5. **device counters** (studies, first and last).
+5. **device counters** (studies, first and last);
+6. **review counts**: the coverage figures and the unclassified texts that Admin → Protocol mappings shows. Counting them takes about 10 s at 600k studies, so the page reads them from `app_setting` (`review.summary`, `review.todo.<family>`; recounted when older than 12 h, shown with the time they were counted); saving a decision removes its text from the stored list at once.
 
 `dozimetrix recompute` also refills the bands. New and enriched studies are handled at once: the ingest `derive` step (after the exam codes, and again when the HIS adds a weight) stores the bands, so the nightly run only catches what changed in the rules.
 

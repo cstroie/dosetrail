@@ -543,14 +543,18 @@ def ct_header_backfill(node: Node, day: dt.date, spool: Spool, drain: Callable[[
     lo = dt.datetime.combine(day, dt.time())
     with session_factory() as session:
         uids = []
-        for st in session.scalars(select(Study).where(
-                Study.modality == "CT", Study.source_kind == "ct_header",
-                Study.study_datetime >= lo, Study.study_datetime < lo + dt.timedelta(days=1))):
-            evs = session.scalars(select(Event).where(Event.study_id == st.id)).all()
-            if any((e.extra_json or {}).get("dlp_method", "count_x_thickness")
-                   == "count_x_thickness" and (e.extra_json or {}).get("source") == "header"
-                   for e in evs):
-                uids.append(st.study_uid)
+        day = select(Study.id).where(
+            Study.modality == "CT", Study.source_kind == "ct_header",
+            Study.study_datetime >= lo, Study.study_datetime < lo + dt.timedelta(days=1))
+        estimated: set[int] = set()
+        for sid, extra in session.execute(select(Event.study_id, Event.extra_json)
+                                          .where(Event.study_id.in_(day))):
+            if ((extra or {}).get("dlp_method", "count_x_thickness") == "count_x_thickness"
+                    and (extra or {}).get("source") == "header"):
+                estimated.add(sid)
+        if estimated:
+            uids = list(session.scalars(select(Study.study_uid).where(Study.id.in_(estimated))
+                                        .order_by(Study.id)))
     if uids:
         progress(f"{day}: {len(uids)} CT studies with count x thickness estimates")
     for uid in uids:

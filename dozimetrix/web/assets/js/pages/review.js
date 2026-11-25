@@ -51,7 +51,7 @@ async function render() {
   page.append(h('div', { class: 'kpis' }, summary.map((s) => h('div', { class: 'kpi' },
     h('span', { class: 'code' }, FAMILIES[s.family]),
     h('span', { class: 'v' }, s.share == null ? '—' : `${num(s.share * 100, 1)} %`),
-    h('span', { class: 'm' }, `${num(s.classified)} of ${num(s.studies)} local studies have an exam code`)))));
+    h('span', { class: 'm' }, `${num(s.classified)} of ${num(s.studies)} local studies have an exam code${s.counted_at ? ` · counted ${s.counted_at.replace('T', ' ').slice(0, 16)}` : ''}`)))));
 
   const famBtns = Object.entries(FAMILIES).map(([k, label]) => h('button', {
     type: 'button', 'aria-pressed': String(k === family), dataset: { fam: k },

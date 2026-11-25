@@ -65,6 +65,7 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
 OLD_PAGES = {"dicom.html": "integration.html"}
 LIVE_TOPICS = {"pulse", "services", "dicom", "his", "studies", "alerts", "maintenance"}
 LIVE_TOPIC_EVERY_S = {"studies": 15, "alerts": 60}  # list pages: scarce updates are enough
+LIVE_SHARE_S = 2.5  # a topic computed this recently is shared between the open streams
 LIVE_EVERY_S = 5  # heartbeats come every minute or so, HIS lookups every few seconds
 LIVE_PING_S = 25
 LIVE_RETRY_MS = 5000
@@ -1205,13 +1206,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.get("/api/classification/summary")
     def classification_summary(user: User = Depends(current_user),
                                session: Session = Depends(db)):
-        return review.summary(session)
+        return review.cached_summary(session)
 
     @app.get("/api/classification/unclassified")
     def classification_unclassified(family: str = "rx", limit: int = 100,
                                     user: User = Depends(current_user),
                                     session: Session = Depends(db)):
-        return _review(lambda: review.unclassified(session, family, min(max(limit, 1), 500)))
+        return _review(lambda: review.cached_unclassified(session, family, min(max(limit, 1), review.STORE_LIMIT)))
 
     @app.get("/api/classification/mappings")
     def classification_mappings(user: User = Depends(current_user),
@@ -1539,6 +1540,31 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                     for lk, acc, hashed, when in recent]}
         return out
 
+    live_shared: dict[str, tuple[float, object]] = {}  # topic -> (when, value)
+
+    def shared_snapshot(topics: set[str]) -> dict:
+        """``live_snapshot``, but a topic computed less than LIVE_SHARE_S ago is reused: every
+        open tab runs its own stream, and the same few queries would run for each of them
+        every few seconds. (Per-study topics are not shared.)"""
+        import time as _time
+
+        now_t = _time.monotonic()
+        out: dict = {}
+        need = {t for t in topics if t.startswith("study:")}
+        for t in topics - need:
+            hit = live_shared.get(t)
+            if hit and now_t - hit[0] < LIVE_SHARE_S:
+                out[t] = hit[1]
+            else:
+                need.add(t)
+        if need:
+            fresh = live_snapshot(need)
+            for t, v in fresh.items():
+                if not t.startswith("study:"):
+                    live_shared[t] = (now_t, v)
+            out.update(fresh)
+        return out
+
     def services_health(session: Session) -> list[dict]:
         """The background services, for any signed-in user: state ok | warn | alert | idle."""
         from .. import __version__
@@ -1641,7 +1667,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 topics_now = {t for t in want if due_at.get(t, 0.0) <= now_t}
                 for t in topics_now & LIVE_TOPIC_EVERY_S.keys():
                     due_at[t] = now_t + LIVE_TOPIC_EVERY_S[t]
-                snap = await run_in_threadpool(live_snapshot, topics_now) if topics_now else {}
+                snap = await run_in_threadpool(shared_snapshot, topics_now) if topics_now else {}
                 for topic, value in snap.items():
                     # ages tick every second: compare without them, send them along
                     key = _json.dumps(value, sort_keys=True, default=str,

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import time
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -140,13 +141,24 @@ def histogram(values: list[float], edges: list[float]) -> list[int]:
 # ------------------------------------------------------------------ bands
 
 
+BANDS_TTL_S = 30.0  # a scheme edit reaches a long-lived session within this
+
+
 def load_bands(session: Session, scheme_key: str) -> tuple[str, list[Band]]:
+    """A scheme's parameter and bands. Several parts of one request build the same lookups (the
+    grid, the radiography bands, the national DRLs), so a session keeps what it loaded for a
+    short while: two queries per scheme saved each time."""
+    memo = session.info.setdefault("scheme_bands", {})
+    hit = memo.get(scheme_key)
+    if hit and time.monotonic() - hit[0] < BANDS_TTL_S:
+        return hit[1], list(hit[2])
     scheme = session.scalar(select(GroupScheme).filter_by(key=scheme_key))
     if scheme is None:
         raise StatsError(f"unknown group scheme {scheme_key!r}")
     bands = [Band(b.key, b.label, b.lower, b.lower_unit, b.upper, b.upper_unit)
              for b in sorted(scheme.bands, key=lambda b: b.sort_order)]
-    return scheme.parameter, bands
+    memo[scheme_key] = (time.monotonic(), scheme.parameter, bands)
+    return scheme.parameter, list(bands)
 
 
 class BandLookup:

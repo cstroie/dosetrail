@@ -194,7 +194,8 @@ def test_periodic_maintenance_runs_every_task_and_remembers_the_rules(engine):
         s.commit()
     first = maintenance.run_periodic(maker, days=30)
     assert first["ok"] and first["mode"] == "full" and first["rules_changed"]  # first run: everything
-    assert set(first["tasks"]) == {"reclassify", "bands", "indications", "retry-derive", "device-counters"}
+    assert set(first["tasks"]) == {"reclassify", "bands", "indications", "retry-derive", "device-counters",
+                                   "review-counts"}
     second = maintenance.run_periodic(maker, days=30)
     assert second["ok"] and second["mode"] == "last 30 days" and not second["rules_changed"]
     with maker() as s:

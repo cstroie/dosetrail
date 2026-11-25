@@ -127,11 +127,12 @@ def overrides(session: Session) -> dict[int, str]:
 
 def device_names(session: Session) -> dict[int, str]:
     """device id -> display name of its physical device (aliases show the merged name)."""
-    devs = {d.id: d for d in session.scalars(select(Device))}
+    devs = {i: (m, name, station) for i, m, name, station in session.execute(
+        select(Device.id, Device.merged_into_id, Device.display_name, Device.station_name))}
     out = {}
-    for i, d in devs.items():
-        p = devs.get(d.merged_into_id, d) if d.merged_into_id else d
-        out[i] = p.display_name or p.station_name or f"Device {p.id}"
+    for i, (merged, name, station) in devs.items():
+        pid, (_, pname, pstation) = (merged, devs[merged]) if merged in devs else (i, devs[i])
+        out[i] = pname or pstation or f"Device {pid}"
     return out
 
 
@@ -654,8 +655,8 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
     allowed = {"date", "device", "proto", "desc", "origin", "weight", "age", "phantom"}
     tokens = [t for t in parse(q) if t.key in allowed]
     _refuse_errors(tokens)
-    conds = conditions(tokens, now, overrides(session))
     ov = overrides(session)
+    conds = conditions(tokens, now, ov)
     mods = prof["modalities"]
     mod_cond = Study.modality.in_(mods)
     if ov:
