@@ -136,7 +136,9 @@ def _projection(tokens: list[str]) -> str:
         return "LAT"
     if " obl " in s or " oblic " in s:
         return "OBL"
-    return " ".join(tokens).upper()
+    if " erect " in s:
+        return "ERECT"  # the patient's position, not a view: "Abdomen erect. pos. LSL"
+    return ""
 
 
 def band_sort_key(kind: str, lo: float | None, hi: float | None) -> tuple:

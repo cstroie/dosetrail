@@ -768,6 +768,17 @@ def _cmd_recompute(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_maintain(args: argparse.Namespace) -> int:
+    from .db.session import make_engine, make_sessionmaker
+    from .maintenance import run_periodic
+
+    maker = make_sessionmaker(make_engine(args.url or load_settings().database_url))
+    res = run_periodic(maker, days=args.days, full=args.full, progress=print)
+    print(f"maintenance ({res['mode']}{', rules changed' if res['rules_changed'] else ''}): "
+          f"{'ok' if res['ok'] else 'FAILED'} in {res['seconds']} s")
+    return 0 if res["ok"] else 1
+
+
 def _secret() -> bytes:
     from .security import load_or_create_secret
 
@@ -1436,6 +1447,14 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("recompute", help="recompute derived study and device columns")
     r.add_argument("--url")
     r.set_defaults(func=_cmd_recompute)
+
+    mt = sub.add_parser("maintain", help="periodic maintenance: reclassify exams, refill the stored "
+                                         "bands, refresh derived values, retry failed ones")
+    mt.add_argument("--days", type=int, default=90, help="studies of the last N days (default 90)")
+    mt.add_argument("--full", action="store_true",
+                    help="every study (also done by itself when the classification rules changed)")
+    mt.add_argument("--url")
+    mt.set_defaults(func=_cmd_maintain)
 
     u = sub.add_parser("user", help="manage users")
     u.add_argument("action", choices=["set", "disable", "rename", "delete", "list"])

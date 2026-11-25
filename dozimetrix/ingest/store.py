@@ -82,7 +82,7 @@ class Helpers:
     def __init__(self, session: Session, ttl: float = 60.0):
         self.session, self.ttl = session, ttl
         self._built = float("-inf")
-        self.classifier = self.matcher = self.evaluator = None
+        self.classifier = self.matcher = self.evaluator = self.describer = None
 
     def _fresh(self) -> None:
         now = time.monotonic()
@@ -96,6 +96,13 @@ class Helpers:
         except ValueError:  # vocabulary not seeded: indications.update handles it
             self.matcher = None
         self.evaluator = alerts.Evaluator(self.session)
+        from .. import rxgroup
+        from ..stats import StatsError
+
+        try:
+            self.describer = rxgroup.Describer(self.session)
+        except StatsError:  # group schemes not seeded: rxgroup.update does nothing
+            self.describer = None
         self._built = now
 
     def get(self) -> Helpers:
@@ -373,13 +380,16 @@ def derive(session: Session, study_ids: list[int], helpers: Helpers | None = Non
     """Values derived from weight, age and doses: weight estimates, DRL exclusions, skin
     dose, alerts. Run after anything changes them (ingest, HIS enrichment). ``helpers``
     reuses prebuilt lookup tables when called per object."""
-    from .. import alerts, growth, indications, skindose, ssde
+    from .. import alerts, growth, indications, rxgroup, skindose, ssde
 
     growth.estimate_weights(session, study_ids)
     ssde.update(session, study_ids)
     if helpers is None or helpers.matcher is not None:  # no vocabulary: nothing to code
         indications.update(session, study_ids, matcher=helpers.matcher if helpers else None)
     growth.apply_exclusions(session, study_ids)
+    # radiography: exam code, projection and size bands stored per exposure (after the weights)
+    if helpers is None or helpers.describer is not None:
+        rxgroup.update(session, study_ids, describer=helpers.describer if helpers else None)
     skindose.update_psd(session, study_ids)
     alerts.evaluate(session, study_ids, evaluator=helpers.evaluator if helpers else None)
 

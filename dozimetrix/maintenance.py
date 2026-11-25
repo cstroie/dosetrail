@@ -1,11 +1,18 @@
-"""Maintenance tasks: recompute derived study/device columns from events and studies."""
+"""Maintenance tasks: recompute derived study/device columns from events and studies, and the
+periodic run (``dozimetrix maintain``, a systemd timer): reclassify, refill the stored bands,
+refresh derived values, retry failed ones."""
 
 from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import logging
+import time
 
 from sqlalchemy import and_, bindparam, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from .db.models import Device, Event, IngestedObject, Patient, Study
+from .db.models import AppSetting, Device, Event, IngestedObject, Patient, Study
 from .hybrid import NM_MODALITIES
 from .security import pseudonym
 
@@ -142,6 +149,9 @@ def recompute_all(session: Session, secret: bytes | None = None) -> list[str]:
     from . import indications
 
     out.append(f"clinical indications: {dict(indications.update(session))}")
+    from . import rxgroup
+
+    out.append(f"radiography exposures with their bands stored: {dict(rxgroup.update(session))}")
     if secret is not None:
         out.append(f"pseudonyms assigned: {assign_pseudonyms(session, secret)}")
     return out
@@ -230,3 +240,111 @@ def derive_status(session: Session) -> dict:
 
     return {"derive_pending": n(f"%{DERIVE_FAILED} (try %"),
             "derive_gave_up": n(f"%{DERIVE_FAILED} (gave up)%")}
+
+
+# ---------------------------------------------------------------------- periodic maintenance
+
+STATUS_KEY = "maintenance.status"
+RULES_KEY = "maintenance.rules_hash"
+# What decides an exposure's exam code and bands: when any of it changes, every study is
+# reclassified and its bands refilled (a rule edit then reaches the old studies by itself).
+RULE_FILES = ("classify_rules.toml", "crosswalk.csv", "group_schemes.toml", "group_grid.toml",
+              "codes/ro-nom-rx.csv", "codes/ro-nom-ct.csv", "codes/ro-nom-rf.csv")
+
+
+def rules_fingerprint() -> str:
+    from .seeds.loader import SEEDS
+
+    h = hashlib.sha256()
+    for name in RULE_FILES:
+        f = SEEDS / name
+        h.update(name.encode())
+        h.update(f.read_bytes() if f.exists() else b"-")
+    return h.hexdigest()[:16]
+
+
+def _recent_ids(session: Session, days: int) -> list[int]:
+    cutoff = dt.datetime.now() - dt.timedelta(days=days)
+    return list(session.scalars(select(Study.id).where(Study.study_datetime >= cutoff)
+                                .order_by(Study.id)))
+
+
+def run_periodic(maker, days: int = 90, full: bool = False, progress=None) -> dict:
+    """The tasks, each in its own transaction (one failing does not stop the others):
+
+    1. **reclassify** exam codes: the studies of the last ``days`` days, or all of them when
+       asked (``full``) or when the rules, crosswalk, vocabularies or group schemes changed
+       since the last run;
+    2. **bands**: refill the stored anatomy / projection / size bands (``exposure_band``)
+       for the same studies, after the codes;
+    3. **indications** of those studies (the HIS may have added requests);
+    4. **retry** the studies whose derive step failed at import;
+    5. **device counters** (studies, first and last).
+
+    Returns ``{"mode", "tasks": {name: {"ok", "detail", "seconds"}}, ...}`` and records it in
+    ``app_setting`` ``maintenance.status`` (Admin pages can show it)."""
+    from . import classify, indications, rxgroup
+
+    say = progress or (lambda _m: None)
+    fingerprint = rules_fingerprint()
+    with maker() as session:
+        row = session.get(AppSetting, RULES_KEY)
+        changed = row is None or (row.value or {}).get("hash") != fingerprint
+    mode = "full" if (full or changed) else f"last {days} days"
+    started = time.monotonic()
+    result: dict = {"mode": mode, "rules_changed": changed, "tasks": {}}
+    ids: list[int] | None = None
+
+    def task(name, fn):
+        t = time.monotonic()
+        try:
+            with maker() as session:
+                detail = fn(session)
+                session.commit()
+            result["tasks"][name] = {"ok": True, "detail": detail, "seconds": round(time.monotonic() - t, 1)}
+        except Exception as e:  # noqa: BLE001 – recorded; the other tasks still run
+            logging.getLogger(__name__).exception("maintenance task %s failed", name)
+            result["tasks"][name] = {"ok": False, "detail": f"{type(e).__name__}: {e}",
+                                     "seconds": round(time.monotonic() - t, 1)}
+        say(f"{name}: {result['tasks'][name]}")
+
+    def scope(session):
+        return None if mode == "full" else _recent_ids(session, days)
+
+    def reclassify(session):
+        nonlocal ids
+        ids = scope(session)
+        return dict(classify.run(session, ids))
+
+    def bands(session):
+        return dict(rxgroup.update(session, ids, progress=say))
+
+    def indic(session):
+        return dict(indications.update(session, ids))
+
+    def retry(session):
+        return repair_failed_derive(session, limit=500)
+
+    def devices(session):
+        return {"devices": recompute_device_stats(session)}
+
+    task("reclassify", reclassify)
+    if result["tasks"]["reclassify"]["ok"]:
+        task("bands", bands)
+    else:
+        result["tasks"]["bands"] = {"ok": False, "detail": "skipped: reclassify failed", "seconds": 0}
+    task("indications", indic)
+    task("retry-derive", retry)
+    task("device-counters", devices)
+    result["ok"] = all(t["ok"] for t in result["tasks"].values())
+    result["seconds"] = round(time.monotonic() - started, 1)
+    with maker() as session:
+        if result["ok"] and changed:  # remembered only when everything it covers ran
+            r = session.get(AppSetting, RULES_KEY) or AppSetting(key=RULES_KEY)
+            r.value = {"hash": fingerprint}
+            session.add(r)
+        st = session.get(AppSetting, STATUS_KEY) or AppSetting(key=STATUS_KEY)
+        st.value = {**result, "at": dt.datetime.now().isoformat(timespec="seconds")}
+        session.add(st)
+        session.commit()
+    return result

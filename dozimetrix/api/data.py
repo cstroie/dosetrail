@@ -684,7 +684,8 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
     if prof["code"] == "DX":
         from .. import rxgroup
 
-        rx = (rxgroup.Describer(session), rxgroup.rx_codes(session, [r[1] for r in rows]))
+        d = rxgroup.Describer(session)
+        rx = (d, rxgroup.fetch(session, d, [(r[1], r[7 + 2], r[8], r[4], r[3], r[7]) for r in rows]))
     out = []
     for sid, eid, did, w, age, st, desc_, wsrc, view, proto, t, *vals in rows:
         pid = phys.get(did, did)
@@ -697,8 +698,7 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
         if "kar_total" in r and r["kar_total"] is not None:
             r["kar_total"] = _r(r["kar_total"] * 1000, 1)  # Gy → mGy, as the list shows it
         if rx is not None:  # radiography: the same anatomy · projection · band on every device
-            g = rx[0].describe(proto, view, rx[1].get(eid), age,
-                               None if wsrc == SizeSource.estimated_reference else w)
+            g = rx[0].resolve(proto, rx[1][eid])
             if g is not None:
                 r.update(anatomy=g.anatomy, projection=g.projection, band=g.label,
                          band_src=g.source, group=g.name, band_kind=g.kind, band_lo=g.lo,
@@ -746,18 +746,17 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind:
         .join(Study, Study.id == Event.study_id)
         .where(Study.device_id.in_(ids), Study.modality.in_(["DX", "CR"]),
                Event.dap.is_not(None), Event.protocol.is_not(None), *conds)).all()
-    codes = rxgroup.rx_codes(session, [r[3] for r in rows])
     desc = rxgroup.Describer(session)
+    bands_of = rxgroup.fetch(session, desc, [(r[3], r[0], r[7], r[4], r[5], r[6]) for r in rows])
     cells: dict[tuple, dict] = {}
     unparsed: dict[str, int] = {}
     other_kind = hidden = 0
     for proto, dap, sid, eid, age, w, wsrc, view in rows:
-        if wsrc == SizeSource.estimated_reference:
-            w = None  # a weight taken from the growth chart says nothing about this patient
-        if desc.own_kind(proto, codes.get(eid)) != kind:
+        b = bands_of[eid]
+        if desc.kind_of(b) != kind:
             other_kind += 1  # a weight exam is not charted by age, nor an age exam by weight
             continue
-        g = desc.describe(proto, view, codes.get(eid), age, w, kind, other)
+        g = desc.resolve(proto, b, kind, other)
         if g is None:
             unparsed[proto] = unparsed.get(proto, 0) + 1
             continue

@@ -757,6 +757,31 @@ class StudyIndication(Base):
     matched_text: Mapped[str | None] = mapped_column(Text(255))  # normalised text matched
 
 
+class ExposureBand(Base):
+    """A radiography exposure's anatomy, projection and size bands, stored when it is derived
+    (rxgroup.update) so charts and queries do not recompute them: the exam code and projection,
+    the band the protocol name states, and the patient's own bands in the European (ICRP 135 /
+    RP 185, extended) and national (OMS 838/2025) group schemes."""
+
+    __tablename__ = "exposure_band"
+    event_id: Mapped[int] = mapped_column(ForeignKey("event.id", ondelete="CASCADE"),
+                                          primary_key=True)
+    study_id: Mapped[int] = mapped_column(ForeignKey("study.id", ondelete="CASCADE"), index=True)
+    exam_code_id: Mapped[int | None] = mapped_column(ForeignKey("code.id", ondelete="SET NULL"))
+    projection: Mapped[str | None] = mapped_column(AsciiId(8))
+    # the band written in the protocol name: weight (kg) or age (months); hi NULL = open end
+    name_kind: Mapped[str | None] = mapped_column(AsciiId(6))
+    name_lo: Mapped[float | None] = mapped_column(Float)
+    name_hi: Mapped[float | None] = mapped_column(Float)
+    name_label: Mapped[str | None] = mapped_column(AsciiId(24))
+    # the patient's own band (group-scheme band keys; NULL when age or weight is unknown, a
+    # weight estimated from the growth charts counts as unknown)
+    age_eu: Mapped[str | None] = mapped_column(AsciiId(12), index=True)     # ext-head-age
+    weight_eu: Mapped[str | None] = mapped_column(AsciiId(12), index=True)  # ext-body-weight
+    age_nat: Mapped[str | None] = mapped_column(AsciiId(12))                # ro-drl-age
+    computed_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+
+
 class StudyRequest(TimestampMixin, Base):
     """The imaging request (order) matched to a study in the HIS."""
 

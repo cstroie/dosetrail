@@ -1,0 +1,17 @@
+[Unit]
+Description=Dozimetrix periodic maintenance (reclassify, stored bands, derived values)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=dozimetrix
+Group=dozimetrix
+WorkingDirectory=/opt/dozimetrix
+ExecStart=/opt/dozimetrix/.venv/bin/dozimetrix maintain
+Nice=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/dozimetrix

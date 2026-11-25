@@ -75,6 +75,20 @@ systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
 - Notification channels (e-mail, ntfy) are set in Admin → Alerts → Notifications: settings, a "Send test" button, and what was sent or failed. They are kept in the database, the SMTP password and the ntfy token sealed with the site secret (write-only in the UI; changing the secret file means typing them again), and they override the `[notify]` table of the toml field by field (see `dozimetrix.toml.example`). The receiver reads them again on every run: no restart. `dozimetrix alerts test-notify` tests the same settings from the shell.
 - With no channel configured, alerts on rules with Notify on stay pending for 48 h, so a channel set up later still sends them; older ones are marked "not sent (historical)".
 
+## Periodic maintenance and stored bands
+
+`dozimetrix maintain` is the nightly housekeeping (`deploy/systemd/dozimetrix-maintain.timer`, 03:30; enable it with `systemctl enable --now dozimetrix-maintain.timer`). Each task runs in its own transaction, so one failure does not stop the others, and the result is kept in `app_setting` `maintenance.status` (`dozimetrix maintain` exits 1 if a task failed):
+
+1. **reclassify** exam codes of the studies of the last 90 days (`--days N`). When the classification rules, the crosswalk, the vocabularies or the group schemes changed since the last run (their fingerprint is remembered, `maintenance.rules_hash`), it reclassifies **every** study by itself; `--full` forces that;
+2. **bands**: refill `exposure_band` for the same studies (below);
+3. **indications** of those studies (the HIS may have added requests);
+4. **retry** the studies whose derive step failed at import;
+5. **device counters** (studies, first and last).
+
+`dozimetrix recompute` also refills the bands. New and enriched studies are handled at once: the ingest `derive` step (after the exam codes, and again when the HIS adds a weight) stores the bands, so the nightly run only catches what changed in the rules.
+
+**Stored bands (`exposure_band`).** For every radiography exposure (DX, CR) the database keeps its exam code and projection, the band written in the protocol name (weight in kg or age in months), and the patient's own bands in both group standards: **European** (RP 185 / ICRP 135, extended: `ext-head-age` and `ext-body-weight`) and **national** (OMS 838/2025: `ro-drl-age`). A weight estimated from the growth charts counts as unknown. The charts read these rows (an exposure not stored yet is computed on the spot). After editing `group_schemes.toml` or the rules, run `dozimetrix seed` and then `dozimetrix maintain` (the full pass starts by itself).
+
 ## Growth tables (setup step)
 - Run `dozimetrix growth install` once; it downloads the weight-for-age tables into `<data_dir>/growth`:
   - the WHO Child Growth Standards for 0–5 years;

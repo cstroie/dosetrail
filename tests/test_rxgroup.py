@@ -122,3 +122,83 @@ def test_bands_outside_the_scheme(session):
 def rxprotocols_inf():
     from dozimetrix.rxprotocols import INF
     return INF
+
+
+def _dx_study(session, uid, protocol, age_days, weight=None, code="RG-CR"):
+    import datetime as dt
+    from dozimetrix.db.models import Event, Study
+
+    st = Study(study_uid=uid, modality="DX", study_datetime=dt.datetime(2026, 2, 1), source_kind="test",
+               n_events=1, age_days=age_days, weight_kg=weight, events=[Event(protocol=protocol, dap=0.1)])
+    session.add(st)
+    session.flush()
+    return st
+
+
+def test_update_stores_the_bands_and_resolve_matches_describe(session):
+    from dozimetrix.db.models import ExposureBand
+
+    load_all(session)
+    kid = _dx_study(session, "8.8.1", "CRANIU", int(2 * 365.25), 12)
+    named = _dx_study(session, "8.8.2", "W035 Torace a.p. 5-15Kg", int(1.5 * 365.25), 11)
+    classify.run(session, [kid.id, named.id])
+    stats = rxgroup.update(session, [kid.id, named.id])
+    assert stats["exposures"] == 2
+    k = session.scalar(select(ExposureBand).where(ExposureBand.study_id == kid.id))
+    # European: head exam, 2 years -> ext-head-age 1-6y; the body weight band too; national: 1-4 y
+    assert (k.age_eu, k.weight_eu, k.age_nat, k.name_kind) == ("1-6y", "5-15kg", "1-4y", None)
+    n = session.scalar(select(ExposureBand).where(ExposureBand.study_id == named.id))
+    assert (n.name_kind, n.name_lo, n.name_hi, n.name_label, n.projection) == ("weight", 5, 15, "5-15 kg", "AP")
+    # an open band end is stored as NULL, and read back as open
+    open_ = _dx_study(session, "8.8.3", "X070 Mana d.v./v.d. >50 Kg", 9000, 70)
+    classify.run(session, [open_.id])
+    rxgroup.update(session, [open_.id])
+    o = session.scalar(select(ExposureBand).where(ExposureBand.study_id == open_.id))
+    assert (o.name_lo, o.name_hi, o.name_label, o.projection) == (50, None, ">50 kg", "DV")
+    # refilling replaces the rows, never duplicates them
+    rxgroup.update(session, [kid.id])
+    assert len(list(session.scalars(select(ExposureBand).where(ExposureBand.study_id == kid.id)))) == 1
+    # reading back gives the same group as computing it
+    d = rxgroup.Describer(session)
+    ev = [e for e in kid.events][0]
+    stored = rxgroup.load(session, [ev.id])[ev.id]
+    assert d.resolve("CRANIU", stored, None).name == "Craniu · 1-6 y"
+    # a weight taken from the growth chart is not the patient's: no weight band
+    from dozimetrix.db.models import SizeSource
+
+    kid.weight_source = SizeSource.estimated_reference
+    session.flush()
+    rxgroup.update(session, [kid.id])
+    assert session.scalar(select(ExposureBand.weight_eu).where(ExposureBand.study_id == kid.id)) is None
+
+
+def test_fetch_computes_what_is_not_stored_yet(session):
+    load_all(session)
+    st = _dx_study(session, "8.8.4", "W001a Craniu a.p. 1-6 ani", 700, 12)
+    classify.run(session, [st.id])
+    d = rxgroup.Describer(session)
+    ev = st.events[0]
+    got = rxgroup.fetch(session, d, [(ev.id, ev.protocol, None, 700, 12, None)])
+    assert d.resolve(ev.protocol, got[ev.id], "age").name == "Craniu AP · 1-6 y"
+
+
+def test_periodic_maintenance_runs_every_task_and_remembers_the_rules(engine):
+    from dozimetrix import maintenance
+    from dozimetrix.db.models import AppSetting
+    from dozimetrix.db.session import make_sessionmaker
+    from dozimetrix.seeds.loader import load_all as seed
+
+    maker = make_sessionmaker(engine)
+    with maker() as s:
+        seed(s)
+        s.commit()
+    first = maintenance.run_periodic(maker, days=30)
+    assert first["ok"] and first["mode"] == "full" and first["rules_changed"]  # first run: everything
+    assert set(first["tasks"]) == {"reclassify", "bands", "indications", "retry-derive", "device-counters"}
+    second = maintenance.run_periodic(maker, days=30)
+    assert second["ok"] and second["mode"] == "last 30 days" and not second["rules_changed"]
+    with maker() as s:
+        assert s.get(AppSetting, maintenance.STATUS_KEY).value["ok"] is True
+        s.get(AppSetting, maintenance.RULES_KEY).value = {"hash": "old"}  # the rules changed since
+        s.commit()
+    assert maintenance.run_periodic(maker, days=30)["mode"] == "full"

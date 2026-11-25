@@ -1,4 +1,4 @@
-"""One vocabulary for radiography exposures across devices: anatomy, projection, size band.
+"""One vocabulary for radiography exposures across devices: anatomy, projection, size band (stored per exposure in `exposure_band`, see `update`).
 
 Devices name the same exam differently ("W001a Craniu a.p. 1-6 ani", "T001a Skull a.p. 1-6
 ani", "CRANIU", "X035 Pulmonara 0-5 kg"), so a chart that groups by the raw protocol name
@@ -17,10 +17,13 @@ cannot compare them. What is shared is already in the database:
 
 from __future__ import annotations
 
+import datetime as dt
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 
-from sqlalchemy import select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from . import classify, rxprotocols
@@ -29,7 +32,8 @@ from .patient_age import band_for_age, band_for_weight
 from .stats import load_bands
 
 NOMENCLATOR = "ro-nom-rx"
-WEIGHT_SCHEME, AGE_SCHEME = "ext-body-weight", "ext-head-age"
+WEIGHT_SCHEME, AGE_SCHEME = "ext-body-weight", "ext-head-age"  # European: ICRP 135 / RP 185, extended
+NATIONAL_AGE_SCHEME = "ro-drl-age"  # national: OMS 838/2025
 DAYS_PER_MONTH = 30.4375
 _PROJ = {"LL": "LAT", "TG": "TG", "AX": "AX"}
 _PREFIX = ("radiografie ", "radiografia ")
@@ -99,14 +103,41 @@ def _label(kind: str, lo: float | None, hi: float | None) -> str:
     return f"{f(lo)}-{f(hi)} {unit}"
 
 
+@dataclass(frozen=True)
+class Bands:
+    """What is stored per exposure (``exposure_band``): the exam code and projection, the band the
+    protocol name states, and the patient's own bands in the European and national schemes."""
+
+    code: str | None            # nomenclator exam code of the exposure (RG-CR ...)
+    meaning: str | None
+    projection: str
+    name_kind: str | None       # "weight" (kg) | "age" (months) | None: the name states no band
+    name_lo: float | None
+    name_hi: float | None       # None = open end
+    name_label: str | None
+    age_eu: str | None          # ext-head-age band key (RP 185 / ICRP 135, extended)
+    weight_eu: str | None       # ext-body-weight band key
+    age_nat: str | None         # ro-drl-age band key (OMS 838/2025)
+
+
 class Describer:
-    """Build the group of exposures; loads the band schemes and the grid once."""
+    """Compute, store and resolve the bands of exposures; loads the schemes and the grid once."""
 
     def __init__(self, session: Session):
         from .grid import Grid
 
         self.grid = Grid(session)
         self.bands = {"weight": load_bands(session, WEIGHT_SCHEME)[1], "age": load_bands(session, AGE_SCHEME)[1]}
+        self.national = load_bands(session, NATIONAL_AGE_SCHEME)[1]
+        self.info: dict[str, dict[str, tuple[float, float, str]]] = {"weight": {}, "age": {}}
+        for kind, bands in self.bands.items():
+            for b in bands:
+                if kind == "weight":
+                    lo, hi = (b.lower if b.lower is not None else 0.0), (b.upper if b.upper is not None else rxprotocols.INF)
+                else:
+                    lo = _months(b.lower, b.lower_unit) if b.lower is not None else 0.0
+                    hi = _months(b.upper, b.upper_unit) if b.upper is not None else rxprotocols.INF
+                self.info[kind][b.key] = (lo, hi, _label(kind, lo, hi))
 
     def kind_for(self, code: str | None) -> str:
         """ICRP 135: head exams are grouped by age, the others by weight."""
@@ -116,10 +147,7 @@ class Describer:
         """Is a band written in a name one of the scheme's (ICRP 135 / RP 185, extended)?"""
         if lo is None:
             return False
-        for b in self.bands[kind]:
-            blo = (b.lower if kind == "weight" else _months(b.lower, b.lower_unit)) if b.lower is not None else 0.0
-            bhi = ((b.upper if kind == "weight" else _months(b.upper, b.upper_unit))
-                   if b.upper is not None else rxprotocols.INF)
+        for blo, bhi, _ in self.info[kind].values():
             if abs(blo - lo) < 1e-6 and (hi == bhi or (hi is not None and abs(bhi - hi) < 1e-6)):
                 return True
         return False
@@ -133,46 +161,167 @@ class Describer:
             return parsed.kind
         return self.kind_for(code[0] if code else None)
 
-    def patient_band(self, kind: str, age_days, weight_kg) -> tuple[float, float, str] | None:
-        if kind == "weight":
-            b = band_for_weight(self.bands["weight"], weight_kg) if weight_kg and weight_kg > 0 else None
-            if b is None:
-                return None
-            lo = b.lower if b.lower is not None else 0.0
-            hi = b.upper if b.upper is not None else rxprotocols.INF
-        else:
-            b = band_for_age(self.bands["age"], days=int(age_days)) if age_days is not None else None
-            if b is None:
-                return None
-            lo = _months(b.lower, b.lower_unit) if b.lower is not None else 0.0
-            hi = _months(b.upper, b.upper_unit) if b.upper is not None else rxprotocols.INF
-        return lo, hi, _label(kind, lo, hi)
+    def kind_of(self, b: Bands) -> str:
+        return b.name_kind or self.kind_for(b.code)
 
-    def describe(self, protocol: str | None, view: str | None, code: tuple[str, str] | None,
-                 age_days, weight_kg, kind: str | None = None, other: str = "keep") -> Group | None:
-        """``kind`` is the band the chart wants ("weight" / "age"), or None to follow the
-        exam (head by age, the rest by weight). ``weight_kg`` None when it is only an estimate.
-        ``other`` says what to do with a name band that is not in the scheme (the Ysio has
-        "0-15", ">50", "5-20" ...): "keep" it as written, "hide" the exposure (source
-        "hidden"), or "reband" it from the patient's own weight or age."""
+    # ------------------------------------------------------------------ compute (stored)
+
+    def compute(self, protocol: str | None, view: str | None, code: tuple[str, str] | None,
+                age_days, weight_kg) -> Bands:
+        """The bands of one exposure. ``weight_kg`` None when it is only an estimate."""
         parsed = _parse(protocol)
-        if code:
-            anatomy = anatomy_label(code[1])
-        elif parsed:
-            anatomy = parsed.anatomy
-        else:
-            return None
         v = _view(view, protocol)
         proj = _PROJ.get(v, v) if v else (parsed.projection if parsed else "")
         if not proj and code and code[0] in classify.FRONTAL_BY_DEFAULT:
             proj = "AP"
-        named = parsed and parsed.kind != "none" and (kind is None or parsed.kind == kind)
-        if named and (other == "keep" or self.is_standard(parsed.kind, parsed.lo, parsed.hi)):
-            return Group(anatomy, proj, parsed.kind, parsed.lo, parsed.hi, parsed.label, "name")
+        named = parsed is not None and parsed.kind != "none"
+        age_eu = weight_eu = age_nat = None
+        if age_days is not None:
+            b = band_for_age(self.bands["age"], days=int(age_days))
+            age_eu = b.key if b else None
+            n = band_for_age(self.national, days=int(age_days))
+            age_nat = n.key if n else None
+        if weight_kg and weight_kg > 0:
+            b = band_for_weight(self.bands["weight"], weight_kg)
+            weight_eu = b.key if b else None
+        return Bands(code[0] if code else None, code[1] if code else None, proj or "",
+                     parsed.kind if named else None, parsed.lo if named else None,
+                     None if (not named or parsed.hi == rxprotocols.INF) else parsed.hi,
+                     parsed.label if named else None, age_eu, weight_eu, age_nat)
+
+    # ------------------------------------------------------------------ resolve (policy)
+
+    def patient_band(self, kind: str, b: Bands) -> tuple[float, float, str] | None:
+        key = b.weight_eu if kind == "weight" else b.age_eu
+        return self.info[kind].get(key) if key else None
+
+    def resolve(self, protocol: str | None, b: Bands, kind: str | None = None, other: str = "keep") -> Group | None:
+        """``kind`` is the band the chart wants ("weight" / "age"), or None to follow the exam
+        (head by age, the rest by weight). ``other`` says what to do with a name band that is not
+        in the scheme (the Ysio has "0-15", ">50", "5-20" ...): "keep" it as written, "hide" the
+        exposure (source "hidden"), or "reband" it from the patient's own weight or age."""
+        parsed = _parse(protocol)
+        if b.meaning:
+            anatomy = anatomy_label(b.meaning)
+        elif parsed:
+            anatomy = parsed.anatomy
+        else:
+            return None
+        hi = rxprotocols.INF if b.name_kind and b.name_hi is None else b.name_hi
+        named = b.name_kind is not None and (kind is None or b.name_kind == kind)
+        if named and (other == "keep" or self.is_standard(b.name_kind, b.name_lo, hi)):
+            return Group(anatomy, b.projection, b.name_kind, b.name_lo, hi, b.name_label or "", "name")
         if named and other == "hide":
-            return Group(anatomy, proj, parsed.kind, parsed.lo, parsed.hi, parsed.label, "hidden")
-        want = kind or (parsed.kind if named else self.kind_for(code[0] if code else None))
-        got = self.patient_band(want, age_days, weight_kg)
+            return Group(anatomy, b.projection, b.name_kind, b.name_lo, hi, b.name_label or "", "hidden")
+        want = kind or (b.name_kind if named else self.kind_for(b.code))
+        got = self.patient_band(want, b)
         if got:
-            return Group(anatomy, proj, want, got[0], got[1], got[2], "patient")
-        return Group(anatomy, proj, "none", None, None, "", "")
+            return Group(anatomy, b.projection, want, got[0], got[1], got[2], "patient")
+        return Group(anatomy, b.projection, "none", None, None, "", "")
+
+    def describe(self, protocol: str | None, view: str | None, code: tuple[str, str] | None,
+                 age_days, weight_kg, kind: str | None = None, other: str = "keep") -> Group | None:
+        """compute + resolve in one step (what is not stored yet)."""
+        return self.resolve(protocol, self.compute(protocol, view, code, age_days, weight_kg), kind, other)
+
+
+# ---------------------------------------------------------------------- the stored table
+
+
+def _codes_full(session: Session, event_ids: list[int], chunk: int = 5000) -> dict[int, tuple[int, str, str]]:
+    out: dict[int, tuple[int, str, str]] = {}
+    ids = sorted(set(event_ids))
+    for i in range(0, len(ids), chunk):
+        for eid, cid, code, meaning in session.execute(
+                select(Classification.event_id, Code.id, Code.code, Code.meaning)
+                .join(Code, Code.id == Classification.code_id)
+                .join(CodeSystem, CodeSystem.id == Code.system_id)
+                .where(CodeSystem.key == NOMENCLATOR, Classification.event_id.in_(ids[i:i + chunk]))):
+            out.setdefault(eid, (cid, code, meaning))
+    return out
+
+
+def update(session: Session, study_ids: Iterable[int] | None = None, describer: Describer | None = None,
+           chunk: int = 2000, progress=None) -> Counter:
+    """(Re)compute ``exposure_band`` for radiography studies: the given ones, or all. Run after
+    the exposures are classified (their exam code is stored with the bands) and whenever age or
+    weight change (derive() does both). Replaces the rows of the studies it touches."""
+    from .db.models import Event, ExposureBand, SizeSource, Study
+
+    from .stats import StatsError
+
+    stats: Counter = Counter()
+    try:
+        d = describer or Describer(session)
+    except StatsError:  # group schemes not seeded yet: nothing to band (imports must not fail on it)
+        stats["no_schemes"] += 1
+        return stats
+    if study_ids is None:
+        ids = list(session.scalars(select(Study.id).where(Study.modality.in_(("DX", "CR"))).order_by(Study.id)))
+    else:
+        ids = sorted(set(study_ids))
+    now = dt.datetime.now()
+    for i in range(0, len(ids), chunk):
+        part = ids[i:i + chunk]
+        studies = {r[0]: r for r in session.execute(
+            select(Study.id, Study.age_days, Study.weight_kg, Study.weight_source)
+            .where(Study.id.in_(part), Study.modality.in_(("DX", "CR"))))}
+        session.execute(delete(ExposureBand).where(ExposureBand.study_id.in_(part)))
+        if not studies:
+            continue
+        events = session.execute(select(Event.id, Event.study_id, Event.protocol, Event.view)
+                                 .where(Event.study_id.in_(list(studies)))).all()
+        codes = _codes_full(session, [e[0] for e in events])
+        rows = []
+        for eid, sid, proto, view in events:
+            _, age, w, wsrc = studies[sid]
+            if wsrc == SizeSource.estimated_reference:
+                w = None  # a weight taken from the growth chart says nothing about this patient
+            cid, code, meaning = codes.get(eid, (None, None, None))
+            b = d.compute(proto, view, (code, meaning) if code else None, age, w)
+            rows.append({"event_id": eid, "study_id": sid, "exam_code_id": cid, "projection": (b.projection or None) and b.projection[:8],
+                         "name_kind": b.name_kind, "name_lo": b.name_lo, "name_hi": b.name_hi,
+                         "name_label": b.name_label, "age_eu": b.age_eu, "weight_eu": b.weight_eu,
+                         "age_nat": b.age_nat, "computed_at": now})
+        if rows:
+            session.execute(insert(ExposureBand), rows)
+        stats["studies"] += len(studies)
+        stats["exposures"] += len(rows)
+        if progress and (i // chunk) % 25 == 24:
+            progress(f"{stats['studies']} studies, {stats['exposures']} exposures")
+    session.flush()
+    return stats
+
+
+def load(session: Session, event_ids: list[int], chunk: int = 5000) -> dict[int, Bands]:
+    """The stored bands of the given exposures (those not filled yet are missing)."""
+    from .db.models import ExposureBand
+
+    out: dict[int, Bands] = {}
+    ids = sorted(set(event_ids))
+    for i in range(0, len(ids), chunk):
+        for r in session.execute(
+                select(ExposureBand, Code.code, Code.meaning)
+                .outerjoin(Code, Code.id == ExposureBand.exam_code_id)
+                .where(ExposureBand.event_id.in_(ids[i:i + chunk]))):
+            e = r[0]
+            out[e.event_id] = Bands(r[1], r[2], e.projection or "", e.name_kind, e.name_lo, e.name_hi,
+                                    e.name_label, e.age_eu, e.weight_eu, e.age_nat)
+    return out
+
+
+def fetch(session: Session, d: Describer, items: list[tuple]) -> dict[int, Bands]:
+    """Bands of exposures for a chart: the stored ones; an exposure not stored yet (derived
+    after the last fill) is computed on the spot. ``items``: (event id, protocol, view,
+    age_days, weight_kg, weight_source)."""
+    from .db.models import SizeSource
+
+    out = load(session, [i[0] for i in items])
+    missing = [i for i in items if i[0] not in out]
+    if missing:
+        codes = _codes_full(session, [i[0] for i in missing])
+        for eid, proto, view, age, w, wsrc in missing:
+            _, code, meaning = codes.get(eid, (None, None, None))
+            out[eid] = d.compute(proto, view, (code, meaning) if code else None, age,
+                                 None if wsrc == SizeSource.estimated_reference else w)
+    return out
