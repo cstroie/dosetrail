@@ -657,6 +657,46 @@ def test_alert_rule_create_and_delete(client):
         assert s.scalar(select(AlertRule).filter_by(key="dap-over-5-gy-cm2-2")) is not None
 
 
+def test_notify_settings_endpoints(client):
+    from dozimetrix.db.models import AuditLog
+
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/notify").status_code == 403
+    assert client.put("/api/notify", json={"ntfy_url": "http://x/t"}).status_code == 403
+    assert client.post("/api/notify/test", json={"channel": "ntfy"}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    first = client.get("/api/notify").json()
+    assert first["channels"] == [] and first["smtp_password_set"] is False
+    for bad in ({"smtp_port": 70000}, {"email_to": ["nope"]}, {"ntfy_url": "ftp://x"},
+                {"base_url": "javascript:alert(1)"}, {"email_from": "a b"}):
+        assert client.put("/api/notify", json=bad).status_code == 400, bad
+    ok = client.put("/api/notify", json={
+        "ntfy_url": "https://ntfy.example/topic", "ntfy_token": "tok-SECRET-1",
+        "smtp_host": "mail.example", "email_to": ["a@b.ro", "c@d.ro"], "smtp_password": "pw-SECRET-2"})
+    assert ok.status_code == 200 and ok.json()["changes"]["ntfy_token"] == "set"
+    got = client.get("/api/notify").json()
+    assert got["channels"] == ["email", "ntfy"] and got["ntfy_token_set"] is True
+    assert got["fields"]["ntfy_url"] == {"value": "https://ntfy.example/topic", "source": "ui"}
+    assert got["fields"]["email_to"]["value"] == ["a@b.ro", "c@d.ro"]
+    assert "SECRET" not in client.get("/api/notify").text
+    sent = []
+    client.app.state.notify_senders = {"ntfy": lambda c, m: sent.append((c.ntfy_token, m.title)),
+                                       "email": lambda c, m: (_ for _ in ()).throw(OSError("smtp down"))}
+    r = client.post("/api/notify/test", json={"channel": "ntfy"}).json()
+    assert r == {"ok": True, "error": None} and sent == [("tok-SECRET-1", "[Dozimetrix] Test notification")]
+    r = client.post("/api/notify/test", json={"channel": "email"}).json()
+    assert r["ok"] is False and "smtp down" in r["error"]
+    assert client.post("/api/notify/test", json={"channel": "sms"}).status_code == 400
+    assert client.put("/api/notify", json={"clear_ntfy_token": True, "smtp_host": ""}).json()["changes"]
+    got = client.get("/api/notify").json()
+    assert got["ntfy_token_set"] is False and got["channels"] == ["ntfy"]
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        rows = list(s.scalars(select(AuditLog).where(AuditLog.action.like("notify.%"))))
+        assert {r.action for r in rows} == {"notify.update", "notify.test"}
+        assert "SECRET" not in " ".join(str(r.detail) for r in rows)
+
+
 def test_his_server_endpoints(client):
     from tests import his_stub
 

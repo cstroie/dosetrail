@@ -494,6 +494,10 @@ export const updateAlertRule = (id, patch) => send('PATCH', `/api/alert-rules/${
 /** POST /api/alert-rules (admin) · DELETE (only rules not in the seed file) · GET metrics a rule can watch */
 export const createAlertRule = (rule) => send('POST', '/api/alert-rules', rule);
 export const deleteAlertRule = (id) => send('DELETE', `/api/alert-rules/${id}`);
+/** GET /api/notify (admin: fields with their source, channels, status) · PUT (partial; secrets write-only) · POST test */
+export const notifySettings = () => remote('/api/notify');
+export const saveNotify = (body) => send('PUT', '/api/notify', body);
+export const testNotify = (channel) => send('POST', '/api/notify/test', { channel });
 export const alertRuleMetrics = () => remote('/api/alert-rules/metrics');
 
 /** GET /api/reports/operators?year=&quarter=&quarters=4 (doses per operator; admin only) */

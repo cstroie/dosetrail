@@ -32,6 +32,10 @@ function ago(s) {
 
 function serviceTag(st, what) {
   if (!st) return h('span', { class: 'tag' }, `${what}: never seen`);
+  if (what === 'qr') {  // a scheduled run, not a daemon: fine until a whole period has passed
+    return st.running ? h('span', { class: 'tag ok' }, `qr: last run ${ago(st.age_s)}`)
+      : h('span', { class: 'tag warn' }, `qr: no run for ${ago(st.age_s)}`);
+  }
   return st.running ? h('span', { class: 'tag ok' }, `${what}: running`)
     : h('span', { class: 'tag warn' }, `${what}: stopped · last ${ago(st.age_s)}`);
 }

@@ -40,7 +40,8 @@ modalities = ["CT", "DX", "CR", "RF", "XA", "MG", "SR"]   # queried one at a tim
 
 [notify]
 # Alert notifications (rules with "notify" on, studies from the last 48 h). Messages carry
-# no patient identifiers, only a link to the study (login needed).
+# no patient identifiers, only a link to the study (login needed). What an admin sets in the
+# web UI (Admin > Alerts > Notifications) overrides these values, field by field.
 base_url = "https://dose.example.org"
 # e-mail
 # email_to = ["physics@example.org"]

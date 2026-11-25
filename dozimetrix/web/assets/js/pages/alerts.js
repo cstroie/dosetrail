@@ -1,4 +1,4 @@
-// Alerts: every alert raised by the rules (Admin › Alert rules), filtered by status, rule,
+// Alerts: every alert raised by the rules (Admin › Alerts), filtered by status, rule,
 // level, modality and study date. Select rows and acknowledge them with a note; the note
 // and who acknowledged are kept on the alert and in the audit log.
 
@@ -126,7 +126,7 @@ function draw(sum, rows) {
       select('Level', 'level', [['', 'all'], ['alert', 'alert'], ['warn', 'warning']]),
       select('Modality', 'modality', [['', 'all'], ...['CT', 'DX', 'CR', 'RF', 'XA', 'MG'].map((m) => [m, m])]),
       ...dates,
-      h('a', { class: 'btn ghost', href: 'rules.html' }, 'Rules…'),
+      h('a', { class: 'btn ghost', href: 'rules.html' }, 'Rules and notifications…'),
       ...defaultsActions('alerts', { admin: defaults.admin, prefKeys: ['alerts.filters'],
         current: () => ({ status: f.status, rule: f.rule, level: f.level, modality: f.modality }) }), fresh),
     f.status !== 'acknowledged' ? ackBar : null,

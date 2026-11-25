@@ -91,7 +91,9 @@ class SpoolWorker(threading.Thread):
         super().__init__(name="dozimetrix-spool", daemon=True)
         self.spool, self.maker, self.secret = spool, maker, secret
         self.keep, self.interval, self.batch = keep, interval, batch
-        self.notify = notify  # notify.NotifySettings: send alert notifications when idle
+        # alert notifications when idle: [notify] of the toml as a dict (the settings are read
+        # again for every run, so the web UI's changes apply at once), or a NotifySettings
+        self.notify = notify
         self._last_dispatch = 0.0
         self._sender: threading.Thread | None = None  # the notification run in flight
         self.run_device_alerts = device_alerts  # the live receiver: hourly device rules
@@ -172,11 +174,13 @@ class SpoolWorker(threading.Thread):
         self._sender.start()
 
     def _send_notifications(self) -> None:
-        from ..notify import dispatch
+        from ..notify import NotifySettings, dispatch, load_settings
 
         try:
             with self.maker() as session:
-                sent = dispatch(session, self.notify)
+                cfg = self.notify if isinstance(self.notify, NotifySettings) \
+                    else load_settings(session, self.notify, self.secret)
+                sent = dispatch(session, cfg)
                 session.commit()
             if sent:
                 log.info("notifications: %s", dict(sent))

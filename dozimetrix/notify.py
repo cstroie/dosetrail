@@ -9,7 +9,8 @@
   failed channels only (``notified_channels`` lists those already delivered); after 5 failed
   runs it is given up.
 
-Configuration (dozimetrix.toml)::
+Configuration: the web UI (Admin → Alerts → Notifications, kept in the database, the two
+passwords sealed) overrides, field by field, the [notify] table of dozimetrix.toml::
 
     [notify]
     base_url = "https://dose.example.org"      # for links in messages
@@ -60,6 +61,8 @@ class NotifySettings:
     smtp_password_file: Path | None = None
     ntfy_url: str | None = None
     ntfy_token_file: Path | None = None
+    smtp_password: str | None = None  # kept sealed in the database (load_settings opens it)
+    ntfy_token: str | None = None
     max_age_hours: float = 48
     timeout: float = 15
 
@@ -81,6 +84,35 @@ class NotifySettings:
         if self.ntfy_url:
             out.append("ntfy")
         return out
+
+
+SETTINGS_KEY = "notify.settings"  # app_setting: what an admin set in the web UI
+# the plain fields the UI can set; the two secrets are stored sealed beside them
+UI_FIELDS = ("base_url", "email_to", "email_from", "smtp_host", "smtp_port", "smtp_starttls",
+             "smtp_ssl", "smtp_user", "ntfy_url")
+SECRET_FIELDS = {"smtp_password": "smtp_password_enc", "ntfy_token": "ntfy_token_enc"}
+
+
+def load_settings(session: Session, toml: dict | None = None, secret: bytes | None = None,
+                  ) -> NotifySettings:
+    """The effective settings: [notify] of dozimetrix.toml, then what an admin set in the web
+    UI over it, field by field. A sealed secret that cannot be opened (the site secret was
+    changed) leaves that secret unset, so the channel fails visibly instead of silently."""
+    from . import secretbox
+    from .db.models import AppSetting
+
+    raw = dict(toml or {})
+    row = session.get(AppSetting, SETTINGS_KEY)
+    stored = dict(row.value or {}) if row else {}
+    raw.update({k: v for k, v in stored.items() if k in UI_FIELDS})
+    cfg = NotifySettings.from_dict(raw)
+    for attr, col in SECRET_FIELDS.items():
+        if stored.get(col) and secret:
+            try:
+                setattr(cfg, attr, secretbox.open_(secret, stored[col]))
+            except secretbox.SecretError:
+                log.warning("notify: the stored %s cannot be decrypted; enter it again", attr)
+    return cfg
 
 
 def _secret(path: Path | None) -> str | None:
@@ -130,7 +162,7 @@ def send_email(cfg: NotifySettings, m: Message) -> None:
     with smtp_cls(cfg.smtp_host, cfg.smtp_port, timeout=cfg.timeout, **kwargs) as smtp:
         if cfg.smtp_starttls and not cfg.smtp_ssl:
             smtp.starttls(context=ctx)
-        password = _secret(cfg.smtp_password_file)
+        password = cfg.smtp_password or _secret(cfg.smtp_password_file)
         if cfg.smtp_user and password:
             smtp.login(cfg.smtp_user, password)
         smtp.send_message(msg)
@@ -142,7 +174,7 @@ def send_ntfy(cfg: NotifySettings, m: Message) -> None:
                "Tags": "rotating_light" if m.urgent else "warning"}
     if m.link:
         headers["Click"] = m.link
-    token = _secret(cfg.ntfy_token_file)
+    token = cfg.ntfy_token or _secret(cfg.ntfy_token_file)
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(cfg.ntfy_url, data=m.body.encode("utf-8"), headers=headers,
@@ -153,6 +185,15 @@ def send_ntfy(cfg: NotifySettings, m: Message) -> None:
 
 
 SENDERS = {"email": send_email, "ntfy": send_ntfy}
+
+
+def send_test(cfg: NotifySettings, channel: str, senders: dict | None = None) -> None:
+    """One message through one channel, with no patient data; raises on failure."""
+    if channel not in cfg.channels:
+        raise RuntimeError(f"the {channel} channel is not configured")
+    (senders or SENDERS)[channel](cfg, Message(
+        "[Dozimetrix] Test notification", "This is a test message from Dozimetrix.",
+        cfg.base_url, False))
 
 
 def dispatch(session: Session, cfg: NotifySettings, now: dt.datetime | None = None,
@@ -178,8 +219,7 @@ def dispatch(session: Session, cfg: NotifySettings, now: dt.datetime | None = No
             a.notified_at, a.notify_error = now, "not sent (historical)"
             stats["historical"] += 1
             continue
-        if not channels:
-            a.notified_at, a.notify_error = now, "not sent (no channel configured)"
+        if not channels:  # keep it (within max_age_hours): a channel set up later sends it
             stats["no_channel"] += 1
             continue
         m = compose(a, rule, s, names.get(s.device_id), cfg.base_url)

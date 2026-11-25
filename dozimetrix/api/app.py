@@ -259,6 +259,28 @@ class RuleIn(BaseModel):
     note: str | None = None
 
 
+class NotifyIn(BaseModel):
+    """Notification settings an admin sets in the UI (all optional: a partial update). An empty
+    list/string clears a field back to the toml value; the two secrets are write-only."""
+    base_url: str | None = None
+    email_to: list[str] | None = None
+    email_from: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_starttls: bool | None = None
+    smtp_ssl: bool | None = None
+    smtp_user: str | None = None
+    ntfy_url: str | None = None
+    smtp_password: str | None = None  # "" = unchanged
+    ntfy_token: str | None = None
+    clear_smtp_password: bool = False
+    clear_ntfy_token: bool = False
+
+
+class NotifyTestIn(BaseModel):
+    channel: str
+
+
 RULE_KINDS = ("threshold", "cumulative", "count", "drl_ratio", "pregnant")
 
 
@@ -1290,7 +1312,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                       "web_listen": f"{settings.web_host}:{settings.web_port}",
                       "allowed": nodes.allowed_senders(session, settings.dicom_allowed_aets)},
             "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
-            "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=300),
+            "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=nodes.QR_STALE_S),
             "coverage": [{"date": d, "done": d in done} for d in days],
             "nodes": [nodes.as_dict(n) for n in session.scalars(
                 select(DicomNode).order_by(DicomNode.name))],
@@ -1459,7 +1481,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             if "dicom" in topics:
                 out["dicom"] = {
                     "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
-                    "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=300)}
+                    "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=nodes.QR_STALE_S)}
             if "his" in topics:
                 row = session.get(AppSetting, servers.STATUS_KEY)
                 worker = dict(row.value or {}) if row else None
@@ -1505,7 +1527,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                     f"{rx.get('aet')} :{rx.get('port')} · {rx.get('received', 0)} received"
                     + (f" · {spool['derive_pending']} to process" if spool.get("derive_pending")
                        else "")})
-        qr = nodes.read_status(session, nodes.QR_KEY, stale_after=300)
+        qr = nodes.read_status(session, nodes.QR_KEY, stale_after=nodes.QR_STALE_S)
         out.append({"key": "qr", "name": "PACS sync",
                     "state": "ok" if qr and qr["running"] else "idle",
                     "at": qr and qr["at"], "age_s": qr and qr["age_s"],
@@ -1739,6 +1761,113 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         cols = ("id", "key", "name", "enabled", "kind", "modality", "metric", "threshold",
                 "unit", "window_days", "max_age_days", "severity", "notify", "note")
         return {**{c: getattr(r, c) for c in cols}, "custom": r.key not in seeded}
+
+    # ------------------------------------------------------------ notification channels
+
+    def _notify_stored(session: Session) -> dict:
+        from ..db.models import AppSetting
+        from ..notify import SETTINGS_KEY
+
+        row = session.get(AppSetting, SETTINGS_KEY)
+        return dict(row.value or {}) if row else {}
+
+    @app.get("/api/notify")
+    def notify_get(user: User = Depends(admin_user), session: Session = Depends(db)):
+        from datetime import timedelta
+
+        from ..db.models import Alert, AlertRule
+        from ..notify import UI_FIELDS, load_settings
+
+        stored, toml = _notify_stored(session), settings.notify or {}
+        cfg = load_settings(session, toml, secret)
+        fields = {k: {"value": getattr(cfg, k),
+                      "source": "ui" if k in stored else ("toml" if k in toml else None)}
+                  for k in UI_FIELDS}
+        since = clock() - timedelta(hours=24)
+        count = lambda *w: session.scalar(  # noqa: E731
+            select(func.count()).select_from(Alert).join(AlertRule, AlertRule.id == Alert.rule_id)
+            .where(AlertRule.notify.is_(True), *w))
+        last = session.scalars(
+            select(Alert.notify_error).where(Alert.notify_error.like("failed%"))
+            .order_by(Alert.id.desc()).limit(1)).first()
+        return {
+            "fields": fields, "channels": cfg.channels,
+            "smtp_password_set": bool(cfg.smtp_password or cfg.smtp_password_file),
+            "ntfy_token_set": bool(cfg.ntfy_token or cfg.ntfy_token_file),
+            "status": {
+                "waiting": count(Alert.notified_at.is_(None)),
+                "sent_24h": count(Alert.notified_at >= since, Alert.notified_channels.is_not(None)),
+                "failed": count(Alert.notify_error.like("failed%")),
+                "last_error": last,
+            },
+        }
+
+    @app.put("/api/notify")
+    def notify_put(body: NotifyIn, request: Request, user: User = Depends(admin_user),
+                   session: Session = Depends(db)):
+        from ..db.models import AppSetting
+        from ..notify import SECRET_FIELDS, SETTINGS_KEY, UI_FIELDS
+
+        patch = body.model_dump(exclude_unset=True)
+        addr = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
+        for k in ("base_url", "ntfy_url"):
+            v = (patch.get(k) or "").strip()
+            if v and not re.match(r"^https?://[^\s/]+", v):
+                raise HTTPException(400, f"{k} must be an http:// or https:// URL")
+        if patch.get("smtp_port") is not None and not 1 <= patch["smtp_port"] <= 65535:
+            raise HTTPException(400, "smtp_port is 1-65535")
+        if patch.get("email_to") is not None:
+            patch["email_to"] = [a.strip() for a in patch["email_to"] if a.strip()]
+            if not all(addr.match(a) for a in patch["email_to"]):
+                raise HTTPException(400, "email_to has an address that is not valid")
+        if patch.get("email_from") and not addr.match(patch["email_from"].strip()):
+            raise HTTPException(400, "email_from is not a valid address")
+        stored = _notify_stored(session)
+        before, changes = dict(stored), {}
+        for k in UI_FIELDS:
+            if k not in patch:
+                continue
+            v = patch[k]
+            if isinstance(v, str):
+                v = v.strip()
+            if v in (None, "", []):
+                stored.pop(k, None)  # back to the toml value
+            else:
+                stored[k] = v
+            if before.get(k) != stored.get(k):
+                changes[k] = {"from": before.get(k), "to": stored.get(k)}
+        from .. import secretbox
+
+        for attr, col in SECRET_FIELDS.items():
+            if patch.get(f"clear_{attr}"):
+                if stored.pop(col, None):
+                    changes[attr] = "cleared"
+            elif patch.get(attr):
+                stored[col] = secretbox.seal(secret, patch[attr])
+                changes[attr] = "set"  # never the value, here or in the audit log
+        row = session.get(AppSetting, SETTINGS_KEY) or AppSetting(key=SETTINGS_KEY)
+        row.value = stored
+        session.merge(row)
+        _audit(session, request, user, "notify.update", "notify", changes)
+        session.commit()
+        return {"changes": changes}
+
+    @app.post("/api/notify/test")
+    def notify_test(body: NotifyTestIn, request: Request, user: User = Depends(admin_user),
+                    session: Session = Depends(db)):
+        from .. import notify
+
+        if body.channel not in notify.SENDERS:
+            raise HTTPException(400, "channel is email|ntfy")
+        cfg = notify.load_settings(session, settings.notify, secret)
+        try:
+            notify.send_test(cfg, body.channel, getattr(app.state, "notify_senders", None))
+            ok, err = True, None
+        except Exception as exc:  # noqa: BLE001 – the admin needs to read why
+            ok, err = False, f"{type(exc).__name__}: {exc}"[:300]
+        _audit(session, request, user, "notify.test", body.channel, {"ok": ok, "error": err})
+        session.commit()
+        return {"ok": ok, "error": err}
 
     @app.get("/api/alert-rules/metrics")
     def alert_rule_metrics(user: User = Depends(current_user)):

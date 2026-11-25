@@ -24,6 +24,9 @@ from ..db.models import AppSetting, DicomNode
 
 IMPORTED_KEY = "dicom.config_imported"
 RECEIVER_KEY, QR_KEY = "receiver.status", "qr.status"
+# query/retrieve is a scheduled run (hourly timer, or every 15 min), not a daemon: it is only
+# late when a whole period and more has passed without one
+QR_STALE_S = 5400
 FIELDS = ("name", "aet", "host", "port", "enabled", "query_retrieve", "sends", "retrieve",
           "move_destination", "modalities", "max_results", "timeout", "sync_days", "notes")
 

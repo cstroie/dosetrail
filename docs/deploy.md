@@ -64,11 +64,12 @@ systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
 - New devices start as *external*; mark your own rooms local on Admin → Devices.
 
 ## Alerts and notifications
-- Default alert rules are seeded by `dozimetrix seed`; edit them in the UI (Admin → Alert rules) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
+- Default alert rules are seeded by `dozimetrix seed`; edit them in the UI (Admin → Alerts) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
 - Admins add rules in the same page ("Add rule": threshold, cumulative, count, × national DRL, pregnant patient) and delete the ones they added; a default rule can only be switched off. Both are audit-logged (`alert_rule.create`, `alert_rule.delete`; deleting removes the rule's alerts). Device rules (silent, drift, sustained above DRL) come only from `seeds/alert_rules.toml`. A new rule applies to studies evaluated from now on; for earlier ones run `dozimetrix alerts evaluate --since`.
 - New studies are evaluated as they are imported. To evaluate history, run `dozimetrix alerts evaluate --since 2026-01-01`.
 - Notifications are sent by the receiver service when it is idle, at most every 30 s. They can also be sent with `dozimetrix alerts notify`. Only alerts on studies from the last 48 h are sent.
-- Configure `[notify]` (see `dozimetrix.toml.example`), then check it with `dozimetrix alerts test-notify`.
+- Notification channels (e-mail, ntfy) are set in Admin → Alerts → Notifications: settings, a "Send test" button, and what was sent or failed. They are kept in the database, the SMTP password and the ntfy token sealed with the site secret (write-only in the UI; changing the secret file means typing them again), and they override the `[notify]` table of the toml field by field (see `dozimetrix.toml.example`). The receiver reads them again on every run: no restart. `dozimetrix alerts test-notify` tests the same settings from the shell.
+- With no channel configured, alerts on rules with Notify on stay pending for 48 h, so a channel set up later still sends them; older ones are marked "not sent (historical)".
 
 ## Growth tables (setup step)
 - Run `dozimetrix growth install` once; it downloads the weight-for-age tables into `<data_dir>/growth`:

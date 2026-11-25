@@ -680,9 +680,9 @@ def _cmd_alerts(args: argparse.Namespace) -> int:
     from .db.session import make_engine, make_sessionmaker
 
     s = load_settings()
-    cfg = notify.NotifySettings.from_dict(s.notify)
     engine = make_engine(args.url or s.database_url)
     with make_sessionmaker(engine)() as session:
+        cfg = notify.load_settings(session, s.notify, _secret())
         if args.action == "evaluate":
             start = dt.datetime.fromisoformat(args.since) if args.since else None
             end = dt.datetime.fromisoformat(args.until) if args.until else None
@@ -699,13 +699,12 @@ def _cmd_alerts(args: argparse.Namespace) -> int:
             print(dict(stats) or "nothing to send", "channels:", cfg.channels or "none")
         elif args.action == "test-notify":
             if not cfg.channels:
-                print("no channel configured: set [notify] smtp_host + email_to, or ntfy_url")
+                print("no channel configured: set one in Admin → Alerts, or [notify] smtp_host "
+                      "+ email_to / ntfy_url in the toml")
                 return 1
-            m = notify.Message("[Dozimetrix] Test notification",
-                               "This is a test message from Dozimetrix.", cfg.base_url, False)
             for ch in cfg.channels:
                 try:
-                    notify.SENDERS[ch](cfg, m)
+                    notify.send_test(cfg, ch)
                     print(f"{ch}: sent")
                 except Exception as e:  # noqa: BLE001
                     print(f"{ch}: FAILED {e}")
@@ -1024,10 +1023,8 @@ def _cmd_receive(args: argparse.Namespace) -> int:
     s = load_settings()
     spool = Spool(s.spool_dir)
     maker = make_sessionmaker(make_engine(args.url or s.database_url))
-    from .notify import NotifySettings
-
     worker = SpoolWorker(spool, maker, _secret(), keep=s.keep_received,
-                         notify=NotifySettings.from_dict(s.notify), device_alerts=True,
+                         notify=s.notify, device_alerts=True,
                          retention_days=s.spool_retention_days)
     from .net import nodes
 

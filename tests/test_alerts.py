@@ -156,6 +156,45 @@ def test_partial_channel_failure_retries_only_the_failed_channel(session, world)
     assert calls == {"email": 2, "ntfy": 1}  # ntfy was not sent a second time
 
 
+def test_no_channel_keeps_recent_alerts_until_one_is_set_up(session, world):
+    dev, kid = world
+    recent = _study(session, dev, kid, "al.9", NOW - dt.timedelta(hours=1), modality="XA",
+                    total_rp_dose=6.0, age_days=4000)
+    old = _study(session, dev, kid, "al.10", NOW - dt.timedelta(days=9), modality="XA",
+                 total_rp_dose=6.0, age_days=4000)
+    alerts.evaluate(session, [recent.id, old.id])
+    stats = notify.dispatch(session, notify.NotifySettings(), NOW)
+    assert stats["no_channel"] >= 1 and stats["historical"] >= 1
+    a = _alerts(session, recent)["fluoro-kar-5gy"]
+    assert a.notified_at is None  # kept: a channel set up later still sends it
+    assert _alerts(session, old)["fluoro-kar-5gy"].notify_error == "not sent (historical)"
+    sent = []
+    notify.dispatch(session, notify.NotifySettings(ntfy_url="http://x/t"), NOW,
+                    {"ntfy": lambda c, m: sent.append(m)})
+    assert a.notified_at is not None and len(sent) >= 1
+
+
+def test_ui_settings_override_toml_and_secrets_are_sealed(session):
+    from dozimetrix import secretbox
+    from dozimetrix.db.models import AppSetting
+
+    key = b"k" * 32
+    toml = {"base_url": "https://old.example", "ntfy_url": "http://toml/t", "smtp_port": 25}
+    assert notify.load_settings(session, toml, key).channels == ["ntfy"]
+    session.add(AppSetting(key=notify.SETTINGS_KEY, value={
+        "base_url": "https://new.example", "smtp_host": "mail", "email_to": ["a@b.ro"],
+        "smtp_password_enc": secretbox.seal(key, "s3cret"), "bogus": "ignored"}))
+    session.flush()
+    cfg = notify.load_settings(session, toml, key)
+    assert cfg.base_url == "https://new.example" and cfg.ntfy_url == "http://toml/t"
+    assert cfg.smtp_port == 25 and cfg.channels == ["email", "ntfy"]
+    assert cfg.smtp_password == "s3cret" and not hasattr(cfg, "bogus")
+    # another site secret: the password cannot be opened, so it is left unset (not crashed)
+    assert notify.load_settings(session, toml, b"z" * 32).smtp_password is None
+    with pytest.raises(RuntimeError):
+        notify.send_test(notify.NotifySettings(), "email")
+
+
 def test_per_patient_rules_alert_once_per_window(session, world):
     dev, kid = world
     ids = []
