@@ -43,6 +43,7 @@ dx-query-bar { display: block; position: relative; }
 .tabs .tab-saved > :first-child { padding-right: 4px; }
 .tabs .tab-x { padding: 7px 8px 7px 2px; color: var(--muted); }
 .tabs .tab-x:hover { color: var(--alert); }
+.tabs .tab-share:hover { color: var(--accent, var(--text)); }
 .tabs [aria-current="page"] { color: var(--text); border-color: var(--accent); }
 
 /* ---------- data grid ---------- */

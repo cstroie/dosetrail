@@ -59,6 +59,25 @@ export async function getPref(key) {
 /** PUT /api/me/prefs/{key}  {value} */
 export const putPref = (key, value) => send('PUT', `/api/me/prefs/${encodeURIComponent(key)}`, { value });
 
+/** GET /api/views?kind= → the views an admin shared with everyone ([] with the sample data) */
+export async function sharedViews(kind) {
+  if (isSample) return [];
+  return (await remote('/api/views', { kind })).views;
+}
+/** POST /api/views {kind, name, value} (admin, audited) */
+export const createView = (kind, name, value) => send('POST', '/api/views', { kind, name, value });
+/** PUT /api/views/{id} {name?, value?, position?} (admin, audited) */
+export const updateView = (id, patch) => send('PUT', `/api/views/${id}`, patch);
+/** DELETE /api/views/{id} (admin, audited) */
+export const deleteView = (id) => send('DELETE', `/api/views/${id}`);
+/** GET /api/page-defaults → {drl, quality, alerts}: the filters an admin set as each page's default */
+export async function pageDefaults() {
+  if (isSample) return {};
+  try { return await remote('/api/page-defaults'); } catch { return {}; }
+}
+/** PUT /api/page-defaults/{page} {field: value} (admin, audited) */
+export const putPageDefaults = (page, value) => send('PUT', `/api/page-defaults/${page}`, value);
+
 /** PATCH /api/devices/{id}  {display_name?, modality_override? ('auto' clears), origin?} */
 export const updateDevice = (id, patch) => send('PATCH', `/api/devices/${id}`, patch);
 /** POST /api/devices/merge  {record_ids, survivor_id, display_name?} */

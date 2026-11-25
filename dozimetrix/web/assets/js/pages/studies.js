@@ -7,7 +7,7 @@ import '../components/dx-data-grid.js';
 import { h, toast } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
-import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf } from '../core/api.js';
+import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { live } from '../core/live.js';
 import { rememberList } from '../core/study-nav.js';
@@ -15,7 +15,7 @@ import { rememberList } from '../core/study-nav.js';
 const DEFAULT_Q = 'modality:CT date:90d age:>=18 origin:local -phantom';
 const SAVED_KEY = 'savedQueries.ct';  // the key predates the other modalities; kept for users' saved queries
 // One starter query, copied into the user's own saved queries the first time (nothing stored
-// yet); from then on it is theirs: deleting it keeps it deleted.
+// yet, and no shared query to start from); from then on it is theirs: deleting it keeps it deleted.
 const STARTER = { name: 'Adult CT, last 90 days', q: DEFAULT_Q };
 
 const page = document.getElementById('page');
@@ -99,35 +99,89 @@ function columnsFor(profile, profiles) {
   return [...COMMON, ...profile.columns.filter((k) => CATALOGUE[k]).map((k) => ({ key: k, ...CATALOGUE[k] }))];
 }
 
-function savedQueries() {
-  const saved = prefs.get(SAVED_KEY);
-  if (saved) return saved;
-  prefs.set(SAVED_KEY, [{ ...STARTER }]);
-  return prefs.get(SAVED_KEY);
+// Saved queries: the shared ones an admin published (for everyone), then the user's own (kept
+// on the server per user, mirrored in this browser; browser only with the sample data).
+const queries = { shared: [], mine: [], admin: false };
+
+async function loadQueries() {
+  const local = prefs.get(SAVED_KEY);
+  if (isSample) { queries.mine = local || [{ ...STARTER }]; return; }
+  const [shared, mine, user] = await Promise.all([
+    sharedViews('study_query').catch(() => []), getPref('studies.saved').catch(() => null), me().catch(() => null)]);
+  queries.shared = shared;
+  queries.admin = !!user?.roles?.includes('admin');
+  if (mine) queries.mine = mine;
+  else {
+    // first visit since queries moved to the server: take this browser's along
+    queries.mine = local || (shared.length ? [] : [{ ...STARTER }]);
+    putPref('studies.saved', queries.mine).catch(() => {});
+  }
+  prefs.set(SAVED_KEY, queries.mine);
+}
+
+function saveMine(list) {
+  queries.mine = list;
+  prefs.set(SAVED_KEY, list);
+  if (!isSample) putPref('studies.saved', list).catch((e) => toast(`Query not saved on the server: ${e.message}`));
+}
+
+async function share(name, q, fromMine) {
+  try {
+    const v = await createView('study_query', name, { q });
+    queries.shared = [...queries.shared, v];
+    if (fromMine) saveMine(queries.mine.filter((x) => x !== fromMine));  // moved, not copied
+    toast(`“${name}” is now shared with everyone`);
+  } catch (e) { toast(`Not shared: ${e.message}`); }
 }
 
 function tabs(currentQ, onPick) {
-  const saved = savedQueries();
   const nav = h('nav', { class: 'tabs', 'aria-label': 'Saved queries' });
-  const match = saved.find((s) => s.q === currentQ);
-  for (const s of saved) {
-    const tab = h('button', { type: 'button', 'aria-current': s === match ? 'page' : false, title: s.q, onclick: () => onPick(s.q) }, s.name);
-    // every tab is the user's own (this browser only) and can be deleted
-    nav.append(h('span', { class: 'tab-saved' }, tab,
-      h('button', { type: 'button', class: 'tab-x', 'aria-label': `Delete “${s.name}”`, title: 'Delete this saved query', onclick: () => {
+  const all = [...queries.shared.map((v) => ({ name: v.name, q: v.value?.q || '', view: v })), ...queries.mine];
+  const match = all.find((s) => s.q === currentQ);
+  const xBtn = (label, title, fn) => h('button', { type: 'button', class: 'tab-x', 'aria-label': label, title, onclick: fn }, '×');
+  for (const s of all) {
+    const tab = h('button', { type: 'button', 'aria-current': s === match ? 'page' : false,
+      title: s.view ? `Shared with everyone · ${s.q}` : `Yours · ${s.q}`, onclick: () => onPick(s.q) },
+    s.view ? h('span', { class: 'muted', 'aria-hidden': 'true' }, '◆ ') : null, s.name);
+    const extra = [];
+    if (s.view && queries.admin) {
+      extra.push(xBtn(`Stop sharing “${s.name}”`, 'Remove this shared query for everyone', async () => {
+        if (!confirm(`Remove the shared query “${s.name}” for everyone?`)) return;
+        try { await deleteView(s.view.id); } catch (e) { toast(`Not removed: ${e.message}`); return; }
+        queries.shared = queries.shared.filter((v) => v !== s.view);
+        toast(`Removed “${s.name}” for everyone`);
+        onPick(currentQ);
+      }));
+    } else if (!s.view) {
+      if (queries.admin) {
+        extra.push(h('button', { type: 'button', class: 'tab-x tab-share', 'aria-label': `Share “${s.name}” with everyone`, title: 'Share with everyone',
+          onclick: async () => { await share(s.name, s.q, s); onPick(currentQ); } }, '↑'));
+      }
+      extra.push(xBtn(`Delete “${s.name}”`, 'Delete this saved query', () => {
         if (!confirm(`Delete the saved query “${s.name}”?`)) return;
-        prefs.set(SAVED_KEY, savedQueries().filter((x) => x.name !== s.name || x.q !== s.q));
+        saveMine(queries.mine.filter((x) => x !== s));
         toast(`Deleted “${s.name}”`);
         onPick(currentQ);
-      } }, '×')));
+      }));
+    }
+    nav.append(h('span', { class: 'tab-saved' }, tab, ...extra));
   }
+  const ask = () => prompt('Name for this query', '');
   nav.append(h('button', { type: 'button', onclick: () => {
-    const name = prompt('Name for this query', '');
+    const name = ask();
     if (!name) return;
-    prefs.set(SAVED_KEY, [...savedQueries(), { name, q: currentQ }]);
-    toast(`Saved “${name}” (this browser only)`);
+    saveMine([...queries.mine, { name, q: currentQ }]);
+    toast(isSample ? `Saved “${name}” (this browser only)` : `Saved “${name}” to your account`);
     onPick(currentQ);
   } }, match ? '+ Save as…' : '● Unsaved · Save…'));
+  if (queries.admin) {
+    nav.append(h('button', { type: 'button', title: 'Save this query for everyone', onclick: async () => {
+      const name = ask();
+      if (!name) return;
+      await share(name, currentQ, null);
+      onPick(currentQ);
+    } }, '+ Save for everyone…'));
+  }
   return nav;
 }
 
@@ -160,7 +214,7 @@ function groupTabs(profiles, current, onPick) {
 }
 
 async function init() {
-  const [devs, drlSet, profiles] = await Promise.all([deviceMap(), drl(), modalities()]);
+  const [devs, drlSet, profiles] = await Promise.all([deviceMap(), drl(), modalities(), loadQueries()]);
   const physical = new Map([...devs.entries()].filter(([id, d]) => id === d.id));
   let currentQ = initial.q;
 

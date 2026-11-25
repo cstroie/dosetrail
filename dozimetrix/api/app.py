@@ -547,6 +547,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         fields = _view_body(body, partial=False)
         _view_clash(session, fields["kind"], fields["name"])
+        if "position" not in fields:  # new ones go last
+            last = session.scalar(select(func.max(SharedView.position))
+                                  .filter_by(kind=fields["kind"]))
+            fields["position"] = (last or 0) + 1
         v = SharedView(**fields, created_by=user.id, updated_by=user.id, updated_at=clock())
         session.add(v)
         session.flush()
