@@ -189,10 +189,15 @@ class SpoolWorker(threading.Thread):
 
     def prune(self) -> int:
         """Hourly: remove failed and archived objects (patient data) past the retention."""
-        if self.retention_days <= 0 or time.monotonic() - self._last_prune < 3600:
+        if time.monotonic() - self._last_prune < 3600:
             return 0
-        self._last_prune = time.monotonic()
-        cutoff = time.time() - self.retention_days * 86400
+        self._last_prune = time.monotonic()  # checked hourly, also when nothing is removed
+        from .. import siteconf
+
+        days = siteconf.spool_retention(self.maker, self.retention_days)  # Admin → Settings
+        if days <= 0:
+            return 0
+        cutoff = time.time() - days * 86400
         removed = 0
         for root in (self.spool.failed, self.spool.archive):
             for p in sorted(root.rglob("*"), reverse=True):  # files before their folders
@@ -205,7 +210,7 @@ class SpoolWorker(threading.Thread):
                 except OSError:
                     continue
         if removed:
-            log.info("removed %d spool files older than %d days", removed, self.retention_days)
+            log.info("removed %d spool files older than %d days", removed, days)
         return removed
 
     def drain(self) -> int:

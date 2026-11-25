@@ -668,7 +668,7 @@ def test_notify_settings_endpoints(client):
     first = client.get("/api/notify").json()
     assert first["channels"] == [] and first["smtp_password_set"] is False
     for bad in ({"smtp_port": 70000}, {"email_to": ["nope"]}, {"ntfy_url": "ftp://x"},
-                {"base_url": "javascript:alert(1)"}, {"email_from": "a b"}):
+                {"email_from": "a b"}):
         assert client.put("/api/notify", json=bad).status_code == 400, bad
     ok = client.put("/api/notify", json={
         "ntfy_url": "https://ntfy.example/topic", "ntfy_token": "tok-SECRET-1",
@@ -695,6 +695,45 @@ def test_notify_settings_endpoints(client):
         rows = list(s.scalars(select(AuditLog).where(AuditLog.action.like("notify.%"))))
         assert {r.action for r in rows} == {"notify.update", "notify.test"}
         assert "SECRET" not in " ".join(str(r.detail) for r in rows)
+
+
+def test_site_settings_endpoints(client):
+    from dozimetrix.db.models import AuditLog
+
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/settings").status_code == 403
+    assert client.put("/api/settings", json={"base_url": "http://x"}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    got = client.get("/api/settings").json()
+    assert got["base_url"] == {"value": None, "source": None}
+    assert got["spool_retention_days"]["source"] == "toml"
+    d = got["deployment"]
+    assert d["dicom"]["aet"] and d["database"]["driver"].startswith("sqlite") and "password" not in str(d).lower()
+    for bad in ({"base_url": "javascript:alert(1)"}, {"base_url": "dose.example"},
+                {"spool_retention_days": -1}, {"spool_retention_days": 99999}, {"name": " "}):
+        assert client.put("/api/settings", json=bad).status_code == 400, bad
+    r = client.put("/api/settings", json={"name": "Spitalul Test", "code": "tst",
+                                          "base_url": "https://dose.example.org/",
+                                          "spool_retention_days": 30})
+    assert r.status_code == 200, r.text
+    assert set(r.json()["changes"]) == {"name", "code", "base_url", "spool_retention_days"}
+    got = client.get("/api/settings").json()
+    assert got["site"] == {"name": "Spitalul Test", "code": "TST"}
+    assert got["base_url"] == {"value": "https://dose.example.org", "source": "ui"}  # no trailing slash
+    assert got["spool_retention_days"]["value"] == 30 and got["spool_retention_days"]["source"] == "ui"
+    # the notification links use it
+    from dozimetrix import notify
+
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        assert notify.load_settings(s, {"base_url": "https://old"}, b"k" * 32).base_url == "https://dose.example.org"
+    # empty values go back to the toml / default
+    assert client.put("/api/settings", json={"base_url": "", "spool_retention_days": None}).status_code == 200
+    got = client.get("/api/settings").json()
+    assert got["base_url"]["value"] is None and got["spool_retention_days"]["source"] == "toml"
+    with make_sessionmaker(make_engine(url))() as s:
+        assert s.scalar(select(func.count()).select_from(AuditLog).where(
+            AuditLog.action == "settings.update")) >= 2
 
 
 def test_his_server_endpoints(client):

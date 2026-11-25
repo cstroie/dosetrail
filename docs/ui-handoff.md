@@ -76,6 +76,7 @@ More plain working pages, yours to restyle:
 - `quality.html` (admin tab "Data quality"): rule counts, completeness per device, and studies with findings.
 - `reports.html` also has the second grid (ICRP 135 / RP 185, extended; `GET /api/reports/grid`): head exams by age, body exams by weight, median vs RP 185 EDRL; the stats dimension `ref_group` gives the same groups in charts.
 - `drl-sets.html` (admin tab "DRLs"): the reference sets and their values, read-only (seed-owned); the comparison stays on `drl.html`.
+- `settings.html` (admin tab "Settings"): the site name and code, the web address, spool retention (editable); deployment info (read-only).
 - `rules.html` (admin tab "Alerts"): the notification channels (e-mail, ntfy: settings, test, status), then enable, threshold, severity and notify per rule, with add and delete for rules an admin created.
 - The overview alert queue now uses real alerts (`GET /api/alerts`). "Acknowledge" calls `POST /api/alerts/{id}/ack`.
   - API alerts carry `study_id`; their `id` is the alert's own id.

@@ -60,7 +60,7 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "alerts.html": "alerts.html", "local-drl.html": "local-drl.html",
          "protocols.html": "protocols.html",
          "indications.html": "indications.html", "survey-central.html": "survey-central.html",
-         "dose-statement.html": "dose-statement.html"}
+         "dose-statement.html": "dose-statement.html", "settings.html": "settings.html"}
 OLD_PAGES = {"dicom.html": "integration.html"}
 LIVE_TOPICS = {"pulse", "services", "dicom", "his", "studies", "alerts"}
 LIVE_TOPIC_EVERY_S = {"studies": 15, "alerts": 60}  # list pages: scarce updates are enough
@@ -259,10 +259,17 @@ class RuleIn(BaseModel):
     note: str | None = None
 
 
+class SettingsIn(BaseModel):
+    """Site-wide settings (Admin → Settings): all optional, a partial update."""
+    name: str | None = None  # the site name and code are the first-run wizard's
+    code: str | None = None
+    base_url: str | None = None  # "" = back to the toml's [notify] base_url
+    spool_retention_days: int | None = None  # null = back to the toml's value
+
+
 class NotifyIn(BaseModel):
     """Notification settings an admin sets in the UI (all optional: a partial update). An empty
     list/string clears a field back to the toml value; the two secrets are write-only."""
-    base_url: str | None = None
     email_to: list[str] | None = None
     email_from: str | None = None
     smtp_host: str | None = None
@@ -1762,6 +1769,75 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 "unit", "window_days", "max_age_days", "severity", "notify", "note")
         return {**{c: getattr(r, c) for c in cols}, "custom": r.key not in seeded}
 
+    # ------------------------------------------------------------ site settings
+
+    @app.get("/api/settings")
+    def site_settings(user: User = Depends(admin_user), session: Session = Depends(db)):
+        from sqlalchemy.engine import make_url
+
+        from .. import __version__, siteconf
+        from ..db.models import AppSetting
+        from ..setup import SITE_KEY
+
+        site = dict((session.get(AppSetting, SITE_KEY) or AppSetting(key=SITE_KEY)).value or {})
+        ui = siteconf.stored(session)
+        toml_url = (settings.notify or {}).get("base_url")
+        url = make_url(settings.database_url)
+        return {
+            "site": {"name": site.get("name"), "code": site.get("code")},
+            "base_url": {"value": ui.get("base_url") or toml_url,
+                         "source": "ui" if ui.get("base_url") else ("toml" if toml_url else None)},
+            "spool_retention_days": {
+                "value": ui.get("spool_retention_days", settings.spool_retention_days),
+                "source": "ui" if "spool_retention_days" in ui else "toml",
+                "toml": settings.spool_retention_days},
+            # read-only: set in dozimetrix.toml, a change needs a restart
+            "deployment": {
+                "version": __version__,
+                "config_file": str(settings.source) if settings.source else None,
+                "database": {"driver": url.drivername, "host": url.host, "name": url.database},
+                "dicom": {"aet": settings.dicom_aet, "port": settings.dicom_port,
+                          "bind": settings.dicom_bind,
+                          "allowed_aets": settings.dicom_allowed_aets},
+                "web": {"listen": f"{settings.web_host}:{settings.web_port}",
+                        "trusted_proxies": settings.web_trusted_proxies,
+                        "allowed_hosts": settings.web_allowed_hosts,
+                        "secure_cookies": settings.secure_cookies,
+                        "session_hours": settings.session_hours,
+                        "max_upload_mb": settings.max_upload_mb},
+                "paths": {"data_dir": str(settings.data_dir), "spool_dir": str(settings.spool_dir),
+                          "secret_file": str(settings.secret_file),
+                          "specs_dir": str(settings.specs_dir),
+                          "plugins_dir": str(settings.plugins_dir)},
+            },
+        }
+
+    @app.put("/api/settings")
+    def site_settings_put(body: SettingsIn, request: Request, user: User = Depends(admin_user),
+                          session: Session = Depends(db)):
+        from .. import siteconf
+        from ..setup import SITE_KEY, SetupError
+
+        patch = body.model_dump(exclude_unset=True)
+        changes = {}
+        try:
+            if "name" in patch or "code" in patch:
+                from ..db.models import AppSetting
+
+                cur = dict((session.get(AppSetting, SITE_KEY) or AppSetting(key=SITE_KEY)).value
+                           or {})
+                new = first_run.save_site(session, {"name": patch.get("name", cur.get("name")),
+                                                    "code": patch.get("code", cur.get("code"))})
+                changes.update({k: {"from": cur.get(k), "to": new[k]}
+                                for k in ("name", "code") if cur.get(k) != new[k]})
+            changes.update(siteconf.save(session, siteconf.clean(patch)))
+        except (SetupError, siteconf.SiteConfError) as e:
+            session.rollback()
+            raise HTTPException(400, str(e)) from e
+        _audit(session, request, user, "settings.update", "site", changes)
+        session.commit()
+        return {"changes": changes}
+
     # ------------------------------------------------------------ notification channels
 
     def _notify_stored(session: Session) -> dict:
@@ -1810,10 +1886,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         patch = body.model_dump(exclude_unset=True)
         addr = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
-        for k in ("base_url", "ntfy_url"):
-            v = (patch.get(k) or "").strip()
-            if v and not re.match(r"^https?://[^\s/]+", v):
-                raise HTTPException(400, f"{k} must be an http:// or https:// URL")
+        v = (patch.get("ntfy_url") or "").strip()
+        if v and not re.match(r"^https?://[^\s/]+", v):
+            raise HTTPException(400, "ntfy_url must be an http:// or https:// URL")
         if patch.get("smtp_port") is not None and not 1 <= patch["smtp_port"] <= 65535:
             raise HTTPException(400, "smtp_port is 1-65535")
         if patch.get("email_to") is not None:

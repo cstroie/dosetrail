@@ -63,6 +63,10 @@ systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
   finished days are remembered).
 - New devices start as *external*; mark your own rooms local on Admin → Devices.
 
+## Settings (Admin → Settings)
+- Editable, kept in the database and applied without a restart (audit-logged as `settings.update`): the site name and code (the first-run wizard's), the **web address** people open Dozimetrix at (notification links use it; it overrides `[notify] base_url`), and how many days the DICOM spool keeps failed and archived objects (overrides `[dicom] retention_days`; 0 keeps everything; the receiver applies it on its hourly prune). An empty value goes back to the toml.
+- Shown read-only, set in `dozimetrix.toml` and needing a restart: version, config file, database, DICOM AE title, ports and folders, web listen address, trusted proxies, allowed hosts, session length, upload limit.
+
 ## Alerts and notifications
 - Default alert rules are seeded by `dozimetrix seed`; edit them in the UI (Admin → Alerts) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
 - Admins add rules in the same page ("Add rule": threshold, cumulative, count, × national DRL, pregnant patient) and delete the ones they added; a default rule can only be switched off. Both are audit-logged (`alert_rule.create`, `alert_rule.delete`; deleting removes the rule's alerts). Device rules (silent, drift, sustained above DRL) come only from `seeds/alert_rules.toml`. A new rule applies to studies evaluated from now on; for earlier ones run `dozimetrix alerts evaluate --since`.

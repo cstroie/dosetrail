@@ -86,7 +86,6 @@ function notifyPanel(n) {
   const chk = (k) => h('input', { type: 'checkbox', checked: !!f(k).value });
   const pw = (isSet, label) => h('input', { class: 'input', type: 'password', autocomplete: 'new-password',
     placeholder: isSet ? `${label} set: leave empty to keep` : `${label} not set` });
-  const baseUrl = inp('base_url', { placeholder: 'the address people use to open Dozimetrix' });
   const e = {
     email_to: inp('email_to', { placeholder: 'physics@example.org, rso@example.org', value: (f('email_to').value || []).join(', ') }),
     email_from: inp('email_from'), smtp_host: inp('smtp_host'), smtp_port: inp('smtp_port', { type: 'number', value: f('smtp_port').value ?? 587 }),
@@ -114,7 +113,7 @@ function notifyPanel(n) {
     return b;
   };
   const save = (els, extra = {}) => act('Save', async () => {
-    const r = await saveNotify({ base_url: baseUrl.value, ...collect(els), ...extra });
+    const r = await saveNotify({ ...collect(els), ...extra });
     toast(Object.keys(r.changes).length ? `Saved: ${Object.keys(r.changes).join(', ')}` : 'No change');
     render();
   });
@@ -130,11 +129,11 @@ function notifyPanel(n) {
     h('h2', { class: 'section-title' }, 'Notifications'),
     h('p', { class: none ? 'error' : 'muted small' }, none
       ? 'No channel is configured: alerts on rules with Notify on are kept for 48 h and sent once a channel is set up.'
-      : `Rules with Notify on send to: ${n.channels.join(', ')}. Messages carry no patient identifiers, only the exam, the dose and a link (login needed).`),
+      : `Rules with Notify on send to: ${n.channels.join(', ')}. Messages carry no patient identifiers, only the exam, the dose and a link (login needed; the web address is set in Admin › Settings).`),
     h('p', { class: 'muted small' }, `${st.waiting} waiting · ${st.sent_24h} sent in the last 24 h · ${st.failed} failed`
       + (st.last_error ? ` · last error: ${st.last_error.slice(0, 160)}` : '')),
     h('div', { class: 'notify-cards' },
-      h('div', { class: 'panel notify-card' },
+      h('div', { class: 'panel form-card' },
         h('div', { class: 'row' }, h('strong', {}, 'E-mail'), h('span', { class: 'spacer' }), tag(n.channels.includes('email'))),
         h('div', { class: 'fields' },
           fld('To', e.email_to, 'email_to', 'wide'), fld('From', e.email_from, 'email_from', 'wide'),
@@ -143,11 +142,10 @@ function notifyPanel(n) {
           h('div', { class: 'checks' }, tick('STARTTLS', e.smtp_starttls), tick('SSL (port 465)', e.smtp_ssl))),
         h('div', { class: 'row' }, save(e), test('email', n.channels.includes('email')),
           n.smtp_password_set ? act('Remove password', async () => { await saveNotify({ clear_smtp_password: true }); render(); }) : '')),
-      h('div', { class: 'panel notify-card' },
+      h('div', { class: 'panel form-card' },
         h('div', { class: 'row' }, h('strong', {}, 'ntfy'), h('span', { class: 'spacer' }), tag(n.channels.includes('ntfy'))),
         h('div', { class: 'fields' },
-          fld('Topic address', nt.ntfy_url, 'ntfy_url', 'wide'), fld('Access token (optional)', nt.ntfy_token, null, 'wide'),
-          fld('Link base address (both channels)', baseUrl, 'base_url', 'wide')),
+          fld('Topic address', nt.ntfy_url, 'ntfy_url', 'wide'), fld('Access token (optional)', nt.ntfy_token, null, 'wide')),
         h('div', { class: 'row' }, save(nt), test('ntfy', n.channels.includes('ntfy')),
           n.ntfy_token_set ? act('Remove token', async () => { await saveNotify({ clear_ntfy_token: true }); render(); }) : ''))));
 }

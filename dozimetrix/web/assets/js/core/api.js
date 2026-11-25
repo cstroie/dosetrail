@@ -494,6 +494,9 @@ export const updateAlertRule = (id, patch) => send('PATCH', `/api/alert-rules/${
 /** POST /api/alert-rules (admin) · DELETE (only rules not in the seed file) · GET metrics a rule can watch */
 export const createAlertRule = (rule) => send('POST', '/api/alert-rules', rule);
 export const deleteAlertRule = (id) => send('DELETE', `/api/alert-rules/${id}`);
+/** GET /api/settings (admin: site name/code, web address, spool retention, read-only deployment info) · PUT (partial) */
+export const siteSettings = () => remote('/api/settings');
+export const saveSiteSettings = (body) => send('PUT', '/api/settings', body);
 /** GET /api/notify (admin: fields with their source, channels, status) · PUT (partial; secrets write-only) · POST test */
 export const notifySettings = () => remote('/api/notify');
 export const saveNotify = (body) => send('PUT', '/api/notify', body);

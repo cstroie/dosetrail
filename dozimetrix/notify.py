@@ -13,7 +13,7 @@ Configuration: the web UI (Admin → Alerts → Notifications, kept in the datab
 passwords sealed) overrides, field by field, the [notify] table of dozimetrix.toml::
 
     [notify]
-    base_url = "https://dose.example.org"      # for links in messages
+    base_url = "https://dose.example.org"      # for links in messages (Admin → Settings overrides)
     email_to = ["physics@example.org"]
     email_from = "dozimetrix@example.org"
     smtp_host = "smtp.example.org"
@@ -88,7 +88,7 @@ class NotifySettings:
 
 SETTINGS_KEY = "notify.settings"  # app_setting: what an admin set in the web UI
 # the plain fields the UI can set; the two secrets are stored sealed beside them
-UI_FIELDS = ("base_url", "email_to", "email_from", "smtp_host", "smtp_port", "smtp_starttls",
+UI_FIELDS = ("email_to", "email_from", "smtp_host", "smtp_port", "smtp_starttls",
              "smtp_ssl", "smtp_user", "ntfy_url")
 SECRET_FIELDS = {"smtp_password": "smtp_password_enc", "ntfy_token": "ntfy_token_enc"}
 
@@ -106,6 +106,9 @@ def load_settings(session: Session, toml: dict | None = None, secret: bytes | No
     stored = dict(row.value or {}) if row else {}
     raw.update({k: v for k, v in stored.items() if k in UI_FIELDS})
     cfg = NotifySettings.from_dict(raw)
+    from . import siteconf
+
+    cfg.base_url = siteconf.stored(session).get("base_url") or cfg.base_url  # Admin → Settings
     for attr, col in SECRET_FIELDS.items():
         if stored.get(col) and secret:
             try:

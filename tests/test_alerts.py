@@ -182,17 +182,46 @@ def test_ui_settings_override_toml_and_secrets_are_sealed(session):
     toml = {"base_url": "https://old.example", "ntfy_url": "http://toml/t", "smtp_port": 25}
     assert notify.load_settings(session, toml, key).channels == ["ntfy"]
     session.add(AppSetting(key=notify.SETTINGS_KEY, value={
-        "base_url": "https://new.example", "smtp_host": "mail", "email_to": ["a@b.ro"],
+        "smtp_host": "mail", "email_to": ["a@b.ro"],
         "smtp_password_enc": secretbox.seal(key, "s3cret"), "bogus": "ignored"}))
     session.flush()
     cfg = notify.load_settings(session, toml, key)
-    assert cfg.base_url == "https://new.example" and cfg.ntfy_url == "http://toml/t"
+    assert cfg.base_url == "https://old.example" and cfg.ntfy_url == "http://toml/t"
     assert cfg.smtp_port == 25 and cfg.channels == ["email", "ntfy"]
     assert cfg.smtp_password == "s3cret" and not hasattr(cfg, "bogus")
     # another site secret: the password cannot be opened, so it is left unset (not crashed)
     assert notify.load_settings(session, toml, b"z" * 32).smtp_password is None
     with pytest.raises(RuntimeError):
         notify.send_test(notify.NotifySettings(), "email")
+
+
+def test_site_web_address_and_spool_retention(session, tmp_path):
+    import os
+    import time
+
+    from dozimetrix import siteconf
+    from dozimetrix.db.session import make_sessionmaker
+    from dozimetrix.net.spool import Spool, SpoolWorker
+
+    assert siteconf.clean({"base_url": " https://dose.example/ "}) == {"base_url": "https://dose.example"}
+    for bad in ({"base_url": "ftp://x"}, {"spool_retention_days": -3}):
+        with pytest.raises(siteconf.SiteConfError):
+            siteconf.clean(bad)
+    cfg = notify.load_settings(session, {"base_url": "https://toml"}, b"k" * 32)
+    assert cfg.base_url == "https://toml"
+    siteconf.save(session, {"base_url": "https://ui", "spool_retention_days": 5})
+    session.flush()
+    assert notify.load_settings(session, {"base_url": "https://toml"}, b"k" * 32).base_url == "https://ui"
+    maker = make_sessionmaker(session.get_bind())
+    session.commit()
+    assert siteconf.spool_retention(maker, 0) == 5 and siteconf.spool_retention(None, 7) == 7
+    # the receiver prunes with the UI's value, not the toml's 0 (keep everything)
+    spool = Spool(tmp_path / "spool")
+    old, new = spool.failed / "old.dcm", spool.failed / "new.dcm"
+    old.write_bytes(b"x"), new.write_bytes(b"x")
+    os.utime(old, (time.time() - 9 * 86400,) * 2)
+    w = SpoolWorker(spool, maker, b"k" * 32, retention_days=0)
+    assert w.prune() == 1 and not old.exists() and new.exists()
 
 
 def test_per_patient_rules_alert_once_per_window(session, world):
