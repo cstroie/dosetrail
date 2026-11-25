@@ -290,14 +290,16 @@ export function scopeQuery(mod, q, profiles) {
   return [`modality:${p.modalities.join(',')}`, q].filter(Boolean).join(' ');
 }
 
-// does an (active-form) token apply on the tab `code` (null = All)?
-function fits(t, code, profiles) {
-  if (code == null) return true;
-  if (GROUP_KEYS[t.key]) return GROUP_KEYS[t.key].includes(code);
+// does an (active-form) token apply on the tab `code` (null = All)? With `clicked` (the user
+// picked the tab) a narrowing modality token must fit it too: on All none does.
+function fits(t, code, profiles, clicked) {
   if (isMod(t) && !t.neg) {
+    if (code == null) return !clicked;
     const p = profiles.find((x) => x.code === code);
     return !p || modSet(t).some((m) => p.modalities.includes(m));
   }
+  if (code == null) return true;
+  if (GROUP_KEYS[t.key]) return GROUP_KEYS[t.key].includes(code);
   return true;
 }
 
@@ -307,14 +309,14 @@ function fits(t, code, profiles) {
  * when they fit again. Filters switched off by hand are left alone.
  * Returns {q, off: [token strings switched off], on: [switched back on], auto: new Set}.
  */
-export function retab(q, code, profiles, auto = new Set()) {
+export function retab(q, code, profiles, auto = new Set(), { clicked = false } = {}) {
   const next = new Set(auto);
   const off = [];
   const on = [];
   const toks = parse(q).map((t) => {
     const plain = tokenToString({ ...t, off: false });
-    if (!t.off && !fits(t, code, profiles)) { off.push(plain); next.add(plain); return { ...t, off: true }; }
-    if (t.off && next.has(plain) && fits(t, code, profiles)) { on.push(plain); next.delete(plain); const { off: _, ...rest } = t; return rest; }
+    if (!t.off && !fits(t, code, profiles, clicked)) { off.push(plain); next.add(plain); return { ...t, off: true }; }
+    if (t.off && next.has(plain) && fits(t, code, profiles, clicked)) { on.push(plain); next.delete(plain); const { off: _, ...rest } = t; return rest; }
     return t;
   });
   return { q: serialize(toks), off, on, auto: next };

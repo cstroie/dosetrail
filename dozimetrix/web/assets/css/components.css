@@ -44,6 +44,9 @@ dx-query-bar { display: block; position: relative; }
 .tabs .tab-x { padding: 7px 8px 7px 2px; color: var(--muted); }
 .tabs .tab-x:hover { color: var(--alert); }
 .tabs .tab-share:hover { color: var(--accent, var(--text)); }
+.tabs .tab-other { appearance: none; -webkit-appearance: none; padding: 7px 12px; font: inherit; font-size: var(--fs-sm); color: var(--muted); border: 0; background: none; cursor: pointer; }
+.tabs .tab-other:hover, .tabs .tab-other:focus-visible { color: var(--text); }
+.tabs .tab-other option { color: var(--text); background: var(--panel, var(--bg)); }
 .tabs [aria-current="page"] { color: var(--text); border-color: var(--accent); }
 
 /* ---------- data grid ---------- */

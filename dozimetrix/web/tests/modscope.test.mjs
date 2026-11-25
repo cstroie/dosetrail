@@ -67,6 +67,11 @@ test('retab switches off what does not fit, and back on', () => {
   assert.equal(c.auto.size, 0);
   assert.equal(retab('modality:CR age:>=18', 'CT', P).q, '~modality:CR age:>=18');
   assert.equal(retab('dlp:>500', null, P).q, 'dlp:>500');  // All: everything applies
+  // a narrowing modality: typed on All it stays; the All tab clicked switches it off, DX brings it back
+  assert.equal(retab('modality:CT,MG', null, P).q, 'modality:CT,MG');
+  const d = retab('modality:CR age:>=18', null, P, new Set(), { clicked: true });
+  assert.equal(d.q, '~modality:CR age:>=18');
+  assert.equal(retab(d.q, 'DX', P, d.auto, { clicked: true }).q, 'modality:CR age:>=18');
 });
 
 test('withoutAuto keeps hand-made ~ only', () => {

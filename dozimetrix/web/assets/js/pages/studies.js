@@ -1,5 +1,7 @@
 // Study list, per modality group: group tabs, saved-query tabs, typed query bar, server-paged grid and a preview pane.
-// The query, sort and page live in the URL (?q=&sort=&dir=&page=), so views can be shared.
+// The tab owns the modality; the query bar holds the other filters. Tab, query, sort and page
+// live in the URL (?mod=&q=&sort=&dir=&page=), so views can be shared. An older link with the
+// modality inside q (?q=modality:CT …) still opens on its tab.
 
 import '../components/dx-shell.js';
 import '../components/dx-query-bar.js';
@@ -10,27 +12,34 @@ import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
 import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, dropCache, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
+import { splitModality, scopeQuery, retab, withoutAuto, normaliseSaved } from '../core/query.js';
 import { live } from '../core/live.js';
 import { rememberList } from '../core/study-nav.js';
 
-const DEFAULT_Q = 'modality:CT date:90d age:>=18 origin:local -phantom';
+const DEFAULT_MOD = 'CT';
+const DEFAULT_Q = 'date:90d age:>=18 origin:local -phantom';
 const SAVED_KEY = 'savedQueries.ct';  // the key predates the other modalities; kept for users' saved queries
 // One starter query, copied into the user's own saved queries the first time (nothing stored
 // yet, and no shared query to start from); from then on it is theirs: deleting it keeps it deleted.
-const STARTER = { name: 'Adult CT, last 90 days', q: DEFAULT_Q };
+const STARTER = { name: 'Adult CT, last 90 days', q: DEFAULT_Q, mod: DEFAULT_MOD };
 
 const page = document.getElementById('page');
 const url = new URL(location.href);
+const urlQ = url.searchParams.get('q');
+const urlMod = url.searchParams.get('mod');  // a group code, or "all"
 const initial = {
-  q: url.searchParams.get('q') ?? DEFAULT_Q,
+  // nothing in the URL: the default view; a q without mod: its modality token picks the tab
+  mod: urlMod ? (urlMod.toLowerCase() === 'all' ? null : urlMod.toUpperCase()) : (urlQ == null ? DEFAULT_MOD : undefined),
+  q: urlQ ?? DEFAULT_Q,
   sort: url.searchParams.get('sort') || 'date',
   dir: url.searchParams.get('dir') || 'desc',
   page: Number(url.searchParams.get('page')) || 1,
 };
 
-function syncUrl(state, q) {
+function syncUrl(state, mod, q) {
   const u = new URL(location.href);
   u.search = '';
+  u.searchParams.set('mod', mod ?? 'all');
   if (q) u.searchParams.set('q', q);
   if (state.sort !== 'date' || state.dir !== 'desc') { u.searchParams.set('sort', state.sort); u.searchParams.set('dir', state.dir); }
   if (state.page > 1) u.searchParams.set('page', state.page);
@@ -126,23 +135,34 @@ function saveMine(list) {
   if (!isSample) putPref('studies.saved', list).catch((e) => toast(`Query not saved on the server: ${e.message}`));
 }
 
-async function share(name, q, fromMine) {
+async function share(name, q, mod, fromMine) {
   try {
-    const v = await createView('study_query', name, { q });
+    const v = await createView('study_query', name, { q, mod: mod ?? null });
     queries.shared = [...queries.shared, v];
     if (fromMine) saveMine(queries.mine.filter((x) => x !== fromMine));  // moved, not copied
     toast(`“${name}” is now shared with everyone`);
   } catch (e) { toast(`Not shared: ${e.message}`); }
 }
 
-function tabs(currentQ, onPick) {
+// The saved-query row shows the queries for the tab open (and the ones for any tab); the
+// others wait in a "+N other" menu, and picking one says which tab it opens.
+// view = {mod, q, auto, profiles}; onPick(s) applies a saved query {name, q, mod}.
+function tabs(view, onPick, onSaved) {
+  const { mod, q: currentQ, profiles } = view;
+  const tabKey = mod ?? 'all';
+  const label = (m) => (m === 'all' ? 'All' : profiles.find((p) => p.code === m)?.label ?? m);
   const nav = h('nav', { class: 'tabs', 'aria-label': 'Saved queries' });
-  const all = [...queries.shared.map((v) => ({ name: v.name, q: v.value?.q || '', view: v })), ...queries.mine];
-  const match = all.find((s) => s.q === currentQ);
-  const xBtn = (label, title, fn) => h('button', { type: 'button', class: 'tab-x', 'aria-label': label, title, onclick: fn }, '×');
-  for (const s of all) {
+  const all = [...queries.shared.map((v) => ({ ...normaliseSaved({ name: v.name, q: v.value?.q || '', mod: v.value?.mod }, profiles), view: v })),
+    ...queries.mine];
+  const here = all.filter((s) => s.mod == null || s.mod === tabKey);
+  const other = all.filter((s) => !(s.mod == null || s.mod === tabKey));
+  const asKept = withoutAuto(currentQ, view.auto);  // filters a tab switch turned off are not part of it
+  const match = here.find((s) => s.q === asKept && s.mod === tabKey) || here.find((s) => s.q === asKept);
+  const xBtn = (lbl, title, fn) => h('button', { type: 'button', class: 'tab-x', 'aria-label': lbl, title, onclick: fn }, '×');
+  const where = (s) => (s.mod == null ? 'any modality' : label(s.mod));
+  for (const s of here) {
     const tab = h('button', { type: 'button', 'aria-current': s === match ? 'page' : false,
-      title: s.view ? `Shared with everyone · ${s.q}` : `Yours · ${s.q}`, onclick: () => onPick(s.q) },
+      title: `${s.view ? 'Shared with everyone' : 'Yours'} · ${where(s)} · ${s.q || '(no filter)'}`, onclick: () => onPick(s) },
     s.view ? h('span', { class: 'muted', 'aria-hidden': 'true' }, '◆ ') : null, s.name);
     const extra = [];
     if (s.view && queries.admin) {
@@ -151,36 +171,52 @@ function tabs(currentQ, onPick) {
         try { await deleteView(s.view.id); } catch (e) { toast(`Not removed: ${e.message}`); return; }
         queries.shared = queries.shared.filter((v) => v !== s.view);
         toast(`Removed “${s.name}” for everyone`);
-        onPick(currentQ);
+        onSaved();
       }));
     } else if (!s.view) {
       if (queries.admin) {
         extra.push(h('button', { type: 'button', class: 'tab-x tab-share', 'aria-label': `Share “${s.name}” with everyone`, title: 'Share with everyone',
-          onclick: async () => { await share(s.name, s.q, s); onPick(currentQ); } }, '↑'));
+          onclick: async () => { await share(s.name, s.q, s.mod, s); onSaved(); } }, '↑'));
       }
       extra.push(xBtn(`Delete “${s.name}”`, 'Delete this saved query', async () => {
         if (!(await confirmDialog(`Delete the saved query “${s.name}”?`, { title: 'Delete saved query', label: 'Delete', danger: true }))) return;
         saveMine(queries.mine.filter((x) => x !== s));
         toast(`Deleted “${s.name}”`);
-        onPick(currentQ);
+        onSaved();
       }));
     }
     nav.append(h('span', { class: 'tab-saved' }, tab, ...extra));
   }
-  const ask = () => promptDialog('The saved query appears as a tab.', { title: 'Name for this query', label: 'Save' });
+  if (other.length) {
+    const sel = h('select', { class: 'tab-other', 'aria-label': 'Saved queries for other modalities', onchange: (e) => {
+      const s = other[Number(e.target.value)];
+      e.target.value = '';
+      if (s) onPick(s);
+    } }, h('option', { value: '', selected: true }, `+${other.length} other ▾`),
+    other.map((s, i) => h('option', { value: String(i) }, `${label(s.mod)} · ${s.view ? '◆ ' : ''}${s.name}`)));
+    nav.append(sel);
+  }
+  // what is kept: the tab's modality, and the filters without those a tab switch turned off
+  const keep = () => {
+    const q = asKept;
+    return { q, mod: mod ?? (splitModality(q, profiles).multi ? 'all' : null) };
+  };
+  const ask = () => promptDialog(mod ? `The saved query appears as a tab on ${label(mod)}.` : 'The saved query appears as a tab on every modality.',
+    { title: 'Name for this query', label: 'Save' });
   nav.append(h('button', { type: 'button', onclick: async () => {
     const name = await ask();
     if (!name) return;
-    saveMine([...queries.mine, { name, q: currentQ }]);
+    saveMine([...queries.mine, { name, ...keep() }]);
     toast(isSample ? `Saved “${name}” (this browser only)` : `Saved “${name}” to your account`);
-    onPick(currentQ);
+    onSaved();
   } }, match ? '+ Save as…' : '● Unsaved · Save…'));
   if (queries.admin) {
     nav.append(h('button', { type: 'button', title: 'Save this query for everyone', onclick: async () => {
       const name = await ask();
       if (!name) return;
-      await share(name, currentQ, null);
-      onPick(currentQ);
+      const k = keep();
+      await share(name, k.q, k.mod, null);
+      onSaved();
     } }, '+ Save for everyone…'));
   }
   return nav;
@@ -208,31 +244,44 @@ function preview(s, profile, profiles) {
 
 function groupTabs(profiles, current, onPick) {
   const nav = h('nav', { class: 'tabs', 'aria-label': 'Modality' });
-  const mk = (label, code, q) => h('button', { type: 'button', 'aria-current': current === code ? 'page' : false, onclick: () => onPick(q) }, label);
-  nav.append(mk('All', null, 'date:90d origin:local -phantom'));
-  for (const p of profiles) nav.append(mk(p.label, p.code, `modality:${p.modalities.join(',')} date:90d origin:local -phantom`));
+  const mk = (label, code) => h('button', { type: 'button', 'aria-current': current === code ? 'page' : false, onclick: () => onPick(code) }, label);
+  nav.append(mk('All', null));
+  for (const p of profiles) nav.append(mk(p.label, p.code));
   return nav;
 }
 
 async function init() {
   const [devs, drlSet, profiles] = await Promise.all([deviceMap(), drl(), modalities(), loadQueries()]);
   const physical = new Map([...devs.entries()].filter(([id, d]) => id === d.id));
-  let currentQ = initial.q;
+  queries.mine = queries.mine.map((x) => normaliseSaved(x, profiles));  // older ones kept the modality in q
+  // the tab owns the modality (mod: a group code, null = All); currentQ holds the other filters
+  const first = splitModality(initial.q, profiles, profiles.some((p) => p.code === initial.mod) ? initial.mod : null);
+  let mod = first.mod;
+  let currentQ = first.q;
+  let auto = new Set();  // filters a tab switch turned off (their active form): they come back on a tab they fit
+  const eff = () => scopeQuery(mod, currentQ, profiles);  // what the server gets
+  const label = (m) => (m == null ? 'All' : profiles.find((p) => p.code === m)?.label ?? m);
 
   const qb = h('dx-query-bar', { value: currentQ });
   qb.context = { devices: physical, drl: drlSet.ct_dlp_mgycm };
   const tabsHost = h('div');
   const previewBody = h('div');
-  let profile = profileOf(profiles, currentQ);
+  let profile = profileOf(profiles, eff());
   const gridKey = (p) => `grid.${p ? p.code.toLowerCase() : 'all'}`;
   const gridLabel = (p) => (p ? `${p.label} studies` : 'Studies');
   const grid = h('dx-data-grid', { label: gridLabel(profile), noun: t('studies.count'), 'storage-key': gridKey(profile) },
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows('csv') }, 'CSV'),
     h('button', { slot: 'actions', class: 'btn', type: 'button', onclick: () => exportRows('xlsx') }, 'XLSX'),
-    h('a', { slot: 'actions', class: 'btn primary', href: '#', onclick: (e) => { e.currentTarget.href = `charts.html?q=${encodeURIComponent(currentQ)}`; } }, t('studies.chart')));
+    h('a', { slot: 'actions', class: 'btn primary', href: '#', onclick: (e) => { e.currentTarget.href = `charts.html?q=${encodeURIComponent(eff())}`; } }, t('studies.chart')));
 
-  const pick = (q) => { qb.value = q; apply(q); };
-  const renderTabs = () => tabsHost.replaceChildren(groupTabs(profiles, profile?.code ?? null, pick), tabs(currentQ, pick));
+  const renderTabs = () => tabsHost.replaceChildren(
+    groupTabs(profiles, mod, (code) => go(code, currentQ, { how: 'tab' })),
+    tabs({ mod, q: currentQ, auto, profiles }, pickSaved, renderTabs));
+  // a saved query for any modality keeps the tab; one for a modality opens its tab
+  const pickSaved = (sv) => {
+    auto = new Set();  // a saved query is whole: nothing to bring back from earlier tabs
+    go(sv.mod == null ? mod : sv.mod === 'all' ? null : sv.mod, sv.q, { how: 'saved', lead: `“${sv.name}” opens on` });
+  };
   // columns, their hidden set and the title follow the modality the query is about
   const setProfile = (p) => {
     profile = p;
@@ -248,14 +297,43 @@ async function init() {
     document.querySelector('dx-shell')?.setSub(p?.label ?? null);  // the crumb follows the query
     if (!cols.some((c) => c.key === grid.state?.sort) && grid.state && grid.state.sort !== 'date') grid.setState({ sort: 'date', dir: 'desc' });
   };
-  const apply = (q) => {
-    currentQ = q;
-    const p = profileOf(profiles, q);
+  // Every change of tab or filters comes here. A modality typed in the filters moves to the tab
+  // (never broadening: part of a group stays as a filter); filters that do not apply on the
+  // new tab are switched off ("~", still visible), and come back on a tab where they apply.
+  // how: 'tab' (a tab clicked: narrowing modality filters that do not fit it go off too),
+  // 'saved' (a saved query picked), 'typed' (the query bar: what the user just typed stays on,
+  // unless its modality token moved the tab).
+  function go(nextMod, q, { how = 'typed', lead = null } = {}) {
+    const notes = [];
+    const offOn = (r) => {
+      auto = r.auto;
+      if (r.off.length) notes.push(`${r.off.join(', ')} switched off: not for ${label(target)}`);
+      if (r.on.length) notes.push(`${r.on.join(', ')} back on`);
+      return r.q;
+    };
+    let target = nextMod;
+    let text = how === 'tab' ? offOn(retab(q, target, profiles, auto, { clicked: true })) : q;
+    const sp = splitModality(text, profiles, target);
+    const moved = sp.mod !== target;
+    if (moved && how === 'typed') notes.push(`Modality → ${label(sp.mod)} tab`);
+    target = sp.mod;
+    text = sp.q;
+    if (how === 'saved' || (how === 'typed' && moved)) text = offOn(retab(text, target, profiles, auto));
+    if (sp.dropped.length) notes.push(`${sp.dropped.join(', ')} removed: ${label(target)} excludes it already`);
+    const tabMoved = target !== mod;
+    mod = target;
+    currentQ = text;
+    if (qb.value !== currentQ) qb.value = currentQ;
+    const p = profileOf(profiles, eff());
     if (p !== profile) setProfile(p);
     grid.setState({ page: 1 });
+    previewBody.replaceChildren(preview(null));  // the row shown may not be in the new list
+    syncUrl(grid.state, mod, currentQ);
     renderTabs();
     grid.reload();
-  };
+    if (lead && tabMoved) notes.unshift(`${lead} ${label(mod)}`);
+    if (notes.length) toast(notes.join(' · '));
+  }
 
   setProfile(profile);
   // new or changed studies of the modality shown (checked every 15 s): the list reloads in place and
@@ -276,27 +354,27 @@ async function init() {
   } });
   grid.rowId = (s) => s.id ?? s.accession;
   grid.setState({ sort: initial.sort, dir: initial.dir, page: initial.page, size: 50 });
-  grid.fetcher = (state) => studies({ q: currentQ, ...state }).then((res) => {
+  grid.fetcher = (state) => studies({ q: eff(), ...state }).then((res) => {
     res.rows.forEach((r) => { r._rowClass = r.flags.some((f) => f.level === 'alert') ? 'hot' : ''; });
-    rememberList(state, currentQ, res.rows, res.total);  // the study pages step through it
+    rememberList(state, eff(), res.rows, res.total);  // the study pages step through it
     return res;
   });
-  grid.addEventListener('state-change', (e) => syncUrl(e.detail, currentQ));
+  grid.addEventListener('state-change', (e) => syncUrl(e.detail, mod, currentQ));
   grid.addEventListener('row-focus', (e) => previewBody.replaceChildren(preview(e.detail, profile, profiles)));
   grid.addEventListener('row-open', (e) => {
     if (e.detail.id != null) location.href = studyHref(e.detail);
     else toast(`Full detail for ${e.detail.accession}: only the XA sample study has a detail page in sample mode.`);
   });
-  qb.addEventListener('query-change', (e) => apply(e.detail));
+  qb.addEventListener('query-change', (e) => go(mod, e.detail));
 
   async function exportRows(kind) {
-    const server = exportUrl({ q: currentQ, format: kind });
+    const server = exportUrl({ q: eff(), format: kind });
     if (server) {  // the server writes every row (CSV or XLSX); the browser just downloads
       h('a', { href: server, download: '' }).click();
       toast('Export started: the file downloads when the server has written it');
       return;
     }
-    const res = await studies({ q: currentQ, sort: grid.state.sort, dir: grid.state.dir, page: 1, size: 100000 });
+    const res = await studies({ q: eff(), sort: grid.state.sort, dir: grid.state.dir, page: 1, size: 100000 });
     if (kind === 'xlsx') { toast('XLSX export is produced by the server; sample mode offers CSV.'); return; }
     const head = ['date', 'device', 'accession', 'age', 'sex', 'weight_kg', 'description', 'protocol', 'spiral', 'axial', 'localizer', 'ctdivol_max_mgy', 'dlp_total_mgycm'];
     const lines = [head.join(',')].concat(res.rows.map((s) => [s.date, s.device_name, s.accession, s.patient.age ?? '', s.patient.sex, s.patient.weight ?? '',
