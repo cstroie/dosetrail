@@ -189,7 +189,7 @@ export async function buildServer(cfg, q, devColor) {
 
 /** A drop-down with check boxes (``single``: radio buttons). The choice is applied when the menu closes,
  *  so several boxes can be ticked in one go (a change re-draws the whole panel). */
-function multiSelect(label, items, selected, onChange, { single = false } = {}) {
+export function multiSelect(label, items, selected, onChange, { single = false } = {}) {
   let chosen = new Set(selected);
   const text = () => {
     const names = items.filter((i) => chosen.has(i.value)).map((i) => i.label.replace(/ \([\d,.\s]+\)$/, ''));

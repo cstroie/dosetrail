@@ -14,7 +14,7 @@ import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
 import { groupRows, physicalDevices, drl, isSample, getPref, putPref, me, sharedViews, createView, updateView, deleteView } from '../core/api.js';
 import { summary, groupBy, histogram } from '../core/stats.js';
 import { prefs } from '../core/prefs.js';
-import { SERVER_TYPES, buildServer, serverOptions, serverSummary, defaultsFor, setDevices } from './charts-server.js';
+import { SERVER_TYPES, buildServer, serverOptions, serverSummary, defaultsFor, setDevices, multiSelect } from './charts-server.js';
 
 const page = document.getElementById('page');
 
@@ -492,7 +492,26 @@ function select(label, value, options, onChange) {
     Object.entries(options).map(([v, text]) => h('option', { value: v, selected: v === value }, text))));
 }
 
+const anatomyOf = (r) => r.anatomy || '(no anatomy)';
+
+/** The anatomies and units a radiography panel shows (grouped by anatomy): the busiest anatomy and
+ *  every unit until the user picks. Lists carry the exposure counts for the pickers. */
+function pickDx(cfg, all) {
+  const count = new Map();
+  for (const r of all) count.set(anatomyOf(r), (count.get(anatomyOf(r)) || 0) + 1);
+  const order = [...count.entries()].sort((a, b) => b[1] - a[1]).map(([a]) => a);
+  let anatomies = (cfg.anatomies || []).filter((a) => count.has(a));
+  if (cfg.anatomies == null || (cfg.anatomies.length && !anatomies.length)) anatomies = order.slice(0, 1);
+  const devs = new Map();
+  for (const r of all) if (!devs.has(r.device_id)) devs.set(r.device_id, r.device || `Device ${r.device_id}`);
+  const ids = [...devs.keys()];
+  let devices = (cfg.devs || []).filter((d) => devs.has(d));
+  if (cfg.devs == null || !devices.length) devices = ids;
+  return { anatomies, order, count, devices, devs };
+}
+
 function renderPanel(cfg, index) {
+  let dxPick = null;  // set for a radiography panel grouped by anatomy
   const server = cfg.type in SERVER_TYPES;
   if (!server) {  // browser panels: this group's rows, and a metric the group has
     cfg.group = groupOf(cfg);
@@ -500,7 +519,13 @@ function renderPanel(cfg, index) {
     rows = rowsBy[cfg.group] || [];
     // Radiography: the same exam on every device meets under one name, "Torace AP · 5-15 kg"
     // (anatomy from the exposure's exam code, projection, size band: the name's, else the patient's)
-    if (cfg.group === 'DX' && (cfg.by || 'exam') === 'exam') rows = rows.map((r) => (r.group ? { ...r, protocol: r.group } : r));
+    if (cfg.group === 'DX' && (cfg.by || 'exam') === 'exam') {
+      const all = rows.map((r) => (r.group ? { ...r, protocol: r.group } : r));
+      dxPick = pickDx(cfg, all);
+      rows = all.filter((r) => dxPick.anatomies.includes(anatomyOf(r)) && dxPick.devices.includes(r.device_id));
+      if (cfg.sort === undefined) cfg.sort = 'name';  // the bands in their natural order
+      if (cfg.top === undefined) cfg.top = 'all';     // one anatomy has a handful of groups
+    }
   }
   const built = server ? null : rows.length ? BUILDERS[cfg.type](cfg) : null;
   const g = GROUPS[groupOf(cfg)];
@@ -513,6 +538,8 @@ function renderPanel(cfg, index) {
     select('Type', cfg.type, Object.fromEntries(Object.entries(TYPES).filter(([k]) => !(k in SERVER_TYPES))), (v) => update({ type: v })),
     select('Modality', cfg.group, Object.fromEntries(Object.entries(GROUPS).map(([k, x]) => [k, x.label])), (v) => update({ group: v, protocol: undefined })),
     cfg.type !== 'scatter' && cfg.type !== 'heat' ? select('Metric', cfg.metric, Object.fromEntries(g.metrics.map((k) => [k, METRICS[k].label])), (v) => update({ metric: v })) : null,
+    dxPick ? multiSelect('Anatomy', dxPick.order.map((a) => ({ value: a, label: `${a} (${num(dxPick.count.get(a))})` })), dxPick.anatomies, (v) => update({ anatomies: v, protocol: undefined })) : null,
+    dxPick ? multiSelect('Devices', [...dxPick.devs].map(([id, name]) => ({ value: id, label: name })), dxPick.devices, (v) => update({ devs: v, protocol: undefined })) : null,
     cfg.group === 'DX' && cfg.type !== 'heat' ? select('Group protocols by', cfg.by || 'exam', { exam: 'Anatomy · projection · band', name: 'Protocol name (raw)' }, (v) => update({ by: v, protocol: undefined })) : null,
     ['hist', 'trend', 'scatter'].includes(cfg.type) ? select('Protocol', built?.protocol, protos, (v) => update({ protocol: v })) : null,
     ['bar', 'trend'].includes(cfg.type) ? select('Stat', cfg.stat || 'median', { median: 'Median', mean: 'Mean' }, (v) => update({ stat: v })) : null,
