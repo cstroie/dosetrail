@@ -1107,3 +1107,11 @@ def test_size_bands_by_protocol_name(client):
     assert client.get("/api/charts/size-bands", params={"device": dev, "other": "x"}).status_code == 400
     assert client.get("/api/charts/size-bands", params={"device": dev, "kind": "x"}).status_code == 400
     assert client.get("/api/charts/size-bands", params={"device": 999999}).status_code == 400
+
+
+def test_dx_rows_carry_the_cross_device_group(client):
+    login(client, "viewer", "viewer-pass-1")
+    rows = client.get("/api/stats/DX/rows").json()
+    t = next(r for r in rows if r["protocol"] == "W035 Torace a.p. 10kg")
+    # no band in the name and no patient weight: anatomy and projection only
+    assert (t["anatomy"], t["projection"], t["group"]) == ("Toracică", "AP", "Toracică AP")

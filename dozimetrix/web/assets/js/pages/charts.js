@@ -488,6 +488,9 @@ function renderPanel(cfg, index) {
     cfg.group = groupOf(cfg);
     cfg.metric = metricOf(cfg);
     rows = rowsBy[cfg.group] || [];
+    // Radiography: the same exam on every device meets under one name, "Torace AP · 5-15 kg"
+    // (anatomy from the exposure's exam code, projection, size band: the name's, else the patient's)
+    if (cfg.group === 'DX' && (cfg.by || 'exam') === 'exam') rows = rows.map((r) => (r.group ? { ...r, protocol: r.group } : r));
   }
   const built = server ? null : rows.length ? BUILDERS[cfg.type](cfg) : null;
   const g = GROUPS[groupOf(cfg)];
@@ -500,6 +503,7 @@ function renderPanel(cfg, index) {
     select('Type', cfg.type, Object.fromEntries(Object.entries(TYPES).filter(([k]) => !(k in SERVER_TYPES))), (v) => update({ type: v })),
     select('Modality', cfg.group, Object.fromEntries(Object.entries(GROUPS).map(([k, x]) => [k, x.label])), (v) => update({ group: v, protocol: undefined })),
     cfg.type !== 'scatter' && cfg.type !== 'heat' ? select('Metric', cfg.metric, Object.fromEntries(g.metrics.map((k) => [k, METRICS[k].label])), (v) => update({ metric: v })) : null,
+    cfg.group === 'DX' && cfg.type !== 'heat' ? select('Group protocols by', cfg.by || 'exam', { exam: 'Anatomy · projection · band', name: 'Protocol name (raw)' }, (v) => update({ by: v, protocol: undefined })) : null,
     ['hist', 'trend', 'scatter'].includes(cfg.type) ? select('Protocol', built?.protocol, protos, (v) => update({ protocol: v })) : null,
     ['bar', 'trend'].includes(cfg.type) ? select('Stat', cfg.stat || 'median', { median: 'Median', mean: 'Mean' }, (v) => update({ stat: v })) : null,
     cfg.type === 'trend' ? select('Period', cfg.period || 'month', PERIODS, (v) => update({ period: v })) : null,
