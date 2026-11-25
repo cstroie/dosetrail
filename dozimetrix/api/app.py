@@ -533,14 +533,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return _me(user)
 
     # a user's own settings on the server (chart workspaces, saved study queries), small
-    PREF_KEY = re.compile(r"^(workspace[A-Za-z0-9._ \-]{0,100}|studies\.saved)$")
+    PREF_KEY = re.compile(r"(workspace[A-Za-z0-9._ \-]{0,100}|studies\.saved)")
 
     @app.get("/api/me/prefs/{key}")
     def get_pref(key: str, user: User = Depends(current_user),
                  session: Session = Depends(db)):
         from ..db.models import UserPref
 
-        if not PREF_KEY.match(key):
+        if not PREF_KEY.fullmatch(key):
             raise HTTPException(400, "unknown preference")
         row = session.scalar(select(UserPref).filter_by(user_id=user.id, key=key))
         return {"key": key, "value": row.value if row else None}
@@ -550,13 +550,16 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                  session: Session = Depends(db)):
         from ..db.models import UserPref
 
-        if not PREF_KEY.match(key):
+        if not PREF_KEY.fullmatch(key):
             raise HTTPException(400, "unknown preference")
         value = body.get("value")
         if len(json.dumps(value)) > 256_000:
             raise HTTPException(413, "preference too large")
         row = session.scalar(select(UserPref).filter_by(user_id=user.id, key=key))
         if row is None:
+            if session.scalar(select(func.count()).select_from(UserPref)
+                              .filter_by(user_id=user.id)) >= 100:
+                raise HTTPException(400, "too many saved preferences")
             row = UserPref(user_id=user.id, key=key)
             session.add(row)
         row.value = value
@@ -785,6 +788,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         start = start or end - dt.timedelta(days=365)
         if start > end:
             raise HTTPException(400, "start is after end")
+        if end >= dt.date.max:
+            raise HTTPException(400, "end is too far in the future")
         return start, end
 
     def _period_conds(q: str, start: dt.date, end: dt.date, session: Session) -> list:
@@ -1359,8 +1364,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         from ..net import nodes, qr
 
-        nodes.import_config(session, settings)
-        session.commit()
+        is_admin = "admin" in user.role_set()
+        if is_admin:
+            nodes.import_config(session, settings)
+            session.commit()
         today = clock().date()
         done = qr.done_days(session)
         days = [(today - _dt.timedelta(days=i)).isoformat() for i in range(119, -1, -1)]
@@ -1369,12 +1376,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                       "bind": settings.dicom_bind, "ips": _host_ips(),
                       "web": f"{request.url.hostname}:{request.url.port or (443 if request.url.scheme == 'https' else 80)}",
                       "web_listen": f"{settings.web_host}:{settings.web_port}",
-                      "allowed": nodes.allowed_senders(session, settings.dicom_allowed_aets)},
+                      "allowed": nodes.allowed_senders(session, settings.dicom_allowed_aets)
+                      if is_admin else []},
             "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
             "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=nodes.QR_STALE_S),
             "coverage": [{"date": d, "done": d in done} for d in days],
-            "nodes": [nodes.as_dict(n) for n in session.scalars(
-                select(DicomNode).order_by(DicomNode.name))],
+            "nodes": [nodes.as_dict(n) if is_admin else {"id": n.id, "name": n.name}
+                      for n in session.scalars(select(DicomNode).order_by(DicomNode.name))],
         }
 
     @app.get("/api/backup/status")
@@ -1449,8 +1457,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         queue = dict(session.execute(select(HisLookup.status, func.count())
                                      .group_by(HisLookup.status)).all())
         return {"worker": worker, "queue": queue, "waiting": his_waiting(session),
-                "servers": [servers.as_dict(s) for s in session.scalars(
-                    select(HisServer).order_by(HisServer.name))]}
+                "servers": [servers.as_dict(s) if "admin" in user.role_set()
+                            else {"id": s.id, "name": s.name, "enabled": s.enabled}
+                            for s in session.scalars(select(HisServer).order_by(HisServer.name))]}
 
     # ------------------------------------------------------------------ live (SSE)
     # The receiver, PACS sync and HIS worker are separate processes that only meet the web
@@ -1663,6 +1672,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(400, "too many topics")
         want = {t for t in topics.split(",")
                 if t in LIVE_TOPICS or re.fullmatch(r"study:\d{1,12}", t)}
+        if len([t for t in want if t.startswith("study:")]) > 3:
+            raise HTTPException(400, "at most 3 study topics")
         if len(want) > LIVE_MAX_TOPICS:
             raise HTTPException(400, f"at most {LIVE_MAX_TOPICS} topics")
         open_streams = app.state.live_streams
@@ -2055,6 +2066,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return [{"key": k, "label": m.label, "unit": m.unit, "level": m.level}
                 for k, m in METRICS.items()]
 
+    def _rule_name(raw: str | None) -> str:
+        name = (raw or "").strip()
+        if not name or len(name) > 255:
+            raise HTTPException(400, "a name of 1-255 characters is required")
+        if any(ord(c) < 32 or ord(c) == 127 for c in name):  # it goes into message headers
+            raise HTTPException(400, "the name cannot contain control characters or line breaks")
+        return name
+
     @app.post("/api/alert-rules")
     def alert_rule_create(body: RuleIn, request: Request, user: User = Depends(admin_user),
                           session: Session = Depends(db)):
@@ -2062,9 +2081,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         from ..seeds.loader import _toml
         from ..stats import METRICS
 
-        name = body.name.strip()
-        if not name or len(name) > 255:
-            raise HTTPException(400, "a name of 1-255 characters is required")
+        name = _rule_name(body.name)
         if body.kind not in RULE_KINDS:
             raise HTTPException(400, f"kind is {'|'.join(RULE_KINDS)}")
         if body.severity not in ("warn", "alert"):
@@ -2075,7 +2092,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             if not parts or not all(re.fullmatch(r"[A-Z]{2,3}", m) for m in parts):
                 raise HTTPException(400, "modality is a comma list of codes, e.g. CT,RF")
             modality = ",".join(parts)
-        if body.max_age_days is not None and body.max_age_days < 1:
+        if body.max_age_days is not None and not 1 <= body.max_age_days <= 3650:
             raise HTTPException(400, "the age limit must be positive")
         metric = unit = None
         if body.kind in ("threshold", "cumulative"):
@@ -2146,6 +2163,23 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         patch = body.model_dump(exclude_unset=True)
         if "severity" in patch and patch["severity"] not in ("warn", "alert"):
             raise HTTPException(400, "severity is warn|alert")
+        for k in ("enabled", "notify", "severity", "name"):
+            if k in patch and patch[k] is None:
+                raise HTTPException(400, f"{k} cannot be empty")
+        if "name" in patch:
+            patch["name"] = _rule_name(patch["name"])
+        if patch.get("threshold") is not None and r.kind != "pregnant" \
+                and patch["threshold"] <= 0:
+            raise HTTPException(400, "the threshold must be greater than zero")
+        for k in ("window_days", "max_age_days"):
+            if patch.get(k) is not None and not 1 <= patch[k] <= 3650:
+                raise HTTPException(400, f"{k} is 1 to 3650 days")
+        if "window_days" in patch and patch["window_days"] is not None \
+                and r.kind not in ("cumulative", "count"):
+            raise HTTPException(400, f"a {r.kind} rule has no window")
+        if "window_days" in patch and patch["window_days"] is None \
+                and r.kind in ("cumulative", "count"):
+            raise HTTPException(400, "a window of at least 1 day is required")
         changes = {k: {"from": getattr(r, k), "to": v} for k, v in patch.items()
                    if getattr(r, k) != v}
         for k, v in patch.items():
@@ -2670,13 +2704,17 @@ def _me(user: User) -> dict:
 _DUMMY_HASH = hash_password(secrets.token_urlsafe(16))  # verified against for unknown users
 
 
+# audited, but they change no data: the cached answers stay valid
+_READ_ONLY_ACTIONS = {"login", "login_failed", "identify", "export", "report"}
+
+
 def _audit(session: Session, request: Request, user: User | None, action: str,
            target: str | None, detail: dict | None = None) -> None:
     cache = getattr(getattr(request, "app", None), "state", None)
     cache = getattr(cache, "result_cache", None)
-    if cache is not None:  # something changed through the UI: the heavy answers are recomputed
-        cache.clear()
+    if cache is not None and action not in _READ_ONLY_ACTIONS:
+        cache.clear()  # something changed through the UI: the heavy answers are recomputed
     session.add(AuditLog(user_id=user.id if user else None,
                          username=user.username if user else None, action=action,
-                         target=target, detail=detail,
+                         target=target[:250] if isinstance(target, str) else target, detail=detail,
                          remote_addr=request.client.host if request.client else None))

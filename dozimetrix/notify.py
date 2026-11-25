@@ -147,7 +147,7 @@ def compose(a: Alert, rule: AlertRule, s: Study, device: str | None, base_url: s
     if rule.note:
         lines += ["", rule.note]
     level = "ALERT" if a.severity == "alert" else "Warning"
-    return Message(f"[Dozimetrix] {level}: {rule.name}", "\n".join(lines), link,
+    return Message(f"[Dozimetrix] {level}: {' '.join(rule.name.split())}", "\n".join(lines), link,
                    a.severity == "alert")
 
 

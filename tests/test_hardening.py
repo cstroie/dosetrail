@@ -134,3 +134,26 @@ def test_writes_through_a_proxy_that_rewrites_host(client):
     r = client.post("/api/actions", json=body,
                     headers={"origin": "https://dose.example", "x-forwarded-host": "dose.example"})
     assert r.status_code == 200
+
+
+def test_throttle_is_per_address_and_name():
+    t = LoginThrottle(max_failures=3, max_per_ip=100)
+
+    def req(ip):
+        return type("R", (), {"client": type("C", (), {"host": ip})})
+
+    for _ in range(3):
+        t.fail(req("1.1.1.1"), "login", "boss")
+    with pytest.raises(Exception):
+        t.check(req("1.1.1.1"), "login", "boss")
+    t.check(req("2.2.2.2"), "login", "boss")  # a stranger's failures do not lock the real user
+
+
+def test_open_ended_date_filters_do_not_crash():
+    import datetime as dt
+
+    from dozimetrix.api import query
+
+    now = dt.datetime(2026, 11, 25)
+    for q in ("date:2026-01-01..", "date:..2026-01-01", "date:99999999d"):
+        assert query.conditions(query.parse(q), now)

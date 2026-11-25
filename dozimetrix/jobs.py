@@ -69,15 +69,20 @@ def lock_path(data_dir: str | Path) -> Path:
 
 
 @contextmanager
-def locked(path: Path):
-    """Hold the job lock (non-blocking: ``Busy`` when someone else has it)."""
+def locked(path: Path, retries: int = 5):
+    """Hold the job lock (``Busy`` when someone else has it). A few short retries ride out the
+    instant another process holds it only to see whether it is free (``is_busy``)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     f = open(path, "a+")  # noqa: SIM115 – closed in the finally, which releases the lock
     try:
-        try:
-            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as e:
-            raise Busy("another maintenance job is running") from e
+        for attempt in range(retries + 1):
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as e:
+                if attempt == retries:
+                    raise Busy("another maintenance job is running") from e
+                time.sleep(0.1)
         yield
     finally:
         f.close()
@@ -85,7 +90,7 @@ def locked(path: Path):
 
 def is_busy(path: Path) -> bool:
     try:
-        with locked(path):
+        with locked(path, retries=0):
             return False
     except Busy:
         return True

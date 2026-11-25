@@ -131,7 +131,11 @@ class LoginThrottle:
         ip = request.client.host if request.client else "?"
         keys = [(f"{kind}:ip:{ip}", self.max_per_ip)]
         if username is not None:
-            keys.append((f"{kind}:user:{username.strip().lower()[:150]}", self.max_failures))
+            user = username.strip().lower()[:150]
+            # per address and name: a stranger cannot lock the real user out from elsewhere;
+            # the name alone only stops a wide distributed guess (ten times the limit)
+            keys.append((f"{kind}:pair:{ip}:{user}", self.max_failures))
+            keys.append((f"{kind}:user:{user}", self.max_failures * 10))
         return keys
 
     def _recent(self, key: str, now: float) -> deque:
@@ -161,5 +165,5 @@ class LoginThrottle:
 
     def clear(self, request: Request, kind: str, username: str | None = None) -> None:
         with self._lock:
-            for key, _ in self._keys(request, kind, username)[1:]:  # keep the per-IP count
+            for key, _ in self._keys(request, kind, username)[1:2]:  # the pair; keep the IP and name counts
                 self._fails.pop(key, None)

@@ -14,7 +14,8 @@ secure_cookies = true                        # behind an HTTPS reverse proxy
 [web]
 host = "0.0.0.0"                             # inside the container; publish with ports:
 port = 8104
-trusted_proxies = ["127.0.0.1"]              # add your reverse proxy's address
+# the host's reverse proxy reaches the container from the Docker bridge (published on 127.0.0.1)
+trusted_proxies = ["127.0.0.1", "172.16.0.0/12"]
 
 [dicom]
 aet = "DOZIMETRIX"

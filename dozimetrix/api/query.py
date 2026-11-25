@@ -93,7 +93,10 @@ def number_cond(v: str) -> tuple[str, float, float] | None:
 def date_cond(v: str, now: dt.datetime) -> tuple[dt.date, dt.date] | None:
     m = re.match(r"^(\d+)d$", v)
     if m:
-        return (now - dt.timedelta(days=int(m.group(1)))).date(), now.date()
+        try:
+            return (now - dt.timedelta(days=int(m.group(1)))).date(), now.date()
+        except OverflowError:
+            return dt.date(1, 1, 1), now.date()
     m = re.match(r"^(\d{4}-\d{2}-\d{2})?\.\.(\d{4}-\d{2}-\d{2})?$", v)
     try:
         if m and (m.group(1) or m.group(2)):
@@ -208,9 +211,10 @@ def conditions(tokens: list[Token], now: dt.datetime,
                                             or [-1]))
         elif k == "date":
             lo, hi = date_cond(v, now)
+            end = (dt.datetime.combine(hi, dt.time()) + dt.timedelta(days=1)
+                   if hi < dt.date.max else dt.datetime.max)
             c = and_(Study.study_datetime >= dt.datetime.combine(lo, dt.time()),
-                     Study.study_datetime < dt.datetime.combine(hi, dt.time())
-                     + dt.timedelta(days=1))
+                     Study.study_datetime < end)
         elif k == "device":
             hay = [func.coalesce(Device.display_name, ""), func.coalesce(Device.model_name, ""),
                    func.coalesce(Device.station_name, "")]

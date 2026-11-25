@@ -122,6 +122,8 @@ def datetime_(text) -> dt.datetime | None:
         v = dt.datetime.fromisoformat((text or "").strip())
     except ValueError:
         return None
+    if v.tzinfo is not None:  # an offset / Z time: the local wall clock the studies use
+        v = v.astimezone()
     return v.replace(tzinfo=None)
 
 

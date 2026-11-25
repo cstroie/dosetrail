@@ -146,8 +146,9 @@ def audit(session: Session, limit: int = 200, action: str | None = None,
     if user:
         q = q.where(AuditLog.username == user)
     if text:
-        like = f"%{text}%"
-        q = q.where(or_(AuditLog.target.like(like), AuditLog.action.like(like)))
+        like = "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        q = q.where(or_(AuditLog.target.like(like, escape="\\"),
+                        AuditLog.action.like(like, escape="\\")))
     if since:
         q = q.where(AuditLog.at >= dt.datetime.combine(since, dt.time()))
     if before_id:

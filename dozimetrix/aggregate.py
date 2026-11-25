@@ -70,6 +70,9 @@ def _read(content: bytes, filename: str | None) -> tuple[list[dict], dict]:
     text = content.decode("utf-8-sig", errors="strict")
     if (filename or "").lower().endswith(".json") or text.lstrip().startswith("{"):
         doc = json.loads(text)
+        if not isinstance(doc, dict) or not isinstance(doc.get("rows"), list) \
+                or not all(isinstance(r, dict) for r in doc["rows"]):
+            raise KeyError("expected an object with a list of row objects under 'rows'")
         meta = {k: v for k, v in doc.items() if k not in ("rows", "dictionary")}
         return [{k: ("" if v is None else v) for k, v in r.items()} for r in doc["rows"]], meta
     rows = list(csv.DictReader(io.StringIO(text)))
@@ -88,7 +91,10 @@ def _clean(v):
 def _num(v):
     if v in ("", None):
         return None
-    return float(str(v).replace(",", "."))
+    x = float(str(v).replace(",", "."))
+    if x != x or x in (float("inf"), float("-inf")):
+        raise ValueError(f"{v!r} is not a finite number")
+    return x
 
 
 def _age_years(r: dict) -> float | None:

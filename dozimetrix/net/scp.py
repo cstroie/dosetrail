@@ -79,6 +79,8 @@ class Receiver:
         self.received += 1
         import datetime as dt
 
+        if caller not in self.by_aet and len(self.by_aet) >= 200:  # callers pick their own title
+            caller = "(others)"
         s = self.by_aet.setdefault(caller, {"n": 0, "last": None})
         s["n"] += 1
         s["last"] = dt.datetime.now().isoformat(timespec="seconds")
