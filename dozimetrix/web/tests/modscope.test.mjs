@@ -85,6 +85,8 @@ test('normaliseSaved: old queries get a mod, new ones are kept', () => {
   assert.deepEqual(normaliseSaved({ name: 'b', q: 'modality:CT,MG' }, P), { name: 'b', q: 'modality:CT,MG', mod: 'all' });
   assert.deepEqual(normaliseSaved({ name: 'c', q: 'age:0..17' }, P), { name: 'c', q: 'age:0..17', mod: null });
   assert.deepEqual(normaliseSaved({ name: 'd', q: 'modality:CR' }, P), { name: 'd', q: 'modality:CR', mod: 'DX' });
+  // a shared view saved before mod existed: value.mod reads as undefined
+  assert.deepEqual(normaliseSaved({ name: 'f', q: 'modality:CT date:90d', mod: undefined }, P), { name: 'f', q: 'date:90d', mod: 'CT' });
   const kept = { name: 'e', q: 'x', mod: null };
   assert.equal(normaliseSaved(kept, P), kept);
 });

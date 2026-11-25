@@ -333,7 +333,7 @@ export function withoutAuto(q, auto) {
  * mod = a profile code, 'all' (several groups, for the All tab) or null (any tab).
  */
 export function normaliseSaved(s, profiles) {
-  if (s && 'mod' in s) return s;
+  if (s && s.mod !== undefined) return s;  // null = any tab; undefined = an older entry
   const r = splitModality(s?.q || '', profiles);
   return { ...s, q: r.q, mod: r.multi ? 'all' : r.mod };
 }
