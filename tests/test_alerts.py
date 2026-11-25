@@ -490,3 +490,26 @@ def test_prefetched_windows_match_per_study_queries(session, world, monkeypatch)
     monkeypatch.setattr(alerts, "PREFETCH_MIN", 2)
     _, prefetched = run()
     assert per_study and prefetched == per_study
+
+
+def test_modality_filter_is_the_study_lists(session, world):
+    """The alert queue's modality filter: a group (DX = DX and CR), and a device's modality
+    correction replaces the stored modality, as in the study list."""
+    dev, kid = world
+    fixed = Device(display_name="Mislabelled", identity_key="al-2", is_local=True,
+                   modality_override="RF")
+    session.add(fixed)
+    session.flush()
+    ct = _study(session, dev, kid, "mf.1", NOW, modality="CT")
+    dx = _study(session, dev, kid, "mf.2", NOW, modality="DX")
+    cr = _study(session, dev, kid, "mf.3", NOW, modality="CR")
+    rf = _study(session, fixed, kid, "mf.4", NOW, modality="DX")  # stored DX, really RF
+    ids = {ct.id, dx.id, cr.id, rf.id}
+
+    def hit(v):
+        return set(session.scalars(select(Study.id).where(alerts._modality_cond(v)))) & ids
+
+    assert hit("DX") == {dx.id, cr.id}
+    assert hit("CR") == {cr.id}
+    assert hit("RF") == {rf.id}
+    assert hit("CT,RF") == {ct.id, rf.id}

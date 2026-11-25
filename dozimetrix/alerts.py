@@ -412,8 +412,24 @@ def _filtered(q, status=None, rule=None, level=None, since=None, until=None, mod
     if until:
         q = q.where(Alert.study_datetime < until)
     if modality:
-        q = q.where(Study.modality == modality)
+        q = q.where(_modality_cond(modality))
     return q
+
+
+def _modality_cond(value: str):
+    """A modality filter as the study list applies it: a group code (DX = DX and CR) or a
+    comma list of modalities, with a device's modality correction replacing the stored one."""
+    from .modality_profiles import PROFILES
+
+    mods: list[str] = []
+    for v in value.upper().split(","):
+        v = v.strip()
+        p = next((x for x in PROFILES if x["code"] == v), None)
+        mods += p["modalities"] if p else [v] if v else []
+    corrected = select(Device.id).where(Device.modality_override.is_not(None))
+    return ((Study.modality.in_(mods)
+             & (Study.device_id.is_(None) | Study.device_id.not_in(corrected)))
+            | Study.device_id.in_(select(Device.id).where(Device.modality_override.in_(mods))))
 
 
 def listing(session: Session, status: str | None = "open", limit: int = 50,

@@ -5,7 +5,7 @@
 import '../components/dx-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart, dap, dapUnit, mgy } from '../core/format.js';
-import { alertList, alertStudies, alertSummary, ackAlerts, studyHref } from '../core/api.js';
+import { alertList, alertStudies, alertSummary, ackAlerts, studyHref, modalities } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { adminDefaults, defaultsActions } from '../core/page-defaults.js';
 import { live } from '../core/live.js';
@@ -16,6 +16,9 @@ const defaults = await adminDefaults('alerts');
 // the page's filters before the user's own: built-in, then the admin's default for everyone
 const BASE = { status: 'open', rule: '', level: '', modality: '', since: '', until: '', ...defaults.value };
 const f = { ...BASE, ...(prefs.get('alerts.filters') || {}) };
+// the modality filter is a group, as on the other pages (DX/CR together); an older CR choice is DX/CR
+const groups = await modalities().catch(() => []);
+for (const o of [f, BASE]) if (o.modality && !groups.some((p) => p.code === o.modality)) o.modality = groups.find((p) => p.modalities.includes(o.modality))?.code ?? o.modality;
 let offset = 0;
 const selected = new Set();
 // new or acknowledged alerts elsewhere (checked once a minute): offer a refresh, never jump
@@ -124,7 +127,7 @@ function draw(sum, rows) {
       select('Status', 'status', [['open', 'open'], ['acknowledged', 'acknowledged'], ['all', 'all']]),
       select('Rule', 'rule', rules),
       select('Level', 'level', [['', 'all'], ['alert', 'alert'], ['warn', 'warning']]),
-      select('Modality', 'modality', [['', 'all'], ...['CT', 'DX', 'CR', 'RF', 'XA', 'MG'].map((m) => [m, m])]),
+      select('Modality', 'modality', [['', 'all'], ...groups.map((p) => [p.code, p.label])]),
       ...dates,
       h('a', { class: 'btn ghost', href: 'rules.html' }, 'Rules and notifications…'),
       ...defaultsActions('alerts', { admin: defaults.admin, prefKeys: ['alerts.filters'],
