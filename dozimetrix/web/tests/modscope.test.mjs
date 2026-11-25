@@ -2,7 +2,7 @@
 //   node --test dozimetrix/web/tests/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse, splitModality, scopeQuery, groupOf, retab, withoutAuto, normaliseSaved, scopeWarnings } from '../assets/js/core/query.js';
+import { parse, splitModality, scopeQuery, groupOf, retab, withoutAuto, normaliseSaved, scopeWarnings, panelWarnings, groupsOfModalities } from '../assets/js/core/query.js';
 
 const P = [
   { code: 'CT', modalities: ['CT'] }, { code: 'DX', modalities: ['DX', 'CR'] }, { code: 'RF', modalities: ['RF'] },
@@ -104,4 +104,14 @@ test('scopeWarnings explains an empty list without changing the query', () => {
   assert.match(w('modality:CT modality:DX', null)[1], /exclude each other/);
   assert.deepEqual(w('modality:CT,DX modality:DX', null), [null, null]);
   assert.match(w('modality:CT date:7d', null, { tabsOwn: true })[0], /tabs choose/);
+});
+
+test('panelWarnings names the panels a filter empties', () => {
+  const w = (q, codes) => panelWarnings(parse(q), codes, P);
+  assert.deepEqual(w('dlp:>500 date:30d', ['CT', 'NM']), [null, null]);
+  assert.deepEqual(w('dlp:>500', ['CT', 'DX']), ['the DX panel comes out empty with it']);
+  assert.deepEqual(w('modality:CT', ['CT', 'DX', 'RF']), ['the DX, RF panels come out empty with it']);
+  assert.deepEqual(w('~modality:CT -modality:DX', ['CT', 'DX']), [null, null]);
+  assert.deepEqual(groupsOfModalities('DX,CR', P), ['DX']);
+  assert.deepEqual(groupsOfModalities('CT', P), ['CT']);
 });

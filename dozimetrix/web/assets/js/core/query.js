@@ -364,3 +364,29 @@ export function scopeWarnings(tokens, mod, profiles, devices = null, { tabsOwn =
     return null;
   });
 }
+
+/**
+ * Notes for a query shared by panels of several modality groups (the Charts workspace): a
+ * filter that only some groups have (dlp:, a modality) leaves the other groups' panels empty.
+ * `codes` = the groups of the panels shown. One note per token, or null.
+ */
+export function panelWarnings(tokens, codes, profiles) {
+  const label = (cs) => cs.map((c) => profiles.find((x) => x.code === c)?.label ?? c).join(', ');
+  const groups = [...new Set(codes)];
+  return tokens.map((t) => {
+    if (t.off || t.error) return null;
+    let empty = [];
+    if (GROUP_KEYS[t.key]) empty = groups.filter((c) => !GROUP_KEYS[t.key].includes(c));
+    else if (isMod(t) && !t.neg) {
+      const s = modSet(t);
+      empty = groups.filter((c) => !(profiles.find((x) => x.code === c)?.modalities || [c]).some((m) => s.includes(m)));
+    }
+    return empty.length ? `the ${label(empty)} panel${empty.length > 1 ? 's' : ''} come${empty.length > 1 ? '' : 's'} out empty with it` : null;
+  });
+}
+
+/** The groups (profile codes) a panel modality setting such as "DX,CR" or "PT" belongs to. */
+export function groupsOfModalities(value, profiles) {
+  const s = String(value || '').toUpperCase().split(',').map((x) => x.trim()).filter(Boolean);
+  return profiles.filter((p) => p.modalities.some((m) => s.includes(m))).map((p) => p.code);
+}

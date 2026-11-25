@@ -9,7 +9,7 @@ import '../components/dx-query-bar.js';
 import '../components/dx-chart.js';
 import { baseOption } from '../components/dx-chart.js';
 import { h, clear, toast, esc } from '../core/dom.js';
-import { scopeWarnings } from '../core/query.js';
+import { splitModality, retab, panelWarnings, groupsOfModalities } from '../core/query.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
 import { groupRows, physicalDevices, drl, isSample, getPref, putPref, me, sharedViews, createView, updateView, deleteView } from '../core/api.js';
@@ -132,10 +132,16 @@ const MOD_PANELS = {
 };
 const MOD_Q = 'date:90d origin:local';
 const isMod = (name) => /^mod-[A-Z]+$/.test(name || '');
+// the groups as query profiles (core/query.js): which modalities each tab stands for
+const PROFILES = Object.entries(GROUPS).map(([code, g]) => ({ code, label: g.label, modalities: code === 'DX' ? ['DX', 'CR'] : [code] }));
 const modOf = (name) => name.slice(4);
 
 Object.assign(TYPES, SERVER_TYPES);
-let ws;         // { name, q, panels }
+let ws;         // { name, q, panels }: q is the workspace's own query, as kept
+// A query that came with a link (from Studies, a copied link, or carried over from another
+// tab) applies to this visit only: the workspace keeps its own until the user keeps this one.
+let linkQ = null;
+const curQ = () => linkQ ?? ws.q;  // the query the panels use
 let rows = [];  // rows of the panel being drawn (one modality group)
 const rowsBy = {};  // group → rows for the current query
 let devices = [];
@@ -163,7 +169,7 @@ function loadWs(name) {
 let flushShared = async () => {};
 let sharedTimer;
 function saveWs() {
-  if (ws.sharedId == null) { prefs.set(wsKey(ws.name), ws); return; }
+  if (ws.sharedId == null) { const { key: _, ...keep } = ws; prefs.set(wsKey(ws.name), keep); return; }
   if (!isAdmin) { if (dirtyEl) dirtyEl.hidden = false; return; }
   // an admin's change to a shared workspace is published (debounced, audited on the server)
   clearTimeout(sharedTimer);
@@ -576,7 +582,7 @@ function renderPanel(cfg, index) {
   if (server) {
     const head = panel.querySelector('h3');
     head.textContent = 'Loading…';
-    buildServer(cfg, ws.q).then((b) => {
+    buildServer(cfg, curQ()).then((b) => {
       head.textContent = b.title;
       if (b.height) chart.setAttribute('height', b.height);
       chart.csv = b.csv;
@@ -629,7 +635,7 @@ async function loadRows() {
   // one request per modality group the browser panels use
   const groups = [...new Set(ws.panels.filter((p) => !(p.type in SERVER_TYPES)).map(groupOf))];
   for (const k of Object.keys(rowsBy)) delete rowsBy[k];
-  const got = await Promise.all(groups.map((k) => groupRows(k, ws.q).catch(() => [])));
+  const got = await Promise.all(groups.map((k) => groupRows(k, curQ()).catch(() => [])));
   groups.forEach((k, i) => { rowsBy[k] = got[i].map(toShown); });
   renderAll();
 }
@@ -638,7 +644,24 @@ async function loadRows() {
 // The first visit after this change uploads the workspaces this browser already had.
 let flushPrefs = async () => {};
 // a reload must not drop the last change still waiting to be sent
-const reloadPage = () => Promise.all([flushPrefs().catch(() => {}), flushShared().catch(() => {})]).finally(() => location.reload());
+// (opens the current workspace from the preferences: the link's own parameters are left behind)
+const reloadPage = () => openWs(null, null);
+/** Go to a workspace (null: workspace.current), with a query for this visit (null: its own). */
+function openWs(key, q) {
+  const u = new URL('charts.html', location.href);
+  if (key) u.searchParams.set('ws', key);
+  if (q != null) u.searchParams.set('q', q);
+  return Promise.all([flushPrefs().catch(() => {}), flushShared().catch(() => {})]).finally(() => { location.href = u.href; });
+}
+// the modality groups of the panels shown (browser panels: their group; server panels: their modality)
+const panelGroups = () => ws.panels.flatMap((p) => (p.type in SERVER_TYPES ? groupsOfModalities(p.modality || 'CT', PROFILES) : [groupOf(p)]));
+function syncUrl() {
+  const u = new URL(location.href);
+  u.search = '';
+  u.searchParams.set('ws', ws.key);
+  if (curQ()) u.searchParams.set('q', curQ());
+  history.replaceState(null, '', u);
+}
 
 async function syncWorkspaces() {
   if (isSample) return;
@@ -676,18 +699,56 @@ async function init() {
   setDevices(devices);
   isAdmin = !!user?.roles?.includes('admin');
   const names = wsNames();
-  const urlQ = new URL(location.href).searchParams.get('q');
-  // a link from the Studies list names its modality: open that modality's charts
-  const urlMod = /(?:^|\s)modality:(\S+)/.exec(urlQ || '')?.[1]?.toUpperCase().split(',')[0];
-  const fromUrl = urlMod && Object.entries(GROUPS).find(([k]) => k === urlMod || (k === 'DX' && urlMod === 'CR'))?.[0];
-  const current = fromUrl ? `mod-${fromUrl}` : prefs.get('workspace.current') || 'mod-CT';
-  ws = loadWs(isMod(current) || names.includes(current) || sharedOf(current) ? current : 'mod-CT');
-  if (urlQ) ws.q = urlQ.split(' ').filter((x) => !/^(modality|age|acc|pid|spiral|axial|loc|dlp|ctdi|flag):/.test(x) && x !== '-phantom').join(' ');
+  const params = new URL(location.href).searchParams;
+  const urlQ = params.get('q');
+  const urlWs = params.get('ws');
+  const known = (k) => isMod(k) || names.includes(k) || !!sharedOf(k);
+  let key = prefs.get('workspace.current') || 'mod-CT';
+  let q = urlQ;
+  if (urlWs && known(urlWs)) key = urlWs;
+  else if (urlWs) toast(`“${urlWs.replace(/^shared:/, 'shared workspace ')}” is not one of your workspaces: the link's query is shown on yours.`);
+  if (!urlWs && urlQ != null) {
+    // a link from the Studies list names its modality: open that modality's tab, keep every other filter
+    const sp = splitModality(urlQ, PROFILES);
+    if (sp.mod) { key = `mod-${sp.mod}`; q = sp.q; }
+  }
+  if (!known(key)) key = 'mod-CT';
+  prefs.set('workspace.current', key);
+  ws = loadWs(key);
+  ws.key = key;
+  if (q != null && q !== ws.q) linkQ = q;
 
-  const qb = h('dx-query-bar', { value: ws.q });
-  qb.check = (toks) => scopeWarnings(toks, null, [], null, { tabsOwn: true });
+  const qb = h('dx-query-bar', { value: curQ() });
+  qb.check = (toks) => panelWarnings(toks, panelGroups(), PROFILES);  // filters that empty some panels
   qb.context = { devices: new Map(devices.map((d) => [d.id, d])), drl: drlSet.ct_dlp_mgycm };
-  qb.addEventListener('query-change', (e) => { ws.q = e.detail; saveWs(); loadRows(); });
+  qb.addEventListener('query-change', (e) => {
+    if (linkQ != null) { linkQ = e.detail === ws.q ? null : e.detail; showLink(); } else { ws.q = e.detail; saveWs(); }
+    syncUrl();
+    loadRows();
+  });
+  // the query in use is not the workspace's own: say so, and offer to keep it or go back
+  const linkEl = h('div', { class: 'row', hidden: true });
+  const wsLabel = () => (isMod(ws.key) ? `the ${GROUPS[modOf(ws.key)]?.label || modOf(ws.key)} tab` : `“${ws.name}”`);
+  const showLink = () => {
+    linkEl.hidden = linkQ == null;
+    if (linkQ == null) return;
+    const canKeep = ws.sharedId == null || isAdmin;
+    linkEl.replaceChildren(
+      h('span', { class: 'tag warn' }, 'Query for this visit'),
+      h('span', { class: 'muted small' }, `from a link or another tab; ${wsLabel()} keeps its own: ${ws.q || '(no filter)'}`),
+      canKeep ? h('button', { class: 'btn', type: 'button', title: ws.sharedId != null ? 'Published to everyone' : null, onclick: () => {
+        ws.q = linkQ; linkQ = null; saveWs(); showLink(); syncUrl(); toast(`${wsLabel().replace(/^t/, 'T')} keeps this query now`);
+      } }, ws.sharedId != null ? 'Keep in the shared workspace' : 'Keep in this workspace') : null,
+      h('button', { class: 'btn', type: 'button', onclick: () => {
+        linkQ = null; qb.value = ws.q; showLink(); syncUrl(); loadRows();
+      } }, 'Use the workspace query'));
+  };
+  showLink();
+  syncUrl();
+  try {
+    const note = sessionStorage.getItem('charts.note');
+    if (note) { sessionStorage.removeItem('charts.note'); toast(note); }
+  } catch { /* private mode */ }
   countEl = h('span', { class: 'muted mono' });
   gridHost = h('div', { class: 'ws' });
 
@@ -710,7 +771,7 @@ async function init() {
     const name = ((await promptDialog('Your copy keeps this query and these panels.', { title: 'Name of your copy', label: 'Keep a copy', value: `${ws.name} (mine)` })) || '').trim();
     if (!name) return;
     if (wsNames().includes(name)) { toast(`A workspace named “${name}” exists already.`); return; }
-    prefs.set(wsKey(name), { name, q: ws.q, panels: ws.panels });
+    prefs.set(wsKey(name), { name, q: curQ(), panels: ws.panels });
     prefs.set('workspaces', [...wsNames(), name]);
     prefs.set('workspace.current', name);
     reloadPage();
@@ -733,20 +794,50 @@ async function init() {
   const isShared = ws.sharedId != null;
   const note = isSample ? 'saved in this browser' : isShared ? (isAdmin ? 'shared · your changes are published to everyone' : 'shared by an admin · changes are not kept unless you save a copy')
     : 'auto-saved to your account';
-  document.querySelector('dx-shell')?.setSub(isMod(ws.name) ? (GROUPS[modOf(ws.name)]?.label || modOf(ws.name)) : ws.name);
+  // the crumb names the workspace, and the modalities of its panels when a tab's holds others too
+  const others = [...new Set(panelGroups())].filter((g) => !isMod(ws.key) || g !== modOf(ws.key));
+  const title = isMod(ws.key) ? (GROUPS[modOf(ws.key)]?.label || modOf(ws.key)) : ws.name;
+  document.querySelector('dx-shell')?.setSub(isMod(ws.key) && others.length ? `${title} + ${others.map((g) => GROUPS[g]?.label || g).join(', ')}` : title);
+  // a tab keeps the filters in use (like the Studies list); those that do not apply to its
+  // modality are switched off ("~") and come back on a tab where they apply
+  const openTab = (k) => {
+    if (ws.key === `mod-${k}`) return;
+    let auto = [];
+    try { auto = JSON.parse(sessionStorage.getItem('charts.auto') || '[]'); } catch { auto = []; }
+    const r = retab(curQ(), k, PROFILES, new Set(auto), { clicked: true });
+    const notes = [];
+    if (r.off.length) notes.push(`${r.off.join(', ')} switched off: not for ${GROUPS[k].label}`);
+    if (r.on.length) notes.push(`${r.on.join(', ')} back on`);
+    try {
+      sessionStorage.setItem('charts.auto', JSON.stringify([...r.auto]));
+      if (notes.length) sessionStorage.setItem('charts.note', notes.join(' · '));
+    } catch { /* private mode */ }
+    openWs(`mod-${k}`, splitModality(r.q, PROFILES, k).q);
+  };
   const modTabs = h('nav', { class: 'tabs', 'aria-label': 'Modality' }, Object.entries(GROUPS).map(([k, g]) => h('button', {
-    type: 'button', 'aria-current': ws.name === `mod-${k}` ? 'page' : false,
-    onclick: () => { prefs.set('workspace.current', `mod-${k}`); reloadPage(); } }, g.label)));
+    type: 'button', 'aria-current': ws.key === `mod-${k}` ? 'page' : false,
+    onclick: () => openTab(k) }, g.label)));
 
   page.replaceChildren(
     modTabs,
+    linkEl,
     h('div', { class: 'row' },
       h('span', { class: 'pill' }, `${t('charts.workspace')}:`, wsSelect),
       h('span', { class: 'muted small' }, note),
       dirtyEl,
       h('span', { class: 'spacer' }),
-      h('a', { class: 'btn', href: '#', onclick: (e) => { const g = isMod(ws.name) ? modOf(ws.name) : 'CT'; e.currentTarget.href = `studies.html?mod=${g}&q=${encodeURIComponent(`${ws.q} -phantom`.trim())}`; } }, 'Studies ↗'),
-      h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied.'); } }, 'Copy link'),
+      h('a', { class: 'btn', href: '#', onclick: (e) => {
+        // the tab's modality; a workspace of several modalities opens All
+        const gs = [...new Set(panelGroups())];
+        const g = isMod(ws.key) ? modOf(ws.key) : gs.length === 1 ? gs[0] : 'all';
+        e.currentTarget.href = `studies.html?mod=${g}&q=${encodeURIComponent(curQ())}`;
+      } }, 'Studies ↗'),
+      h('button', { class: 'btn', type: 'button', onclick: () => {
+        syncUrl();
+        navigator.clipboard?.writeText(location.href);
+        toast(isMod(ws.key) || ws.sharedId != null ? 'Link to this workspace and query copied.'
+          : `Link copied. “${ws.name}” is your own workspace: others get the query on their own charts.`);
+      } }, 'Copy link'),
       isShared && !isAdmin ? h('button', { class: 'btn', type: 'button', onclick: saveMine }, 'Copy to mine')
         : h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog(isShared ? 'Reset this shared workspace to the default panels, for everyone?' : 'Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { Object.assign(ws, defaultsOf(ws.name)); saveWs(); reloadPage(); } } }, t('charts.reset')),
       isAdmin && !isShared && !isMod(ws.name) ? h('button', { class: 'btn', type: 'button', title: 'Publish this workspace for every user', onclick: shareWs }, 'Share with everyone') : null,
