@@ -29,7 +29,7 @@ function editable(s) {
       render();
     } catch (e) { toast(e.message); save.disabled = false; }
   });
-  return h('div', { class: 'panel form-card', style: { 'max-width': '720px' } },
+  return h('div', { class: 'panel form-card', },
     h('div', { class: 'fields' },
       field('Site name', name, 'the institution this installation belongs to', 'wide'),
       field('Site code', code, 'up to 32 letters or digits, no spaces'),
@@ -54,17 +54,17 @@ function readOnly(d) {
     body.append(h('tr', {}, h('th', { colspan: 2, class: 'muted small', style: { 'text-align': 'left', 'padding-top': 'var(--sp-3)' } }, title)));
     for (const [k, v] of rows) body.append(h('tr', {}, h('td', {}, k), h('td', { class: 'mono' }, String(v ?? '—'))));
   }
-  return h('div', { class: 'panel', style: { 'max-width': '720px', padding: 'var(--sp-3)' } }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, body)));
+  return h('div', { class: 'panel', style: { padding: 'var(--sp-3)' } }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, body)));
 }
 
 async function render() {
   clear(page).append(adminTabs('settings.html'));
   let s;
   try { s = await siteSettings(); } catch (e) { page.append(h('p', { class: 'error' }, e.message)); return; }
-  page.append(
+  page.append(h('div', { class: 'flow-sections' },
     section('Site', { sub: 'Kept in the database: a change applies at once, without a restart.' }, editable(s)),
     section('Deployment', { sub: 'Set in dozimetrix.toml on the server; a change needs a restart of the service. Shown here so nobody has to open the file to check.' },
-      readOnly(s.deployment)));
+      readOnly(s.deployment))));
 }
 
 render();

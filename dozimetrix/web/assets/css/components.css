@@ -289,6 +289,8 @@ table.grid.svc-table { width: 100%; min-width: 0; table-layout: auto; }
 
 /* Sections and headings (docs/design-rules.md): section > hgroup (h2 + p) > the main element;
    with actions: section > header > (hgroup + .actions) > the main element */
+.flow-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: var(--sp-4); align-items: start; }
+.flow-sections > .block { margin-top: 0 !important; min-width: 0; }
 .block:not(:first-child) { margin-top: var(--sp-4); }
 .block > hgroup, .block > header { margin-bottom: var(--sp-2); }
 .block > header { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2); }
