@@ -245,6 +245,23 @@ class RulePatch(BaseModel):
     name: str | None = None
 
 
+class RuleIn(BaseModel):
+    """A new alert rule (the kinds that need no extra settings; device rules are seeded)."""
+    name: str
+    kind: str
+    metric: str | None = None
+    modality: str | None = None
+    threshold: float | None = None  # in the metric's stored unit (Gy, Gy.cm2, ...)
+    window_days: int | None = None
+    max_age_days: int | None = None
+    severity: str = "warn"
+    notify: bool = False
+    note: str | None = None
+
+
+RULE_KINDS = ("threshold", "cumulative", "count", "drl_ratio", "pregnant")
+
+
 class DecisionIn(BaseModel):
     family: str  # rx | rf | ct
     field: str  # protocol | anatomy | study_description | procedure_name | ...
@@ -1713,10 +1730,103 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def alert_rules(user: User = Depends(current_user), session: Session = Depends(db)):
         from ..db.models import AlertRule
 
+        from ..seeds.loader import _toml
+
+        seeded = {r["key"] for r in _toml("alert_rules.toml")["rule"]}
+        return [_rule_dict(r, seeded) for r in session.scalars(select(AlertRule).order_by(AlertRule.id))]
+
+    def _rule_dict(r, seeded: set[str]) -> dict:
         cols = ("id", "key", "name", "enabled", "kind", "modality", "metric", "threshold",
                 "unit", "window_days", "max_age_days", "severity", "notify", "note")
-        return [{c: getattr(r, c) for c in cols}
-                for r in session.scalars(select(AlertRule).order_by(AlertRule.id))]
+        return {**{c: getattr(r, c) for c in cols}, "custom": r.key not in seeded}
+
+    @app.get("/api/alert-rules/metrics")
+    def alert_rule_metrics(user: User = Depends(current_user)):
+        """The metrics a new rule can watch (the form offers these)."""
+        from ..stats import METRICS
+
+        return [{"key": k, "label": m.label, "unit": m.unit, "level": m.level}
+                for k, m in METRICS.items()]
+
+    @app.post("/api/alert-rules")
+    def alert_rule_create(body: RuleIn, request: Request, user: User = Depends(admin_user),
+                          session: Session = Depends(db)):
+        from ..db.models import AlertRule
+        from ..seeds.loader import _toml
+        from ..stats import METRICS
+
+        name = body.name.strip()
+        if not name or len(name) > 255:
+            raise HTTPException(400, "a name of 1-255 characters is required")
+        if body.kind not in RULE_KINDS:
+            raise HTTPException(400, f"kind is {'|'.join(RULE_KINDS)}")
+        if body.severity not in ("warn", "alert"):
+            raise HTTPException(400, "severity is warn|alert")
+        modality = None
+        if body.modality and body.modality.strip():
+            parts = [m.strip().upper() for m in body.modality.split(",") if m.strip()]
+            if not parts or not all(re.fullmatch(r"[A-Z]{2,3}", m) for m in parts):
+                raise HTTPException(400, "modality is a comma list of codes, e.g. CT,RF")
+            modality = ",".join(parts)
+        if body.max_age_days is not None and body.max_age_days < 1:
+            raise HTTPException(400, "the age limit must be positive")
+        metric = unit = None
+        if body.kind in ("threshold", "cumulative"):
+            m = METRICS.get(body.metric or "")
+            if m is None:
+                raise HTTPException(400, "choose a metric")
+            if body.kind == "cumulative" and m.level != "study":
+                raise HTTPException(400, "a cumulative rule needs a per-study metric")
+            metric, unit = body.metric, m.unit
+        elif body.metric:
+            raise HTTPException(400, f"a {body.kind} rule has no metric")
+        if body.kind == "pregnant":
+            threshold = 0.0
+        else:
+            if body.threshold is None or body.threshold <= 0:
+                raise HTTPException(400, "the threshold must be greater than zero")
+            threshold = body.threshold
+        if body.kind in ("cumulative", "count"):
+            if body.window_days is None or body.window_days < 1:
+                raise HTTPException(400, "a window of at least 1 day is required")
+        elif body.window_days is not None:
+            raise HTTPException(400, f"a {body.kind} rule has no window")
+        base = (re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "rule")[:56]
+        taken = set(session.scalars(select(AlertRule.key)))
+        key, n = base, 1
+        while key in taken or key in {r["key"] for r in _toml("alert_rules.toml")["rule"]}:
+            n += 1
+            key = f"{base}-{n}"
+        r = AlertRule(key=key, name=name, enabled=True, kind=body.kind, modality=modality,
+                      metric=metric, threshold=threshold, unit=unit,
+                      window_days=body.window_days, max_age_days=body.max_age_days,
+                      severity=body.severity, notify=body.notify,
+                      note=(body.note or "").strip()[:1024] or None)
+        session.add(r)
+        session.flush()
+        out = _rule_dict(r, set())
+        _audit(session, request, user, "alert_rule.create", f"rule:{key}",
+               {k: v for k, v in out.items() if k not in ("id", "custom")})
+        session.commit()
+        return out
+
+    @app.delete("/api/alert-rules/{rule_id}")
+    def alert_rule_delete(rule_id: int, request: Request, user: User = Depends(admin_user),
+                          session: Session = Depends(db)):
+        from ..db.models import Alert, AlertRule
+        from ..seeds.loader import _toml
+
+        r = session.get(AlertRule, rule_id)
+        if r is None:
+            raise HTTPException(404, "rule not found")
+        if r.key in {x["key"] for x in _toml("alert_rules.toml")["rule"]}:
+            raise HTTPException(400, "a default rule cannot be deleted: switch it off instead")
+        n = session.scalar(select(func.count()).select_from(Alert).where(Alert.rule_id == r.id))
+        _audit(session, request, user, "alert_rule.delete", f"rule:{r.key}",
+               {"name": r.name, "alerts_removed": n})
+        session.delete(r)
+        session.commit()
+        return {"deleted": r.name, "alerts_removed": n}
 
     @app.patch("/api/alert-rules/{rule_id}")
     def alert_rule_patch(rule_id: int, body: RulePatch, request: Request,

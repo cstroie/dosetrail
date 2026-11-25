@@ -65,6 +65,7 @@ systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
 
 ## Alerts and notifications
 - Default alert rules are seeded by `dozimetrix seed`; edit them in the UI (Admin → Alert rules) or through `PATCH /api/alert-rules/{id}`. A seed run never overwrites an edited rule.
+- Admins add rules in the same page ("Add rule": threshold, cumulative, count, × national DRL, pregnant patient) and delete the ones they added; a default rule can only be switched off. Both are audit-logged (`alert_rule.create`, `alert_rule.delete`; deleting removes the rule's alerts). Device rules (silent, drift, sustained above DRL) come only from `seeds/alert_rules.toml`. A new rule applies to studies evaluated from now on; for earlier ones run `dozimetrix alerts evaluate --since`.
 - New studies are evaluated as they are imported. To evaluate history, run `dozimetrix alerts evaluate --since 2026-01-01`.
 - Notifications are sent by the receiver service when it is idle, at most every 30 s. They can also be sent with `dozimetrix alerts notify`. Only alerts on studies from the last 48 h are sent.
 - Configure `[notify]` (see `dozimetrix.toml.example`), then check it with `dozimetrix alerts test-notify`.

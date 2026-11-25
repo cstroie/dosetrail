@@ -4,7 +4,7 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from dozimetrix import classify
 from dozimetrix.api.app import create_app
@@ -603,6 +603,58 @@ def test_backup_status_is_admin_only(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/backup/status").json()
     assert r["state"] in ("never", "ok", "stale") and r["max_hours"] == 26
+
+
+def test_alert_rule_create_and_delete(client):
+    from dozimetrix.db.models import Alert, AlertRule, Study
+
+    good = {"name": "DAP over 5 Gy.cm2", "kind": "threshold", "metric": "dap_total",
+            "threshold": 5.0, "modality": "xa, rf", "severity": "alert", "notify": True}
+    login(client, "viewer", "viewer-pass-1")
+    assert client.post("/api/alert-rules", json=good).status_code == 403
+    assert client.get("/api/alert-rules/metrics").status_code == 200
+    login(client, "boss", "boss-pass-123")
+    r = client.post("/api/alert-rules", json=good)
+    assert r.status_code == 200, r.text
+    rule = r.json()
+    assert rule["key"] == "dap-over-5-gy-cm2" and rule["unit"] == "Gy.cm2"
+    assert rule["modality"] == "XA,RF" and rule["custom"] is True and rule["enabled"] is True
+    assert client.post("/api/alert-rules", json=good).json()["key"] == "dap-over-5-gy-cm2-2"
+    listed = {x["key"]: x for x in client.get("/api/alert-rules").json()}
+    assert listed[rule["key"]]["custom"] is True and listed["fluoro-kar-5gy"]["custom"] is False
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        assert s.scalar(select(func.count()).select_from(AuditLog).where(
+            AuditLog.action == "alert_rule.create", AuditLog.target == f"rule:{rule['key']}")) == 1
+    bad = [({"kind": "nope"}, "kind"), ({"metric": "dlp"}, None),  # event metric is fine for threshold
+           ({"severity": "x"}, "severity"), ({"modality": "C"}, "modality"),
+           ({"threshold": 0}, "threshold"), ({"name": " "}, "name"), ({"metric": "nope"}, "metric"),
+           ({"window_days": 5}, "window"), ({"max_age_days": 0}, "age")]
+    for patch, word in bad:
+        resp = client.post("/api/alert-rules", json={**good, **patch})
+        assert (resp.status_code == 200) if word is None else (resp.status_code == 400 and word in resp.text), patch
+    cum = {"name": "Σ", "kind": "cumulative", "threshold": 1.0, "window_days": 30}
+    assert client.post("/api/alert-rules", json={**cum, "metric": "dlp"}).status_code == 400
+    assert client.post("/api/alert-rules", json={**cum, "metric": "dap_total", "window_days": None}).status_code == 400
+    assert client.post("/api/alert-rules", json={**cum, "metric": "dap_total"}).status_code == 200
+    assert client.post("/api/alert-rules", json={"name": "Preg", "kind": "pregnant"}).json()["threshold"] == 0
+    assert client.post("/api/alert-rules", json={"name": "N", "kind": "count", "threshold": 3,
+                                                 "window_days": 365}).status_code == 200
+    # delete: a default rule stays, a custom one goes with its alerts
+    assert client.delete(f"/api/alert-rules/{listed['fluoro-kar-5gy']['id']}").status_code == 400
+    with make_sessionmaker(make_engine(url))() as s:
+        study = s.scalar(select(Study))
+        s.add(Alert(rule_id=rule["id"], study_id=study.id, severity="alert", message="x"))
+        s.commit()
+    login(client, "viewer", "viewer-pass-1")
+    assert client.delete(f"/api/alert-rules/{rule['id']}").status_code == 403
+    login(client, "boss", "boss-pass-123")
+    assert client.delete(f"/api/alert-rules/{rule['id']}").json() == {
+        "deleted": "DAP over 5 Gy.cm2", "alerts_removed": 1}
+    assert client.delete(f"/api/alert-rules/{rule['id']}").status_code == 404
+    with make_sessionmaker(make_engine(url))() as s:
+        assert s.scalar(select(func.count()).select_from(Alert).where(Alert.rule_id == rule["id"])) == 0
+        assert s.scalar(select(AlertRule).filter_by(key="dap-over-5-gy-cm2-2")) is not None
 
 
 def test_his_server_endpoints(client):

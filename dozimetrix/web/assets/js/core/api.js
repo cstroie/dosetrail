@@ -491,6 +491,10 @@ export function alertRules() {
   return isSample ? serverOnly('Alert rules') : remote('/api/alert-rules');
 }
 export const updateAlertRule = (id, patch) => send('PATCH', `/api/alert-rules/${id}`, patch);
+/** POST /api/alert-rules (admin) · DELETE (only rules not in the seed file) · GET metrics a rule can watch */
+export const createAlertRule = (rule) => send('POST', '/api/alert-rules', rule);
+export const deleteAlertRule = (id) => send('DELETE', `/api/alert-rules/${id}`);
+export const alertRuleMetrics = () => remote('/api/alert-rules/metrics');
 
 /** GET /api/reports/operators?year=&quarter=&quarters=4 (doses per operator; admin only) */
 export function operatorReport(params = {}) {
