@@ -1,7 +1,7 @@
 // Charts workspace, every modality: each browser panel charts one modality group. One query is shared by every panel. Panels can be added, re-ordered
 // (drag the grip, or ← →), resized (S/M/L/XL), re-configured inline and exported (PNG / CSV).
-// Each panel has a summary table (n, median, P75, IQR, P75/DRL). The workspace layout is saved
-// per browser for now; the server will store workspaces per user, with read-only sharing.
+// Each panel has a summary table (n, median, P75, IQR, P75/DRL). A user's workspaces are kept on
+// the server per user; admins also publish shared ones, which everyone sees and only admins change.
 
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
@@ -11,7 +11,7 @@ import { baseOption } from '../components/dx-chart.js';
 import { h, clear, toast, esc } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
-import { groupRows, physicalDevices, drl, isSample, getPref, putPref } from '../core/api.js';
+import { groupRows, physicalDevices, drl, isSample, getPref, putPref, me, sharedViews, createView, updateView, deleteView } from '../core/api.js';
 import { summary, groupBy, histogram } from '../core/stats.js';
 import { prefs } from '../core/prefs.js';
 import { SERVER_TYPES, buildServer, serverOptions, serverSummary, defaultsFor } from './charts-server.js';
@@ -147,11 +147,28 @@ function defaultsOf(name) {
   return isMod(name) ? { q: MOD_Q, panels: structuredClone(MOD_PANELS[modOf(name)] || []) }
     : { q: DEFAULT_Q, panels: structuredClone(DEFAULT_PANELS) };
 }
+// Shared workspaces (published by an admin) are named "shared:<id>" in the select and in
+// workspace.current; their layout lives in the view, not in the user's preferences.
+let shared = [];       // [{ id, name, value: { q, panels } }]
+let isAdmin = false;
+let dirtyEl = null;    // shown when a non-admin changed a shared workspace (the change is not kept)
+const sharedOf = (key) => shared.find((v) => `shared:${v.id}` === key);
 function loadWs(name) {
+  const view = sharedOf(name);
+  if (view) return { name: view.name, sharedId: view.id, q: view.value?.q ?? DEFAULT_Q, panels: structuredClone(view.value?.panels || []) };
   const saved = prefs.get(wsKey(name));
   return saved ? structuredClone(saved) : { name, ...defaultsOf(name) };
 }
-function saveWs() { prefs.set(wsKey(ws.name), ws); }
+let flushShared = async () => {};
+let sharedTimer;
+function saveWs() {
+  if (ws.sharedId == null) { prefs.set(wsKey(ws.name), ws); return; }
+  if (!isAdmin) { if (dirtyEl) dirtyEl.hidden = false; return; }
+  // an admin's change to a shared workspace is published (debounced, audited on the server)
+  clearTimeout(sharedTimer);
+  flushShared = () => { clearTimeout(sharedTimer); flushShared = async () => {}; return updateView(ws.sharedId, { value: { q: ws.q, panels: ws.panels } }); };
+  sharedTimer = setTimeout(() => flushShared().catch((e) => toast(`Shared workspace not saved: ${e.message}`)), 800);
+}
 
 /* ---------------- data helpers ---------------- */
 
@@ -578,7 +595,7 @@ async function loadRows() {
 // The first visit after this change uploads the workspaces this browser already had.
 let flushPrefs = async () => {};
 // a reload must not drop the last change still waiting to be sent
-const reloadPage = () => flushPrefs().catch(() => {}).finally(() => location.reload());
+const reloadPage = () => Promise.all([flushPrefs().catch(() => {}), flushShared().catch(() => {})]).finally(() => location.reload());
 
 async function syncWorkspaces() {
   if (isSample) return;
@@ -610,14 +627,17 @@ async function syncWorkspaces() {
 
 async function init() {
   await syncWorkspaces().catch(() => {});  // the server copy is a convenience: the page works without it
-  [devices, drlSet] = await Promise.all([physicalDevices(), drl()]);
+  let user;
+  [devices, drlSet, shared, user] = await Promise.all([physicalDevices(), drl(),
+    sharedViews('workspace').catch(() => []), me().catch(() => null)]);
+  isAdmin = !!user?.roles?.includes('admin');
   const names = wsNames();
   const urlQ = new URL(location.href).searchParams.get('q');
   // a link from the Studies list names its modality: open that modality's charts
   const urlMod = /(?:^|\s)modality:(\S+)/.exec(urlQ || '')?.[1]?.toUpperCase().split(',')[0];
   const fromUrl = urlMod && Object.entries(GROUPS).find(([k]) => k === urlMod || (k === 'DX' && urlMod === 'CR'))?.[0];
   const current = fromUrl ? `mod-${fromUrl}` : prefs.get('workspace.current') || 'mod-CT';
-  ws = loadWs(isMod(current) || names.includes(current) ? current : 'mod-CT');
+  ws = loadWs(isMod(current) || names.includes(current) || sharedOf(current) ? current : 'mod-CT');
   if (urlQ) ws.q = urlQ.split(' ').filter((x) => !/^(modality|age|acc|pid|spiral|axial|loc|dlp|ctdi|flag):/.test(x) && x !== '-phantom').join(' ');
 
   const qb = h('dx-query-bar', { value: ws.q });
@@ -635,8 +655,39 @@ async function init() {
       prefs.set('workspace.current', name);
     } else prefs.set('workspace.current', e.target.value);
     reloadPage();
-  } }, isMod(ws.name) ? h('option', { value: '', selected: true }, '— my workspaces —') : null,
-  wsNames().map((n) => h('option', { value: n, selected: n === ws.name }, n)), h('option', { value: '__new' }, '+ New workspace…'));
+  } }, isMod(ws.name) ? h('option', { value: '', selected: true }, '— workspaces —') : null,
+  shared.length ? h('optgroup', { label: 'Shared' }, shared.map((v) => h('option', { value: `shared:${v.id}`, selected: v.id === ws.sharedId }, `◆ ${v.name}`))) : null,
+  h('optgroup', { label: shared.length ? 'Mine' : 'My workspaces' }, wsNames().map((n) => h('option', { value: n, selected: ws.sharedId == null && n === ws.name }, n))),
+  h('option', { value: '__new' }, '+ New workspace…'));
+
+  // a shared workspace: admins change it for everyone; anyone else can keep a copy of their changes
+  const saveMine = () => {
+    let name = (prompt('Name of your copy', `${ws.name} (mine)`) || '').trim();
+    if (!name) return;
+    if (wsNames().includes(name)) { toast(`A workspace named “${name}” exists already.`); return; }
+    prefs.set(wsKey(name), { name, q: ws.q, panels: ws.panels });
+    prefs.set('workspaces', [...wsNames(), name]);
+    prefs.set('workspace.current', name);
+    reloadPage();
+  };
+  dirtyEl = h('span', { class: 'row', hidden: true, style: { gap: '6px' } },
+    h('span', { class: 'tag warn' }, 'Changes not saved'),
+    h('button', { class: 'btn primary', type: 'button', onclick: saveMine }, 'Save as my workspace'));
+  const shareWs = async () => {
+    try {
+      const v = await createView('workspace', ws.name, { q: ws.q, panels: ws.panels });
+      // moved, not copied: the personal one goes
+      const left = wsNames().filter((n) => n !== ws.name);
+      prefs.set(wsKey(ws.name), null);
+      prefs.set('workspaces', left.length ? left : [DEFAULT_WS]);
+      prefs.set('workspace.current', `shared:${v.id}`);
+      toast(`“${ws.name}” is now shared with everyone`);
+      reloadPage();
+    } catch (e) { toast(`Not shared: ${e.message}`); }
+  };
+  const isShared = ws.sharedId != null;
+  const note = isSample ? 'saved in this browser' : isShared ? (isAdmin ? 'shared · your changes are published to everyone' : 'shared by an admin · changes are not kept unless you save a copy')
+    : 'auto-saved to your account';
   document.querySelector('dx-shell')?.setSub(isMod(ws.name) ? (GROUPS[modOf(ws.name)]?.label || modOf(ws.name)) : ws.name);
   const modTabs = h('nav', { class: 'tabs', 'aria-label': 'Modality' }, Object.entries(GROUPS).map(([k, g]) => h('button', {
     type: 'button', 'aria-current': ws.name === `mod-${k}` ? 'page' : false,
@@ -646,12 +697,23 @@ async function init() {
     modTabs,
     h('div', { class: 'row' },
       h('span', { class: 'pill' }, `${t('charts.workspace')}:`, wsSelect),
-      h('span', { class: 'muted small' }, isSample ? 'saved in this browser' : 'auto-saved to your account'),
+      h('span', { class: 'muted small' }, note),
+      dirtyEl,
       h('span', { class: 'spacer' }),
       h('a', { class: 'btn', href: '#', onclick: (e) => { const g = isMod(ws.name) ? modOf(ws.name) : 'CT'; e.currentTarget.href = `studies.html?q=${encodeURIComponent(`modality:${g === 'DX' ? 'DX,CR' : g} ${ws.q} -phantom`)}`; } }, 'Studies ↗'),
-      h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied. Sharing whole workspaces needs the server.'); } }, 'Share'),
-      h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog('Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { Object.assign(ws, defaultsOf(ws.name)); saveWs(); reloadPage(); } } }, t('charts.reset')),
-      isMod(ws.name) ? null : h('button', { class: 'btn danger', type: 'button', onclick: async () => {
+      h('button', { class: 'btn', type: 'button', onclick: () => { navigator.clipboard?.writeText(location.href.split('?')[0] + '?q=' + encodeURIComponent(ws.q)); toast('Link to this query copied.'); } }, 'Copy link'),
+      isShared && !isAdmin ? h('button', { class: 'btn', type: 'button', onclick: saveMine }, 'Copy to mine')
+        : h('button', { class: 'btn', type: 'button', onclick: async () => { if (await confirmDialog(isShared ? 'Reset this shared workspace to the default panels, for everyone?' : 'Reset this workspace to the default panels?', { title: 'Reset workspace', label: 'Reset', danger: true })) { Object.assign(ws, defaultsOf(ws.name)); saveWs(); reloadPage(); } } }, t('charts.reset')),
+      isAdmin && !isShared && !isMod(ws.name) ? h('button', { class: 'btn', type: 'button', title: 'Publish this workspace for every user', onclick: shareWs }, 'Share with everyone') : null,
+      isShared && isAdmin ? h('button', { class: 'btn danger', type: 'button', onclick: async () => {
+        if (!await confirmDialog(`Remove the shared workspace “${ws.name}” for everyone? This cannot be undone.`, { title: 'Remove shared workspace', label: 'Remove', danger: true })) return;
+        try { await deleteView(ws.sharedId); } catch (e) { toast(`Not removed: ${e.message}`); return; }
+        clearTimeout(sharedTimer);
+        flushShared = async () => {};
+        prefs.set('workspace.current', 'mod-CT');
+        reloadPage();
+      } }, 'Delete') : null,
+      isMod(ws.name) || isShared ? null : h('button', { class: 'btn danger', type: 'button', onclick: async () => {
         if (!await confirmDialog(`Delete the workspace “${ws.name}” and its panels? This cannot be undone.`, { title: 'Delete workspace', label: 'Delete', danger: true })) return;
         const left = wsNames().filter((n) => n !== ws.name);
         prefs.set(wsKey(ws.name), null);
