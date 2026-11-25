@@ -1075,7 +1075,7 @@ def test_size_bands_by_protocol_name(client):
         s.flush()
         n = 0
         for name, daps in [("W035 Torace a.p. 5-15Kg", [0.01, 0.02, 0.03]), ("T035 Torace a.p. 5-15 Kg", [0.04]),
-                           ("W001a Craniu a.p. 1-6 ani", [0.1, 0.2, 0.3]), ("W008 Sinusuri", [0.5, 0.6, 0.7])]:
+                           ("W001a Craniu a.p. 1-6 ani", [0.1, 0.2, 0.3]), ("W008 Sinusuri", [0.5, 0.6, 0.7]), ("W080 Abdomen a.p. 5-20 Kg", [0.8, 0.9, 1.0])]:
             for dap in daps:
                 n += 1
                 s.add(Study(study_uid=f"9.9.{n}", accession=f"SB{n}", modality="DX", device_id=d.id,
@@ -1096,6 +1096,14 @@ def test_size_bands_by_protocol_name(client):
     by = {(s["anatomy"], s["projection"]): s for s in a["series"]}
     assert ("Craniu", "AP") in by and ("Torace", "AP") not in by
     assert a["bands"][by[("Craniu", "AP")]["cells"][0]["band"]]["label"] == "1-6 y"
-    assert w["n_other_kind"] == 3 and a["n_other_kind"] == 7  # an exam never crosses into the other size type
+    assert w["n_other_kind"] == 3 and a["n_other_kind"] == 10  # an exam never crosses into the other size type
+    assert w["n_hidden"] == 3 and ("Abdomen", "AP") not in by  # 5-20 kg is not an ICRP / RP 185 band: hidden by default
+    k = client.get("/api/charts/size-bands", params={"device": dev, "kind": "weight", "other": "keep"}).json()
+    ab = next(x for x in k["series"] if x["anatomy"] == "Abdomen")
+    assert k["bands"][ab["cells"][0]["band"]]["label"] == "5-20 kg" and k["n_hidden"] == 0
+    rb = client.get("/api/charts/size-bands", params={"device": dev, "kind": "weight", "other": "reband"}).json()
+    ab = next(x for x in rb["series"] if x["anatomy"] == "Abdomen")  # no patient weight here: no band
+    assert rb["bands"][ab["cells"][0]["band"]]["label"] == "no band" and rb["n_hidden"] == 0
+    assert client.get("/api/charts/size-bands", params={"device": dev, "other": "x"}).status_code == 400
     assert client.get("/api/charts/size-bands", params={"device": dev, "kind": "x"}).status_code == 400
     assert client.get("/api/charts/size-bands", params={"device": 999999}).status_code == 400

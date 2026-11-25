@@ -47,7 +47,7 @@ class Group:
     lo: float | None     # kg or months
     hi: float | None     # rxprotocols.INF for an open end
     label: str           # "5-15 kg", ">50 kg", "1-6 y", "" when no band
-    source: str          # "name" | "patient" | ""
+    source: str          # "name" | "patient" | "hidden" (non-standard name band, hidden) | ""
 
     @property
     def name(self) -> str:
@@ -112,6 +112,18 @@ class Describer:
         """ICRP 135: head exams are grouped by age, the others by weight."""
         return self.grid.parameter(NOMENCLATOR, code) or "weight"
 
+    def is_standard(self, kind: str, lo: float | None, hi: float | None) -> bool:
+        """Is a band written in a name one of the scheme's (ICRP 135 / RP 185, extended)?"""
+        if lo is None:
+            return False
+        for b in self.bands[kind]:
+            blo = (b.lower if kind == "weight" else _months(b.lower, b.lower_unit)) if b.lower is not None else 0.0
+            bhi = ((b.upper if kind == "weight" else _months(b.upper, b.upper_unit))
+                   if b.upper is not None else rxprotocols.INF)
+            if abs(blo - lo) < 1e-6 and (hi == bhi or (hi is not None and abs(bhi - hi) < 1e-6)):
+                return True
+        return False
+
     def own_kind(self, protocol: str | None, code: tuple[str, str] | None) -> str:
         """The size type of an exam: what its name's band is (weight or age), else the exam's
         ICRP 135 type (head by age, the rest by weight). An exam is never shown in the
@@ -137,9 +149,12 @@ class Describer:
         return lo, hi, _label(kind, lo, hi)
 
     def describe(self, protocol: str | None, view: str | None, code: tuple[str, str] | None,
-                 age_days, weight_kg, kind: str | None = None) -> Group | None:
+                 age_days, weight_kg, kind: str | None = None, other: str = "keep") -> Group | None:
         """``kind`` is the band the chart wants ("weight" / "age"), or None to follow the
-        exam (head by age, the rest by weight). ``weight_kg`` None when it is only an estimate."""
+        exam (head by age, the rest by weight). ``weight_kg`` None when it is only an estimate.
+        ``other`` says what to do with a name band that is not in the scheme (the Ysio has
+        "0-15", ">50", "5-20" ...): "keep" it as written, "hide" the exposure (source
+        "hidden"), or "reband" it from the patient's own weight or age."""
         parsed = _parse(protocol)
         if code:
             anatomy = anatomy_label(code[1])
@@ -151,9 +166,12 @@ class Describer:
         proj = _PROJ.get(v, v) if v else (parsed.projection if parsed else "")
         if not proj and code and code[0] in classify.FRONTAL_BY_DEFAULT:
             proj = "AP"
-        if parsed and parsed.kind != "none" and (kind is None or parsed.kind == kind):
+        named = parsed and parsed.kind != "none" and (kind is None or parsed.kind == kind)
+        if named and (other == "keep" or self.is_standard(parsed.kind, parsed.lo, parsed.hi)):
             return Group(anatomy, proj, parsed.kind, parsed.lo, parsed.hi, parsed.label, "name")
-        want = kind or self.kind_for(code[0] if code else None)
+        if named and other == "hide":
+            return Group(anatomy, proj, parsed.kind, parsed.lo, parsed.hi, parsed.label, "hidden")
+        want = kind or (parsed.kind if named else self.kind_for(code[0] if code else None))
         got = self.patient_band(want, age_days, weight_kg)
         if got:
             return Group(anatomy, proj, want, got[0], got[1], got[2], "patient")

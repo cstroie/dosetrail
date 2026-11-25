@@ -101,3 +101,24 @@ def test_an_exam_has_one_size_type(session):
     assert d.own_kind("ABDOMEN", code("RG-AB")) == "weight"
     # the name decides when it states a band, whatever the exam
     assert d.own_kind("W035 Torace a.p. 3-12 luni", code("RG-TH")) == "age"
+
+
+def test_bands_outside_the_scheme(session):
+    d, code = _describer(session)
+    ab = code("RG-AB")
+    assert d.is_standard("weight", 5, 15) and d.is_standard("weight", 0, 5) and d.is_standard("weight", 110, rxprotocols_inf())
+    assert not d.is_standard("weight", 0, 15) and not d.is_standard("weight", 50, rxprotocols_inf())
+    assert d.is_standard("age", 12, 72) and d.is_standard("age", 0, 3) and not d.is_standard("age", 72, rxprotocols_inf())
+    odd = "X060a Antebrat a.p. >50 Kg"
+    keep = d.describe(odd, None, code("RG-MSAB"), 3000, 60, "weight", "keep")
+    assert (keep.label, keep.source) == (">50 kg", "name")
+    assert d.describe(odd, None, code("RG-MSAB"), 3000, 60, "weight", "hide").source == "hidden"
+    re = d.describe(odd, None, code("RG-MSAB"), 3000, 60, "weight", "reband")
+    assert (re.label, re.source) == ("50-80 kg", "patient")
+    # a standard band is never touched
+    assert d.describe("W035 Torace a.p. 5-15Kg", None, code("RG-TH"), 900, 10, "weight", "hide").source == "name"
+
+
+def rxprotocols_inf():
+    from dozimetrix.rxprotocols import INF
+    return INF

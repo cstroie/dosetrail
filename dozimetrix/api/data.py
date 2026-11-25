@@ -707,18 +707,22 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
 MIN_CELL = 3  # a band with fewer exposures is drawn but flagged: its quartiles say little
 
 
-def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind: str) -> dict:
+def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind: str,
+               other: str = "hide") -> dict:
     """Radiography DAP per exposure of one device, by size band: for every anatomy and
     projection (``rxgroup``: the exposure's exam code, so "Skull" and "Craniu" meet), the
     median and quartiles in each weight band (kind "weight") or age band ("age"). The band
     is the one written in the protocol name; a protocol that states none (the Discovery's
-    "CRANIU") gets the patient's own weight or age band, and its cells are marked. Every exam
+    "CRANIU") gets the patient's own weight or age band, and its cells are marked. Name bands
+    outside the scheme (``other``): hidden (default), re-banded from the patient, or kept. Every exam
     has one size type (its name's band, else head = age, the rest = weight) and appears only
     in that view."""
     from .. import rxgroup, rxprotocols, stats
 
     if kind not in ("weight", "age"):
         raise QueryError("kind must be weight or age")
+    if other not in ("hide", "reband", "keep"):
+        raise QueryError("other must be hide, reband or keep")
     names = device_names(session)
     if device_id not in names:
         raise QueryError("unknown device")
@@ -739,16 +743,19 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind:
     desc = rxgroup.Describer(session)
     cells: dict[tuple, dict] = {}
     unparsed: dict[str, int] = {}
-    other_kind = 0
+    other_kind = hidden = 0
     for proto, dap, sid, eid, age, w, wsrc, view in rows:
         if wsrc == SizeSource.estimated_reference:
             w = None  # a weight taken from the growth chart says nothing about this patient
         if desc.own_kind(proto, codes.get(eid)) != kind:
             other_kind += 1  # a weight exam is not charted by age, nor an age exam by weight
             continue
-        g = desc.describe(proto, view, codes.get(eid), age, w, kind)
+        g = desc.describe(proto, view, codes.get(eid), age, w, kind, other)
         if g is None:
             unparsed[proto] = unparsed.get(proto, 0) + 1
+            continue
+        if g.source == "hidden":
+            hidden += 1  # a band the ICRP 135 / RP 185 scheme does not have, and the chart hides it
             continue
         band = (g.kind, g.lo, g.hi, g.label) if g.kind != "none" else ("none", None, None, "")
         c = cells.setdefault(((g.anatomy, g.projection), band),
@@ -802,7 +809,7 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind:
         s_["prefixes"] = sorted(s_["prefixes"])
         s_["cells"].sort(key=lambda c: c["band"])
     return {"device": {"id": device_id, "name": name}, "kind": kind, "bands": bands,
-            "series": out, "n_rows": len(rows), "n_other_kind": other_kind,
+            "series": out, "n_rows": len(rows), "n_other_kind": other_kind, "n_hidden": hidden, "other": other,
             "n_patient_band": sum(c["patient"] for c in cells.values()),
             "unparsed": sorted(unparsed, key=lambda k: -unparsed[k])[:50]}
 

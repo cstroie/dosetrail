@@ -42,7 +42,7 @@ let dxDevices = [];
 export function setDevices(list) { dxDevices = (list || []).filter((d) => ['DX', 'CR'].includes(d.modality) && d.origin !== 'external'); }
 
 export function defaultsFor(type) {
-  if (type === 'ssize') return { type, modality: 'DX', metric: 'dap', device: null, kind: 'weight', top: 8, min_n: 3, span: 'XL' };
+  if (type === 'ssize') return { type, modality: 'DX', metric: 'dap', device: null, kind: 'weight', other: 'hide', top: 8, min_n: 3, span: 'XL' };
   return { type, modality: 'CT', metric: 'dlp_total', by: type === 'strend' ? 'month' : 'exam', series: type === 'strend' ? 'exam' : '',
     system: '', age_scheme: 'ro-drl-age', set: 'ro-ms838-2025', stat: 'median', min_n: 5, span: 'M' };
 }
@@ -54,6 +54,7 @@ export function serverOptions(cfg, update, select) {
   if (cfg.type === 'ssize') {
     return [select('Device', String(cfg.device || dxDevices[0]?.id || ''), Object.fromEntries(dxDevices.map((d) => [String(d.id), d.display_name])), (v) => update({ device: Number(v) })),
       select('Size band', cfg.kind || 'weight', { weight: 'Weight (kg)', age: 'Age' }, (v) => update({ kind: v })),
+      select('Other bands', cfg.other || 'hide', { hide: 'Hide', reband: 'Re-band from the patient', keep: 'Keep as named' }, (v) => update({ other: v })),
       select('Anatomies shown', String(cfg.top ?? 8), { 0: 'None', 1: '1', 4: '4', 8: '8', 12: '12', 99: 'All' }, (v) => update({ top: Number(v) })),
       select('Min n', String(cfg.min_n ?? 3), { 1: '1', 3: '3', 5: '5', 10: '10', 20: '20' }, (v) => update({ min_n: Number(v) }))];
   }
@@ -197,7 +198,7 @@ const projStyle = (p) => PROJ_STYLE[p] || { symbol: 'roundRect', dash: [5, 5] };
 async function buildSize(cfg, q) {
   const dev = cfg.device || dxDevices[0]?.id;
   if (!dev) throw new Error('No radiography unit to chart.');
-  const res = await sizeBands({ device: dev, kind: cfg.kind || 'weight', q });
+  const res = await sizeBands({ device: dev, kind: cfg.kind || 'weight', other: cfg.other || 'hide', q });
   const f = shownUnit('Gy.cm2');
   const minN = cfg.min_n ?? 3;
   const unit = unitLabel(f[1]);
@@ -213,6 +214,7 @@ async function buildSize(cfg, q) {
   const nCells = shown.reduce((a, s) => a + s.cells.filter((c) => c.n >= minN).length, 0);
   const title = `DAP per exposure (${unit}) · ${res.device.name} · by ${kindLabel} band in the protocol name · ${num(res.n_rows)} exposures · ${shown.length} protocols · ${nCells} bands`
     + (res.n_patient_band ? ` · ${num(res.n_patient_band)} banded from the patient's ${kindLabel} (hollow)` : '')
+    + (res.n_hidden ? ` · ${num(res.n_hidden)} in bands outside ICRP 135 / RP 185 hidden` : '')
     + (res.n_other_kind ? ` · ${num(res.n_other_kind)} ${res.kind === 'age' ? 'weight' : 'age'}-type exposures not shown` : '')
     + (res.unparsed.length ? ` · ${res.unparsed.length} names not understood` : '');
   const option = (th) => {
