@@ -9,7 +9,7 @@ import { indicationRow } from '../components/indication.js';
 import '../components/dx-data-grid.js';
 import '../components/dx-chart.js';
 import { baseOption } from '../components/dx-chart.js';
-import { h, toast, esc } from '../core/dom.js';
+import { h, toast, esc, panelHead, pageHead } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mgy, mmss, clock, DAP_UNITS } from '../core/format.js';
@@ -63,7 +63,7 @@ function cumulative(s) {
   const sumKar = items.reduce((a, x) => a + x.kar_gy, 0);
   const over = sumKar >= s.thresholds.cum_kar_gy;
   return h('section', { class: 'panel', 'aria-labelledby': 'h-cu' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-cu' }, t('study.cumulative')),
+    panelHead(t('study.cumulative'), { id: 'h-cu' },
       over ? h('span', { class: 'tag alert' }, `Σ Ka,r ${mgy(sumKar * 1000)} mGy`) : null),
     h('div', { class: 'cum', role: 'table', 'aria-label': 'Studies in the last 12 weeks' },
       h('span', { class: 'h', role: 'columnheader' }, 'Date'), h('span', { class: 'h', role: 'columnheader' }, 'DAP'),
@@ -251,7 +251,7 @@ async function render() {
 
   page.replaceChildren(
     sampleNote || '',
-    h('div', { class: 'row' }, h('h1', {}, s.description), s.alerts.map((a) => h('span', { class: `tag ${a.level}`, title: a.text }, a.kind === 'kar' ? 'Ka,r ≥ alert' : 'Σ 12 wk ≥ alert')),
+    pageHead(s.description, {}, s.alerts.map((a) => h('span', { class: `tag ${a.level}`, title: a.text }, a.kind === 'kar' ? 'Ka,r ≥ alert' : 'Σ 12 wk ≥ alert')),
       h('span', { class: 'spacer' }), unitSeg, studyNav(s.id), h('button', { class: 'btn no-print', type: 'button', onclick: () => print() }, t('study.print'))),
     h('div', { class: 'detail' },
       h('div', { class: 'side' },
@@ -265,12 +265,12 @@ async function render() {
             h('dt', {}, 'Date'), h('dd', { class: 'mono' }, `${s.start.replace('T', ' ')}–${s.end.slice(11)}`),
             h('dt', {}, 'Device'), h('dd', {}, `${s.device.name}${s.device.biplane ? ' (biplane)' : ''}`),
             h('dt', {}, 'Physician'), h('dd', {}, s.physician))),
-        h('section', { class: 'panel', 'aria-labelledby': 'h-ro' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ro' }, t('study.readouts'))), readoutBox),
+        h('section', { class: 'panel', 'aria-labelledby': 'h-ro' }, panelHead(t('study.readouts'), { id: 'h-ro' }), readoutBox),
         hisPanel(s),
         cumHost),
       h('div', { class: 'main' },
         h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
-          h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, t('study.curve')), h('span', { class: 'spacer' }),
+          panelHead(t('study.curve'), { id: 'h-tl' }, h('span', { class: 'spacer' }),
             h('span', { class: 'muted small' }, 'bar width = duration · faded = plane B · click a bar to find it in the table'),
             h('button', { class: 'btn xs no-print', type: 'button', onclick: () => chart.downloadPNG(`${(s.accession || `study-${s.id}`).replace(/[^\w.-]/g, '_')}-dose-curve`) }, 'PNG')),
           h('div', { class: 'panel-body' }, chart)),
@@ -295,7 +295,7 @@ async function render() {
 function skinPanel(s) {
   const host = h('div', { class: 'panel-body' }, h('p', { class: 'muted' }, 'Computing the estimate…'));
   const panel = h('section', { class: 'panel', 'aria-labelledby': 'h-sk' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-sk' }, t('study.skin')), h('span', { class: 'tag warn' }, 'estimate')), host);
+    panelHead(t('study.skin'), { id: 'h-sk' }, h('span', { class: 'tag warn' }, 'estimate')), host);
   if (isSample) { host.replaceChildren(h('p', { class: 'muted' }, 'The skin dose map needs the server.')); return panel; }
   skinDose(s.id).then((r) => {
     if (r.psd_mgy == null) { host.replaceChildren(h('p', { class: 'muted' }, 'No event has a reference-point air kerma (Ka,r): no estimate.')); return; }

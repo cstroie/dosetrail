@@ -7,7 +7,7 @@
 
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, toast, panelHead } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
 import { devices, now, isSample, updateDevice, mergeDevices, splitDevice, dismissMerge } from '../core/api.js';
@@ -140,7 +140,7 @@ function review(sugg) {
 
 function inspector() {
   const box = h('aside', { id: 'inspector', class: 'panel inspector', 'aria-labelledby': 'h-insp' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-insp' }, t('admin.inspector')),
+    panelHead(t('admin.inspector'), { id: 'h-insp' },
       current ? h('span', { class: 'tag warn' }, `${current.record_ids.length} records`) : null));
   if (!current) {
     box.append(h('div', { class: 'panel-body muted' }, suggestions.some((s) => !s.done)
@@ -249,7 +249,7 @@ function render() {
     adminTabs('devices.html'),
     h('div', { class: 'detail' },
       h('section', { class: 'panel', style: { flex: '999 1 760px', 'min-width': '0' }, 'aria-labelledby': 'h-dev' },
-        h('div', { class: 'panel-head' }, h('h1', { id: 'h-dev', style: { 'font-size': '15px' } }, t('admin.devices')),
+        panelHead(t('admin.devices'), { id: 'h-dev', level: 1 },
           h('span', { class: 'muted mono' }, `${physical} devices · ${records.length} records`),
           left ? h('span', { class: 'tag warn' }, `${left} suggested merges`) : null,
           h('span', { class: 'spacer' }),

@@ -98,7 +98,7 @@ dx-data-grid[data-density="comfortable"] .grid td { padding: 9px 8px; }
 .account-info svg { color: var(--accent); }
 .pw-dialog { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--panel); color: var(--text); box-shadow: var(--shadow-pop); padding: var(--sp-4); width: min(360px, 90vw); }
 .pw-dialog::backdrop { background: var(--overlay); }
-.pw-form { display: grid; gap: var(--sp-2); }
+.pw-form, .pw-form .block { display: grid; gap: var(--sp-2); }
 .pw-field { display: grid; gap: 2px; }
 
 /* ---------- states ---------- */
@@ -275,8 +275,8 @@ table.grid.svc-table { width: 100%; min-width: 0; table-layout: auto; }
 
 /* ---------- confirm dialog (core/confirm.js) ---------- */
 .confirm-dialog { width: min(420px, 90vw); }
-.confirm-dialog h2 { margin: 0 0 var(--sp-2); }
-.confirm-dialog p { margin: 0 0 var(--sp-4); white-space: pre-line; }
+.confirm-dialog hgroup { margin-bottom: var(--sp-4); }
+.confirm-dialog hgroup p { margin-top: var(--sp-2); font-size: var(--fs-md); color: var(--text); white-space: pre-line; }
 
 /* Admin forms in cards: the notification channels (Alerts), the site settings */
 .notify-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--sp-3); margin: var(--sp-2) 0 var(--sp-4); align-items: start; }
@@ -286,3 +286,13 @@ table.grid.svc-table { width: 100%; min-width: 0; table-layout: auto; }
 .form-card .field.wide { grid-column: 1 / -1; }
 .form-card .field.check { flex-direction: row; align-items: center; gap: var(--sp-2); }
 .form-card .checks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
+
+/* Sections and headings (docs/design-rules.md): section > hgroup (h2 + p) > the main element;
+   with actions: section > header > (hgroup + .actions) > the main element */
+.block:not(:first-child) { margin-top: var(--sp-4); }
+.block > hgroup, .block > header { margin-bottom: var(--sp-2); }
+.block > header { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2); }
+.block > header > hgroup { flex: 1 1 auto; min-width: 0; }
+.block > header .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.panel-head > hgroup > h1 { font-size: 15px; text-transform: none; letter-spacing: normal; color: var(--text); }
+.panel-head > hgroup, header.row > hgroup { min-width: 0; }

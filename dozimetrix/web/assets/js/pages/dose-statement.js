@@ -4,7 +4,7 @@
 // page asks first, and the server needs the pid role and writes an audit entry.
 
 import '../components/dx-shell.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, section, toast } from '../core/dom.js';
 import { confirmDialog } from '../core/confirm.js';
 import { doseStatement } from '../core/api.js';
 import { smart } from '../core/format.js';
@@ -29,19 +29,17 @@ function draw(s) {
   clear(page).append(
     h('div', { class: 'panel statement' },
       h('div', { class: 'panel-body' },
-        h('h1', { class: 'section-title' }, 'Informare privind doza de radiații primită'),
-        h('p', { class: 'muted small' }, 'Ordinul MS nr. 1255/2016, art. 4: valorile se comunică pacientului în scris, odată cu rezultatul examinării.'),
+        section('Informare privind doza de radiații primită', { level: 1, sub: 'Ordinul MS nr. 1255/2016, art. 4: valorile se comunică pacientului în scris, odată cu rezultatul examinării.' },
         h('table', { class: 'stats' }, h('tbody', {},
           row('Unitatea', s.institution), row('Pacient', p.name), row('CNP', p.id), row('Data nașterii', p.birth_date),
           row('Examinarea', s.exam), row('Data și ora', when), row('Aparat', s.device))),
-        h('h2', { class: 'section-title mt-4' }, 'Doza'),
-        s.doses.length
+        section('Doza', {}, s.doses.length
           ? h('table', { class: 'stats' }, h('tbody', {}, s.doses.map((d) => h('tr', {},
             h('th', { class: 'l' }, LABEL[d.key] || d.label, d.note === 'calculated' ? h('span', { class: 'muted small' }, ' (calculată după anexa 2)') : null),
             h('td', { class: 'mono r' }, smart(d.value)), h('td', {}, d.unit)))))
-          : h('p', { class: 'muted' }, 'Pentru această examinare aparatul nu a transmis o mărime de doză.'),
+          : h('p', { class: 'muted' }, 'Pentru această examinare aparatul nu a transmis o mărime de doză.')),
         h('p', { class: 'muted small mt-4' }, 'Valorile descriu expunerea aparatului în timpul examinării și sunt folosite pentru optimizare; ele nu sunt doza efectivă a pacientului.'),
-        h('p', { class: 'mt-5' }, 'Data eliberării: ', new Date().toLocaleDateString('ro-RO'), '        Semnătura și parafa: ______________________'))),
+        h('p', { class: 'mt-5' }, 'Data eliberării: ', new Date().toLocaleDateString('ro-RO'), '        Semnătura și parafa: ______________________')))),
     h('div', { class: 'row mt-3 no-print' }, h('button', { class: 'btn primary', type: 'button', onclick: () => window.print() }, 'Tipărește')));
 }
 

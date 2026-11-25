@@ -4,7 +4,7 @@
 
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, section, toast } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { classificationSummary, unclassified, mappings, codes, decideMapping } from '../core/api.js';
 
@@ -61,8 +61,7 @@ async function render() {
     h('div', { class: 'toolbar mt-3' }, h('span', { class: 'seg' }, famBtns),
       h('span', { class: 'muted small' }, 'Most frequent texts without an exam code. Pick the text that identifies the exam, then the code.')),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid', id: 'todo' }))),
-    h('h2', { class: 'section-title' }, 'Decisions'),
-    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid', id: 'done' }))),
+    section('Decisions', {}, h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid', id: 'done' })))),
   );
   await Promise.all([loadTodo(), loadDone()]);
 }

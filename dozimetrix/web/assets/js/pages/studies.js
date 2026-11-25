@@ -4,7 +4,7 @@
 import '../components/dx-shell.js';
 import '../components/dx-query-bar.js';
 import '../components/dx-data-grid.js';
-import { h, toast } from '../core/dom.js';
+import { h, toast, panelHead } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
 import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
@@ -310,7 +310,7 @@ async function init() {
     qb,
     h('div', { class: 'split' }, grid,
       h('aside', { class: 'panel preview', 'aria-labelledby': 'h-prev' },
-        h('div', { class: 'panel-head' }, h('h2', { id: 'h-prev' }, t('studies.preview'))),
+        panelHead(t('studies.preview'), { id: 'h-prev' }),
         previewBody)));
   renderTabs();
   grid.reload();

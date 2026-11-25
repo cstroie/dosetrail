@@ -5,7 +5,7 @@
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, section, toast } from '../core/dom.js';
 import { num, smart, shown, shownUnit } from '../core/format.js';
 import { localDrlPropose, adoptLocalDrl, deleteDrlSet, localDrlReview, localDrlReviewUrl, drlSets } from '../core/api.js';
 
@@ -31,8 +31,8 @@ function periodBar(onRun, label) {
 
 async function render() {
   clear(page).append(adminTabs('local-drl.html'),
-    h('h1', { class: 'section-title' }, 'Propose local DRLs'),
-    h('p', { class: 'muted small' }, 'Per examination and patient group, all rooms pooled: the local DRL is the P75 when there are enough values, otherwise the median (P50); fewer than the minimum: no value. The ICRP 135 room rule (P75 of the room medians) can be chosen below. CT per series; radiography, fluoroscopy and mammography per study. Studies excluded from DRL statistics (weight outside P5–P95, prematurity) are left out.'),
+    section('Propose local DRLs', { level: 1, sub:
+      'Per examination and patient group, all rooms pooled: the local DRL is the P75 when there are enough values, otherwise the median (P50); fewer than the minimum: no value. The ICRP 135 room rule (P75 of the room medians) can be chosen below. CT per series; radiography, fluoroscopy and mammography per study. Studies excluded from DRL statistics (weight outside P5–P95, prematurity) are left out.' },
     periodBar(propose, 'Propose'),
     h('div', { class: 'toolbar' },
       field('Rule', h('select', { class: 'input', onchange: (e) => { state.rule = e.target.value; } },
@@ -46,9 +46,8 @@ async function render() {
         h('option', { value: 'icrp', selected: state.grid === 'icrp' }, 'ICRP 135 / RP 185: head by age, body by weight'))),
       h('label', { class: 'row', title: 'Body groups by weight: include weights estimated from the growth charts (median for age and sex)' },
         h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; } }), 'Include estimated weights')),
-    h('div', { id: 'proposal' }),
-    h('h1', { class: 'section-title mt-4' }, 'Adopted local sets'),
-    h('div', { id: 'sets' }));
+    h('div', { id: 'proposal' })),
+    section('Adopted local sets', {}, h('div', { id: 'sets' })));
   loadSets();
 }
 
@@ -142,7 +141,7 @@ async function review(set) {
           h('td', {}, x.status ? h('span', { class: `tag ${TONE[x.status]}` }, x.status.replace('_', ' ')) : ''))))))));
   };
   const out = h('div');
-  clear(host).append(h('h2', { class: 'section-title mt-3' }, `Review: ${set.name}`), periodBar(run, 'Review this period'), out);
+  clear(host).append(section(`Review: ${set.name}`, {}, periodBar(run, 'Review this period'), out));
   run();
 }
 

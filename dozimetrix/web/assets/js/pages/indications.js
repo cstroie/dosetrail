@@ -4,7 +4,7 @@
 
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, section, toast } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { indicationReview, decideIndication, codes } from '../core/api.js';
 
@@ -43,14 +43,14 @@ async function load() {
     h('div', { class: 'kpis drl-kpis' },
       h('div', { class: 'kpi' }, h('span', { class: 'code' }, 'Studies with a request text'), h('span', { class: 'v' }, num(r.studies_with_text))),
       coded.map(([k, v]) => h('div', { class: 'kpi' }, h('span', { class: 'code' }, STATUS[k] || k), h('span', { class: 'v' }, num(v))))),
-    h('h2', { class: 'section-title' }, 'To code (most frequent first)'),
-    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
-      h('thead', {}, h('tr', {}, ['Request text', 'Studies', 'Best matches (click to choose)', 'Other code'].map((c, i) => h('th', { class: i === 1 ? 'r' : '' }, c)))), body))),
-    h('h2', { class: 'section-title' }, `Decisions (${r.decisions.length})`),
-    h('div', { class: 'panel' }, h('table', { class: 'grid' }, h('tbody', {}, r.decisions.length ? r.decisions.map((d) => h('tr', {},
-      h('td', {}, d.text), h('td', { class: 'mono' }, d.code), h('td', {}, d.meaning || ''),
-      h('td', {}, h('button', { class: 'btn xs ghost', type: 'button', onclick: () => decide(d.text, null) }, 'Remove')))) :
-      h('tr', {}, h('td', { class: 'empty' }, 'None yet.'))))));
+    section('To code', { sub: 'most frequent first' },
+      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
+        h('thead', {}, h('tr', {}, ['Request text', 'Studies', 'Best matches (click to choose)', 'Other code'].map((c, i) => h('th', { class: i === 1 ? 'r' : '' }, c)))), body)))),
+    section(`Decisions (${r.decisions.length})`, {},
+      h('div', { class: 'panel' }, h('table', { class: 'grid' }, h('tbody', {}, r.decisions.length ? r.decisions.map((d) => h('tr', {},
+        h('td', {}, d.text), h('td', { class: 'mono' }, d.code), h('td', {}, d.meaning || ''),
+        h('td', {}, h('button', { class: 'btn xs ghost', type: 'button', onclick: () => decide(d.text, null) }, 'Remove')))) :
+        h('tr', {}, h('td', { class: 'empty' }, 'None yet.')))))));
 }
 
 load();

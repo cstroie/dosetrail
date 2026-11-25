@@ -5,7 +5,7 @@
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import { h, clear, append, toast } from '../core/dom.js';
+import { h, clear, append, section, toast } from '../core/dom.js';
 import { users, createUser, updateUser, deleteUser } from '../core/api.js';
 
 const page = document.getElementById('page');
@@ -66,9 +66,8 @@ async function render() {
   append(clear(page), [adminTabs('users.html'),
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, ['User', 'Name', 'Roles', 'Active', 'Last login', ''].map((c) => h('th', {}, c)))), body))),
-    h('h2', { class: 'section-title' }, 'New user'),
-    h('div', { class: 'toolbar' }, nu.username, nu.name, nu.password, nu.roles, add),
-    h('p', { class: 'muted small' }, Object.entries(data.roles).map(([r, help]) => `${r}: ${help}`).join(' · '))]);
+    section('New user', { sub: Object.entries(data.roles).map(([r, help]) => `${r}: ${help}`).join(' · ') },
+      h('div', { class: 'toolbar' }, nu.username, nu.name, nu.password, nu.roles, add))]);
 }
 
 render();

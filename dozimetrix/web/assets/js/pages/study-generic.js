@@ -5,7 +5,7 @@
 
 import '../components/dx-data-grid.js';
 import { indicationRow } from '../components/indication.js';
-import { h, toast, esc } from '../core/dom.js';
+import { h, toast, esc, panelHead, pageHead } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, clock, DAP_UNITS } from '../core/format.js';
@@ -142,7 +142,7 @@ function timelinePanel(kind, events, grid) {
   onUnitChange(grid, draw);
   grid.addEventListener('row-focus', (e) => { if (e.detail?.no !== selected) { selected = e.detail?.no ?? null; draw(); } });
   return h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, cfg.title), h('span', { class: 'spacer' }),
+    panelHead(cfg.title, { id: 'h-tl' }, h('span', { class: 'spacer' }),
       h('span', { class: 'muted small' }, kind === 'mg' ? 'colour = breast · click a bar to find it in the table' : kind === 'ct' ? 'faded = localizer · click a bar to find it in the table' : 'click a bar to find it in the table')),
     h('div', { class: 'panel-body' }, chart));
 }
@@ -279,7 +279,7 @@ function drlPanel(kind, events, grid, unitOf) {
   const title = { ct: 'Dose vs DRL · exam and series DLP', rx: 'Dose vs DRL · DAP per projection and exposure', mg: 'AGD per breast' }[kind];
   const hint = withRef ? 'tick = DRL · red = above it' : 'no DRL for this exam';
   return h('section', { class: 'panel', 'aria-labelledby': 'h-tl' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-tl' }, title), h('span', { class: 'spacer' }),
+    panelHead(title, { id: 'h-tl' }, h('span', { class: 'spacer' }),
       h('span', { class: 'muted small' }, `${hint}${kind === 'rx' ? ' · amber = retake (same projection again)' : kind === 'ct' ? ' · colour = series · amber = repeat' : ' · colour = view'} · click a bar to find it in the table`)),
     h('div', { class: 'panel-body' }, chart));
 }
@@ -465,7 +465,7 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
     h('span', { class: 'sub' }, `${f.title}${f.detail ? ` · ${f.detail}` : ''}`)));
 
   page.replaceChildren(
-    h('div', { class: 'row' }, h('h1', {}, title),
+    pageHead(title, {},
       (s.alerts || []).filter((a) => a.status === 'open').length ? h('span', { class: 'tag alert' }, `${s.alerts.filter((a) => a.status === 'open').length} alerts`) : null,
       h('span', { class: 'spacer' }), studyNav(s.id), h('button', { class: 'btn no-print', type: 'button', onclick: () => print() }, t('study.print'))),
     h('div', { class: 'detail' },
@@ -480,14 +480,14 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
             h('dt', {}, 'Device'), h('dd', {}, s.device.name || '—'),
             h('dt', {}, 'Modality'), h('dd', {}, s.modality_label || s.modality),
             ...glandularityRow(s), ...indicationRow(s))),
-        h('section', { class: 'panel', 'aria-labelledby': 'h-ro' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ro' }, t('study.readouts'))), ...ro),
-        h('section', { class: 'panel', 'aria-labelledby': 'h-ex' }, h('div', { class: 'panel-head' }, h('h2', { id: 'h-ex' }, 'Exam codes')),
+        h('section', { class: 'panel', 'aria-labelledby': 'h-ro' }, panelHead(t('study.readouts'), { id: 'h-ro' }), ...ro),
+        h('section', { class: 'panel', 'aria-labelledby': 'h-ex' }, panelHead('Exam codes', { id: 'h-ex' }),
           (s.exams || []).length ? s.exams.map((x) => h('div', { class: 'readout' }, h('span', { class: 'l' }, SYSTEMS[x.system] || x.system),
             h('span', { class: 'sub' }, h('span', { class: 'mono' }, x.code), ` · ${x.meaning}`)))
             : h('p', { class: 'muted small', style: { padding: '0 12px' } }, 'No exam code: map this study in Admin › Protocol mappings.')),
         hisPanel(s),
-        alerts.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Alerts')), ...alerts) : null,
-        findings.length ? h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Data quality')), ...findings) : null),
+        alerts.length ? h('section', { class: 'panel' }, panelHead('Alerts', {}), ...alerts) : null,
+        findings.length ? h('section', { class: 'panel' }, panelHead('Data quality', {}), ...findings) : null),
       h('div', { class: 'main' }, kind === 'nm' ? timelinePanel(kind, shown, grid) : drlPanel(kind, shown, grid, dapUnit), grid, adminGrid,
         h('p', { class: 'muted small' }, ct
           ? 'DRL per series: national OMS 838/2025 DLP for the exam and age group, else RP 185; CTDIvol from RP 185 (head by age, body by weight). Localizers excluded.'

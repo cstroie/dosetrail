@@ -6,7 +6,7 @@
 
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, section, toast } from '../core/dom.js';
 import { siteSettings, saveSiteSettings } from '../core/api.js';
 
 const page = document.getElementById('page');
@@ -54,7 +54,7 @@ function readOnly(d) {
     body.append(h('tr', {}, h('th', { colspan: 2, class: 'muted small', style: { 'text-align': 'left', 'padding-top': 'var(--sp-3)' } }, title)));
     for (const [k, v] of rows) body.append(h('tr', {}, h('td', {}, k), h('td', { class: 'mono' }, String(v ?? '—'))));
   }
-  return h('div', { class: 'panel', style: { 'max-width': '720px', padding: 'var(--sp-3)' } }, h('table', { class: 'grid' }, body));
+  return h('div', { class: 'panel', style: { 'max-width': '720px', padding: 'var(--sp-3)' } }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, body)));
 }
 
 async function render() {
@@ -62,10 +62,9 @@ async function render() {
   let s;
   try { s = await siteSettings(); } catch (e) { page.append(h('p', { class: 'error' }, e.message)); return; }
   page.append(
-    h('h2', { class: 'section-title' }, 'Site'), editable(s),
-    h('h2', { class: 'section-title' }, 'Deployment'),
-    h('p', { class: 'muted small' }, 'Set in dozimetrix.toml on the server; a change needs a restart of the service. Shown here so nobody has to open the file to check.'),
-    readOnly(s.deployment));
+    section('Site', { sub: 'Kept in the database: a change applies at once, without a restart.' }, editable(s)),
+    section('Deployment', { sub: 'Set in dozimetrix.toml on the server; a change needs a restart of the service. Shown here so nobody has to open the file to check.' },
+      readOnly(s.deployment)));
 }
 
 render();

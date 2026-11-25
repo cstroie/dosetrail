@@ -7,7 +7,7 @@
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import { h, clear, append, toast } from '../core/dom.js';
+import { h, clear, append, section, toast } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { live } from '../core/live.js';
 import { backupStatus, dicomStatus, createNode, updateNode, deleteNode, echoNode,
@@ -47,11 +47,9 @@ function backupSection(bk) {
     : bk.state === 'stale' ? h('span', { class: 'tag alert' }, `last backup ${Math.round(bk.age_h)} h ago`)
     : h('span', { class: 'tag warn' }, 'no backup recorded');
   const when = bk.last_ok ? `${new Date(bk.last_ok).toLocaleString()} · ${ago(Math.round(bk.age_h * 3600))}` : '';
-  return h('div', null,
-    h('h2', { class: 'section-title' }, 'Backups'),
-    h('div', { class: 'panel', style: { padding: 'var(--sp-3)' } }, tag, ' ', h('span', { class: 'muted small' }, when),
-      h('p', { class: 'muted small' },
-        `Expected at least every ${bk.max_hours || 26} h. Read-only: the schedule, destination and encryption are set in backup.conf on the server (docs/deploy.md, “Backup and restore”).`)));
+  return section('Backups', {
+    sub: `Expected at least every ${bk.max_hours || 26} h. Read-only: the schedule, destination and encryption are set in backup.conf on the server (docs/deploy.md, “Backup and restore”).` },
+    h('div', { class: 'panel', style: { padding: 'var(--sp-3)' } }, tag, ' ', h('span', { class: 'muted small' }, when)));
 }
 
 async function render() {
@@ -67,12 +65,9 @@ async function render() {
   drawDicom({ receiver: st.receiver, qr: st.qr });
   append(clear(page), [tabs(),
     dicomBox,
-    h('div', { class: 'toolbar mt-3' },
-      h('h2', { class: 'section-title m0' }, 'Remote nodes'), h('span', { class: 'spacer' }),
-      h('button', { class: 'btn primary', type: 'button', onclick: () => edit(null) }, 'Add node')),
-    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, nodeTable(st.nodes))),
-    h('h2', { class: 'section-title' }, 'PACS sync coverage · last 120 days'),
-    coverage(st.coverage),
+    section('Remote nodes', { actions: h('button', { class: 'btn primary', type: 'button', onclick: () => edit(null) }, 'Add node') },
+      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, nodeTable(st.nodes)))),
+    section('PACS sync coverage', { sub: 'last 120 days' }, coverage(st.coverage)),
     hisSection(his),
     backupSection(bk),
     h('dialog', { id: 'node-dlg', class: 'panel', style: { padding: 'var(--sp-3)', 'min-width': '520px' } }),
@@ -155,13 +150,11 @@ const QUEUE_LABELS = { pending: 'waiting', matched: 'request found', patient_onl
   no_patient: 'patient not found', skipped: 'skipped', error: 'error' };
 
 function hisSection(his) {
-  const head = h('div', { class: 'toolbar mt-4' },
-    h('h2', { class: 'section-title m0' }, 'HIS / RIS servers'), h('span', { class: 'spacer' }),
-    his.error ? null : h('button', { class: 'btn primary', type: 'button', onclick: () => editHis(null) }, 'Add server'));
-  if (his.error) return [head, h('p', { class: 'muted' }, his.error)];
+  if (his.error) return section('HIS / RIS servers', {}, h('p', { class: 'muted' }, his.error));
   drawHis({ worker: his.worker, queue: his.queue, waiting: his.waiting, recent: lastHis?.recent || [] });
-  return [head, hisBox,
-    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, hisTable(his.servers)))];
+  return section('HIS / RIS servers', { actions: h('button', { class: 'btn primary', type: 'button', onclick: () => editHis(null) }, 'Add server') },
+    hisBox,
+    h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, hisTable(his.servers))));
 }
 
 const LOOKUP_TAG = { matched: 'ok', patient_only: 'info', pending: 'warn', no_patient: 'warn', error: 'alert' };
@@ -200,7 +193,7 @@ function drawHis(v) {
           h('td', {}, h('span', { class: `tag ${LOOKUP_TAG[r.status] || ''}` }, QUEUE_LABELS[r.status] || r.status),
             r.next_try ? h('span', { class: 'muted small' }, ` next ${r.next_try.slice(11)}`) : null),
           h('td', { class: 'mono' }, r.request_id ? `${r.request_id}${r.how ? ` · ${r.how}` : ''}${r.score != null ? ` · ${r.score}` : ''}` : '—'),
-          h('td', { class: 'small' }, (r.written || []).join(', ') || '—')))))))) : null);
+          h('td', { class: 'small' }, (r.written || []).join(', ') || '—')))))))) : '');  // not null: replaceChildren() would print it
 }
 
 function hisTable(list) {
@@ -275,8 +268,7 @@ function editHis(server) {
     if (!(await confirmDialog('Remove the stored password?', { title: 'Remove password', label: 'Remove', danger: true }))) return;
     try { await updateHisServer(server.id, { password: '' }); dlg.close(); toast('Password removed'); render(); } catch (err) { toast(err.message); }
   } }, 'Remove password') : null;
-  clear(dlg).append(
-    h('h2', { class: 'section-title' }, server ? `Edit ${server.name}` : 'Add HIS / RIS server'),
+  clear(dlg).append(section(server ? `Edit ${server.name}` : 'Add HIS / RIS server', { sub: 'Per device, HIS lookups can be limited to the patient or turned off in Admin → Devices.' },
     h('div', { style: { display: 'grid', 'grid-template-columns': '1fr 1fr', gap: 'var(--sp-2)' } },
       field('Name', els.name), field('Type', els.kind),
       field('Base URL', els.base_url, 'the gateway, not the HIS itself'), field('Timeout (s)', els.timeout, 'HIS pages can be slow'),
@@ -286,9 +278,8 @@ function editHis(server) {
       field('Request window before the exam (h)', els.window_before_h), field('… and after (h)', els.window_after_h),
       field('History backfill hours', els.backfill_hours, 'start-end, e.g. 22-06 (night)'), field('Notes', els.notes),
       h('label', { class: 'chk' }, els.enabled, ' enabled'), clearPw),
-    h('p', { class: 'muted small' }, 'Per device, HIS lookups can be limited to the patient or turned off in Admin → Devices.'),
     h('div', { class: 'toolbar mt-3 jc-end' },
-      h('button', { class: 'btn ghost', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save));
+      h('button', { class: 'btn ghost', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save)));
   dlg.showModal();
 }
 
@@ -333,8 +324,7 @@ function edit(node) {
       render();
     } catch (err) { toast(err.message); }
   });
-  clear(dlg).append(
-    h('h2', { class: 'section-title' }, node ? `Edit ${node.name}` : 'Add DICOM node'),
+  clear(dlg).append(section(node ? `Edit ${node.name}` : 'Add DICOM node', {},
     h('div', { style: { display: 'grid', 'grid-template-columns': '1fr 1fr', gap: 'var(--sp-2)' } },
       field('Name', els.name), field('AE title', els.aet), field('Host', els.host, 'not needed for a node that only sends'),
       field('Port', els.port),
@@ -345,7 +335,7 @@ function edit(node) {
       field('Timeout (s)', els.timeout), field('Sync window (days)', els.sync_days, 'scheduled sync looks back this far'),
       h('label', { class: 'chk' }, els.enabled, ' enabled'), field('Notes', els.notes)),
     h('div', { class: 'toolbar mt-3 jc-end' },
-      h('button', { class: 'btn ghost', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save));
+      h('button', { class: 'btn ghost', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save)));
   dlg.showModal();
 }
 

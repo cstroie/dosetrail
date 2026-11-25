@@ -36,6 +36,40 @@ export function append(el, children) {
   return el;
 }
 
+/**
+ * The one way to put a heading on a page (docs/design-rules.md, "Sections and headings"):
+ *   section(title, { sub, actions, level, id, cls }, ...body)
+ *     <section class="block">
+ *       <hgroup><h2>title</h2><p>sub</p></hgroup>        (inside a <header> beside .actions when
+ *       …the main element: table, form, panel, div…       there are actions; level 1 for a page title)
+ *   panel(title, { sub, actions, id }, ...body)         the same inside a card: section.panel > header.panel-head
+ * `title` may be text, a node or an array; `sub` and `actions` are optional.
+ */
+function headGroup(title, sub, level, id) {
+  return h('hgroup', {}, h(`h${level}`, { id }, title), sub ? h('p', {}, sub) : null);
+}
+
+/** The heading of a card: header.panel-head > hgroup, then what follows (tags, a spacer, buttons). */
+export function panelHead(title, { id = null, level = 2 } = {}, ...rest) {
+  return h('header', { class: 'panel-head' }, headGroup(title, null, level, id), ...rest);
+}
+
+/** The title row of a page: header > hgroup (h1 + p), then its tags and buttons. */
+export function pageHead(title, { sub = null, id = null, style = null } = {}, ...rest) {
+  return h('header', { class: 'row', style }, headGroup(title, sub, 1, id), ...rest);
+}
+
+export function section(title, { sub = null, actions = null, level = 2, id = null, cls = '' } = {}, ...body) {
+  const head = headGroup(title, sub, level, id);
+  return h('section', { class: `block ${cls}`.trim(), 'aria-labelledby': id },
+    actions ? h('header', {}, head, h('div', { class: 'actions' }, actions)) : head, ...body);
+}
+
+export function panel(title, { sub = null, actions = null, id = null, cls = '' } = {}, ...body) {
+  return h('section', { class: `panel ${cls}`.trim(), 'aria-labelledby': id },
+    h('header', { class: 'panel-head' }, headGroup(title, sub, 2, id), h('span', { class: 'spacer' }), actions), ...body);
+}
+
 export function clear(el) {
   while (el.firstChild) el.firstChild.remove();
   return el;

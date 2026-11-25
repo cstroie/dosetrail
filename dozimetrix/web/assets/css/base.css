@@ -17,6 +17,7 @@ h1 { font-size: var(--fs-lg); }
 h2 { font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 h3 { font-size: var(--fs-md); }
 p { margin: 0; }
+hgroup > p { margin-top: 2px; font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
 button, input, select, textarea { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 

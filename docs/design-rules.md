@@ -21,6 +21,25 @@ Sections: [Principles](#principles) · [Buttons](#buttons) · [Confirming a risk
   rules for one component are merged.
 - **One control, one look**: the same thing is drawn the same way on every page.
 
+## Sections and headings
+
+Decided 2026-11-25. Every titled block of a page, every page title and every dialog heading is built
+the same way, with `section()` / `panel()` from `assets/js/core/dom.js` (never a bare `h1` / `h2`):
+
+```html
+<section class="block">
+  <hgroup><h2>Title</h2><p>One line: what this block is, or its status</p></hgroup>
+  <table class="grid">…</table>        <!-- the main element: table, form, .panel, div… -->
+</section>
+```
+- The title is an `h2` (an `h1` for the page's own title) inside an `hgroup`, followed by the `p`
+  subtitle when there is something useful to say (a bare `hgroup` with only the title is fine; do not
+  invent one).
+- A block with buttons (Add, Save…) wraps them: `<section><header><hgroup>…</hgroup><div class="actions">…</div></header>…`.
+- A card is `panel(title, { sub, actions, id }, …body)`: `section.panel > header.panel-head > hgroup`.
+- Spacing between blocks comes from `.block` in `components.css`: no `mt-*` on the title.
+- `tests/test_web_static.py` fails on `h('h1'` or `h('h2'` outside `dom.js`, and on the old `section-title` class.
+
 ## Buttons
 
 Decided 2026-11-23. One `.btn` base, a **role** class and an optional **size** class.

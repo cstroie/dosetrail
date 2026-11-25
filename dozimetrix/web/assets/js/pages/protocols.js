@@ -5,7 +5,7 @@
 
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
-import { h, clear } from '../core/dom.js';
+import { h, clear, section } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { codes, protocolsCompare } from '../core/api.js';
 
@@ -70,17 +70,16 @@ async function run() {
   clear(host).append(
     h('p', { class: 'muted small' }, `${r.meaning} (${r.region}) · ${r.start} – ${r.end} · ${r.rows.length} protocol rows in ${groups.size} groups · groups by ${r.parameter}. Rows with fewer than ${r.min_n} series are greyed and not ranked.`),
     h('p', { class: 'muted small' }, r.note),
-    ...[...groups.values()].map((g) => h('section', { class: 'mt-3' },
-      h('h2', { class: 'section-title' }, `${g.label}${g.phantom ? ` · ${g.phantom} cm phantom` : ''}`), table(g.rows, r.by_device))));
+    ...[...groups.values()].map((g) => section(`${g.label}${g.phantom ? ` · ${g.phantom} cm phantom` : ''}`, {}, table(g.rows, r.by_device))));
   if (!r.rows.length) host.append(h('p', { class: 'muted' }, 'No series for this region in the period.'));
 }
 
 async function render() {
   clear(page).append(adminTabs('protocols.html'),
-    h('h1', { class: 'section-title' }, 'Compare protocols'),
-    h('p', { class: 'muted small' }, 'All the protocols that scanned one region, whatever they are called, side by side: dose, technique and distribution, per patient group (ICRP 135: head by age, body by weight). A protocol name that states a group (CT_CAP_N_1_6_ANI) places a patient whose age or weight is missing. Head series on the 32 cm phantom are kept apart from the 16 cm ones. Bolus-tracking monitoring and aborted scans are left out.'),
-    h('div', { class: 'toolbar', id: 'bar' }),
-    h('div', { id: 'result' }));
+    section('Compare protocols', { level: 1, sub:
+      'All the protocols that scanned one region, whatever they are called, side by side: dose, technique and distribution, per patient group (ICRP 135: head by age, body by weight). A protocol name that states a group (CT_CAP_N_1_6_ANI) places a patient whose age or weight is missing. Head series on the 32 cm phantom are kept apart from the 16 cm ones. Bolus-tracking monitoring and aborted scans are left out.' },
+      h('div', { class: 'toolbar', id: 'bar' }),
+      h('div', { id: 'result' })));
   let list = [];
   try {
     const [nat, loc] = await Promise.all([codes('ro-drl-ms838-2025'), codes('ro-nom-ct')]);

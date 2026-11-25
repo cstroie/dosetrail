@@ -6,7 +6,7 @@
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { confirmDialog } from '../core/confirm.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, section, toast } from '../core/dom.js';
 import { alertRules, updateAlertRule, createAlertRule, deleteAlertRule, alertRuleMetrics, notifySettings, saveNotify, testNotify } from '../core/api.js';
 import { shownUnit } from '../core/format.js';
 
@@ -67,13 +67,12 @@ async function addRule() {
       render();
     } catch (e) { toast(e.message); }
   });
-  dlg.replaceChildren(h('h2', { class: 'section-title' }, 'Add alert rule'),
+  dlg.replaceChildren(section('Add alert rule', { sub: 'Applies to studies evaluated from now on. For earlier ones run: dozimetrix alerts evaluate --since YYYY-MM-DD' },
     h('div', { style: { display: 'grid', 'grid-template-columns': '1fr 1fr', gap: 'var(--sp-2)' } },
       field('Kind', kind), field('Name', name), rows.metric, rows.threshold, rows.window,
       field('Modality', modality, 'comma list'), field('Younger than (years)', ageYears), field('Severity', severity),
       field('Notify', notifyBox, 'by e-mail / ntfy'), field('Note', note)),
-    h('p', { class: 'muted small' }, 'Applies to studies evaluated from now on. For earlier ones run: dozimetrix alerts evaluate --since YYYY-MM-DD'),
-    h('div', { class: 'row jc-end' }, h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save));
+    h('div', { class: 'row jc-end' }, h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save)));
   sync();
   dlg.showModal();
 }
@@ -125,13 +124,11 @@ function notifyPanel(n) {
   });
   const st = n.status;
   const none = !n.channels.length;
-  return h('div', {},
-    h('h2', { class: 'section-title' }, 'Notifications'),
-    h('p', { class: none ? 'error' : 'muted small' }, none
+  return section('Notifications', {
+    sub: (none
       ? 'No channel is configured: alerts on rules with Notify on are kept for 48 h and sent once a channel is set up.'
-      : `Rules with Notify on send to: ${n.channels.join(', ')}. Messages carry no patient identifiers, only the exam, the dose and a link (login needed; the web address is set in Admin › Settings).`),
-    h('p', { class: 'muted small' }, `${st.waiting} waiting · ${st.sent_24h} sent in the last 24 h · ${st.failed} failed`
-      + (st.last_error ? ` · last error: ${st.last_error.slice(0, 160)}` : '')),
+      : `Rules with Notify on send to: ${n.channels.join(', ')}. Messages carry no patient identifiers, only the exam, the dose and a link (login needed; the web address is set in Admin › Settings).`)
+      + ` ${st.waiting} waiting · ${st.sent_24h} sent in the last 24 h · ${st.failed} failed${st.last_error ? ` · last error: ${st.last_error.slice(0, 160)}` : ''}` },
     h('div', { class: 'notify-cards' },
       h('div', { class: 'panel form-card' },
         h('div', { class: 'row' }, h('strong', {}, 'E-mail'), h('span', { class: 'spacer' }), tag(n.channels.includes('email'))),
@@ -153,12 +150,9 @@ function notifyPanel(n) {
 async function render() {
   clear(page).append(adminTabs('rules.html'));
   try { page.append(notifyPanel(await notifySettings())); } catch (e) { page.append(h('p', { class: 'error' }, e.message)); }
-  page.append(h('h2', { class: 'section-title' }, 'Rules'));
   let rules;
   try { rules = await alertRules(); } catch (e) { page.append(h('p', { class: 'error' }, e.message)); return; }
   const body = h('tbody');
-  page.append(h('div', { class: 'toolbar' }, h('span', { class: 'spacer' }),
-    h('button', { class: 'btn primary', type: 'button', onclick: addRule }, 'Add rule')));
   for (const r of rules) {
     const enabled = h('input', { type: 'checkbox', checked: r.enabled, 'aria-label': 'Enabled' });
     const su = shownUnit(r.unit);  // entered in mGy / mGy·cm², stored in the rule's unit (Gy, Gy·cm²)
@@ -182,9 +176,11 @@ async function render() {
         try { const d = await deleteAlertRule(r.id); toast(`Deleted ${d.deleted} (${d.alerts_removed} alerts)`); render(); } catch (e) { toast(e.message); }
       } }, 'Delete')] : '')));
   }
-  page.append(h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
-    h('thead', {}, h('tr', {}, ['On', 'Rule', 'Kind', 'Scope', 'Threshold', 'Severity', 'Notify', ''].map((c) => h('th', {}, c)))), body))),
-  h('p', { class: 'muted small' }, 'Notifications go to the channels set in [notify] of dozimetrix.toml (e-mail, ntfy), for studies of the last 48 h, without patient identifiers.'));
+  page.append(section('Rules', {
+    sub: 'Notifications go to the channels set above, for studies of the last 48 h, without patient identifiers.',
+    actions: h('button', { class: 'btn primary', type: 'button', onclick: addRule }, 'Add rule') },
+  h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
+    h('thead', {}, h('tr', {}, ['On', 'Rule', 'Kind', 'Scope', 'Threshold', 'Severity', 'Notify', ''].map((c) => h('th', {}, c)))), body)))));
 }
 
 render();

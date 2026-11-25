@@ -4,7 +4,7 @@
 
 import '../components/dx-shell.js';
 import { confirmDialog } from '../core/confirm.js';
-import { h, clear, append, toast } from '../core/dom.js';
+import { h, clear, append, section as block, toast } from '../core/dom.js';  // `section` is a local name here
 import { num, smart, shown, shownUnit } from '../core/format.js';
 import { t } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
@@ -103,7 +103,7 @@ function render() {
   };
   const title = targets.find((x) => x.id === state.target)?.label || '';
   clear(page).append(h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, t('rep.target')), targetSel),
-    h('h1', { class: 'section-title' }, title), ...sections[section]());
+    block(title, { level: 1 }, ...sections[section]()));
   reload();
 }
 
@@ -191,13 +191,12 @@ function drawSpec(host, r, lang) {
   for (const b of r.books) {
     for (const s of b.sheets) {
       const rows = s.rows.slice(0, MAX);
-      append(host, [h('h2', { class: 'section-title mt-4' }, r.books.length > 1 ? `${b.title || b.filename} · ${s.name}` : s.name,
-        h('span', { class: 'muted small ml-1' }, `${num(s.rows.length)} ${t('rep.spec.rows')}`)),
+      append(host, [block(r.books.length > 1 ? `${b.title || b.filename} · ${s.name}` : s.name, { sub: `${num(s.rows.length)} ${t('rep.spec.rows')}` },
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll panel-scroll' }, h('table', { class: 'grid' },
         h('thead', {}, h('tr', {}, s.columns.map((c) => h('th', {}, c)))),
         h('tbody', {}, rows.length ? rows.map((row) => h('tr', {}, row.map((v) => h('td', { class: typeof v === 'number' ? 'r mono' : '' }, v == null ? '' : typeof v === 'number' ? smart(v) : String(v)))))
           : h('tr', {}, h('td', { colspan: s.columns.length, class: 'empty' }, t('rep.none')))))),
-      s.rows.length > MAX ? h('p', { class: 'muted small' }, t('rep.spec.cut').replace('{n}', MAX)) : null)]);
+      s.rows.length > MAX ? h('p', { class: 'muted small' }, t('rep.spec.cut').replace('{n}', MAX)) : null))]);
     }
   }
 }
@@ -213,10 +212,10 @@ async function loadArt12() {
   for (const w of r.workbooks) {
     const rows = w.sheets.map((s) => h('tr', {}, h('td', {}, s.name), h('td', { class: 'r mono' }, `${s.patients} / ${r.per_sheet}`),
       h('td', { class: 'r mono' }, num(s.available)), h('td', {}, s.missing ? h('span', { class: 'tag warn' }, t('rep.art12.missing').replace('{n}', s.missing)) : h('span', { class: 'tag ok' }, 'OK'))));
-    append(host, [h('h2', { class: 'section-title mt-4' }, `${w.title} · ${w.device}`, h('span', { class: 'muted small mono ml-1' }, w.file)),
+    append(host, [block(`${w.title} · ${w.device}`, { sub: w.file },
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll panel-scroll' }, h('table', { class: 'grid' },
         h('thead', {}, h('tr', {}, h('th', {}, t('rep.examination')), h('th', { class: 'r' }, t('rep.art12.patients')), h('th', { class: 'r' }, t('rep.art12.available')), h('th', {}, ''))),
-        h('tbody', {}, rows))))]);
+        h('tbody', {}, rows)))))]);
   }
 }
 
@@ -267,14 +266,14 @@ async function loadOperators() {
     h('td', { class: 'small' }, o.exams.slice(0, 3).map((x) => `${x.exam} ${x.band} ${num(x.median_ratio, 2)}× (${x.n})`).join(' · ')),
     h('td', { class: 'small muted' }, o.devices.join(', ')))));
   if (!r.operators.length) body.append(h('tr', {}, h('td', { colspan: 7, class: 'empty' }, t('rep.operators.none'))));
-  append(host, [h('h2', { class: 'section-title mt-5' }, t('rep.operators.table')),
+  append(host, [block(t('rep.operators.table'), {},
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
-      h('thead', {}, h('tr', {}, t('rep.operators.cols').split('|').map((c, i) => h('th', { class: i >= 1 && i <= 4 ? 'r' : '' }, c)))), body))),
-    h('h2', { class: 'section-title mt-5' }, t('rep.operators.coverage')),
+      h('thead', {}, h('tr', {}, t('rep.operators.cols').split('|').map((c, i) => h('th', { class: i >= 1 && i <= 4 ? 'r' : '' }, c)))), body)))),
+    block(t('rep.operators.coverage'), {},
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, t('rep.operators.covcols').split('|').map((c, i) => h('th', { class: i ? 'r' : '' }, c)))),
       h('tbody', {}, r.coverage.map((c) => h('tr', {}, h('td', {}, c.device), h('td', { class: 'r' }, num(c.studies)),
-        h('td', { class: 'r' }, num(c.with_operator)), h('td', { class: 'r' }, pct(c.share))))))))]);
+        h('td', { class: 'r' }, num(c.with_operator)), h('td', { class: 'r' }, pct(c.share)))))))))]);
 }
 
 async function loadGrid() {
@@ -307,9 +306,9 @@ async function loadGrid() {
         h('td', { class: 'r' }, x.status ? h('span', { class: `tag ${tone[x.status]}`, title: x.ratio ? `median / EDRL = ${num(x.ratio, 2)}` : '' }, x.ratio && x.status !== 'insufficient' ? `${num(x.ratio, 2)}×` : label[x.status]) : ''));
     }));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 11, class: 'empty' }, t('rep.none'))));
-    append(host, [h('h2', { class: 'section-title mt-5' }, `${mg === 'DX' ? 'DX/CR' : mg} · ${title}`),
+    append(host, [block(`${mg === 'DX' ? 'DX/CR' : mg} · ${title}`, {},
       h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
-        h('thead', {}, h('tr', {}, t('rep.cols').split('|').map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body)))]);
+        h('thead', {}, h('tr', {}, t('rep.cols').split('|').map((c, i) => h('th', { class: i >= 3 ? 'r' : '' }, c)))), body))))]);
   }
 }
 
@@ -354,12 +353,11 @@ async function loadPlan() {
   const add = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
     try { await addAction({ year: state.year, quarter: state.quarter, finding: f.value, action: m.value, owner: o.value }); loadPlan(); } catch (err) { toast(err.message); }
   } }, t('plan.add'));
-  clear(host).append(h('h2', { class: 'section-title mt-5' }, `${t('plan.title')} · T${state.quarter} ${state.year}`),
-    h('p', { class: 'muted small' }, t('plan.hint')),
+  clear(host).append(block(`${t('plan.title')} · T${state.quarter} ${state.year}`, { sub: t('plan.hint') },
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll panel-scroll' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, ['finding', 'action', 'owner', 'status'].map((k) => h('th', {}, t(`plan.${k}`))), h('th', {}, ''))),
       h('tbody', {}, rows.length ? rows : h('tr', {}, h('td', { colspan: 5, class: 'empty' }, t('plan.none')))))),
-    h('div', { class: 'row panel-body' }, f, m, o, add)));
+    h('div', { class: 'row panel-body' }, f, m, o, add))));
 }
 
 async function load() {
@@ -395,8 +393,8 @@ async function load() {
       s.count_bands.map((b) => h('td', { class: 'r' }, `${x.counts[b.key].M || '·'} / ${x.counts[b.key].F || '·'}`)),
       qs.map((q) => s.mean_bands.map((b) => h('td', { class: 'r' }, x.means[q.key][b.key] == null ? '' : smart(x.means[q.key][b.key])))))));
     if (!rows.length) body.append(h('tr', {}, h('td', { colspan: 40, class: 'empty' }, t('rep.none'))));
-    append(host, [h('h2', { class: 'section-title mt-5' }, `${sheetTitle(s)} · ${qs.map((q) => `${qLabel(q)} (${q.unit})`).join(' · ')}`),
-      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, head, body)))]);
+    append(host, [block(`${sheetTitle(s)} · ${qs.map((q) => `${qLabel(q)} (${q.unit})`).join(' · ')}`, {},
+      h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' }, head, body))))]);
   }
 }
 

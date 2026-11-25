@@ -1,7 +1,7 @@
 // Overview: studies per modality, alert queue, device feed health, exam lookup.
 
 import '../components/dx-shell.js';
-import { h, append, clear, toast } from '../core/dom.js';
+import { h, append, clear, toast, panelHead, pageHead } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
 import { live } from '../core/live.js';
@@ -74,7 +74,7 @@ function alertQueue(allAlerts, now, total) {
   }
   const open = total ?? allAlerts.length;  // the API lists the newest 10 and sends the total
   return h('section', { class: 'panel', id: 'alerts', 'aria-labelledby': 'h-q' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-q' }, t('overview.alerts')), h('span', { class: 'tag alert' }, `${open} open`),
+    panelHead(t('overview.alerts'), { id: 'h-q' }, h('span', { class: 'tag alert' }, `${open} open`),
       open > alerts.length ? h('a', { class: 'btn xs ghost', href: 'alerts.html' }, t('overview.allalerts').replace('{n}', open)) : null),
     list);
 }
@@ -99,7 +99,7 @@ function feedHealth(feeds, now) {
         !f.last_study ? '—' : f.status === 'ok' ? dateTime(f.last_study).slice(11) : ago(f.last_study, now))]);
   }
   return h('section', { class: 'panel', 'aria-labelledby': 'h-f' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-f' }, t('overview.feeds')), stale ? h('span', { class: 'tag warn' }, `${stale} ${t('overview.stale')}`) : null),
+    panelHead(t('overview.feeds'), { id: 'h-f' }, stale ? h('span', { class: 'tag warn' }, `${stale} ${t('overview.stale')}`) : null),
     grid, h('p', { class: 'muted', style: { 'font-size': '11px', padding: '0 12px 10px' } }, `${t('overview.feed.hint')} * today, still filling.`));
 }
 
@@ -130,7 +130,7 @@ setInterval(() => lastServices && drawServices(lastServices), 15000);  // tick t
 
 function servicesPanel() {
   return h('section', { class: 'panel', 'aria-labelledby': 'h-svc' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-svc' }, t('overview.services')),
+    panelHead(t('overview.services'), { id: 'h-svc' },
       h('a', { class: 'muted small', href: 'integration.html' }, 'Integration →')),
     servicesBody);
 }
@@ -152,7 +152,7 @@ function lookupPanel() {
       if (input.value.trim().length >= 3 && !found.length) results.append(h('span', { class: 'muted' }, t('state.empty')));
     } });
   return h('section', { class: 'panel lookup-panel', 'aria-labelledby': 'h-l' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-l' }, t('overview.lookup'))),
+    panelHead(t('overview.lookup'), { id: 'h-l' }),
     h('div', { class: 'lookup' }, h('label', { class: 'muted small', for: 'lk' }, t('overview.lookup.label')), input, results,
       h('span', { class: 'muted small' }, t('overview.lookup.hint'))));
 }
@@ -177,7 +177,7 @@ function deadlinePanel(list, reload) {
         } }, t('deadline.sent'))));
   });
   return h('section', { class: 'panel mt-3', 'aria-labelledby': 'h-dl' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-dl' }, t('deadline.title'))), h('ul', { class: 'queue' }, rows));
+    panelHead(t('deadline.title'), { id: 'h-dl' }), h('ul', { class: 'queue' }, rows));
 }
 
 async function render(quiet = false) {
@@ -186,7 +186,7 @@ async function render(quiet = false) {
   try {
     const data = await overview();
     page.replaceChildren(
-      h('div', { class: 'row', style: { 'align-items': 'baseline', gap: '12px' } }, h('h1', {}, t('overview.title')),
+      pageHead(t('overview.title'), { style: { 'align-items': 'baseline', gap: '12px' } },
         h('span', { class: 'muted mono' }, dateTime(data.generated))),
       // replaceChildren() would print a null as the text "null" (no deadline left to show)
       ...[deadlinePanel(data.deadlines, render),

@@ -5,7 +5,7 @@
 
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
-import { h, clear, toast } from '../core/dom.js';
+import { h, clear, section, toast } from '../core/dom.js';
 import { num, shown, shownUnit } from '../core/format.js';
 import { uploadSurvey, surveyUploads, deleteSurveyUpload, nameInstitution, surveyNational, surveyNationalUrl } from '../core/api.js';
 
@@ -21,8 +21,8 @@ function render() {
   const files = h('input', { type: 'file', multiple: true, accept: '.csv,.json' });
   const out = h('div');
   clear(page).append(
-    h('h1', { class: 'section-title' }, 'Central collection — national paediatric dose survey'),
-    h('p', { class: 'muted small' }, 'Each site exports one month from Reports → "Studiul național" (anonymised: pseudonymous codes, month only) and sends the file. Upload the files here (CSV or JSON). One file holds one institution and one month; a new file for the same institution and month replaces the older one. Rows that fail the checks are listed and left out.'),
+    section('Central collection — national paediatric dose survey', { level: 1, sub:
+      'Each site exports one month from Reports → "Studiul național" (anonymised: pseudonymous codes, month only) and sends the file. Upload the files here (CSV or JSON). One file holds one institution and one month; a new file for the same institution and month replaces the older one. Rows that fail the checks are listed and left out.' },
     h('div', { class: 'toolbar' }, files, h('button', { class: 'btn primary', type: 'button', onclick: async () => {
       if (!files.files.length) { toast('Choose the files first.'); return; }
       const lines = [];
@@ -33,9 +33,8 @@ function render() {
       out.replaceChildren(...lines); loadUploads();
     } }, 'Upload')),
     out,
-    h('h2', { class: 'section-title' }, 'Uploads'), h('div', { id: 'uploads' }),
-    h('h2', { class: 'section-title mt-4' }, 'National statistics'),
-    statsBar(), h('div', { id: 'national' }));
+    section('Uploads', {}, h('div', { id: 'uploads' })),
+    section('National statistics', {}, statsBar(), h('div', { id: 'national' }))));
   loadUploads();
 }
 

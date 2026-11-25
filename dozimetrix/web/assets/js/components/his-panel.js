@@ -1,7 +1,7 @@
 // The HIS request card of the study pages (request found in the hospital information
 // system: ward, requester, indication, guideline decision) and the weight-source tag.
 // Admins can queue the study for another lookup.
-import { h, toast } from '../core/dom.js';
+import { h, panelHead, toast } from '../core/dom.js';
 import { requeryHis, isSample } from '../core/api.js';
 
 const STATUS = {
@@ -59,5 +59,5 @@ export function hisPanel(s, { admin = true } = {}) {
     try { await requeryHis(s.id); toast('Queued: the HIS worker looks it up within a minute'); } catch (e) { toast(e.message); again.disabled = false; }
   });
   return h('section', { class: 'panel', 'aria-labelledby': 'h-his' },
-    h('div', { class: 'panel-head' }, h('h2', { id: 'h-his' }, 'HIS request'), h('span', { class: 'spacer' }), again), body);
+    panelHead('HIS request', { id: 'h-his' }, h('span', { class: 'spacer' }), again), body);
 }

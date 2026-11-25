@@ -4,7 +4,7 @@
 // the context bar; everything else goes into the work area. Also owns the global shortcuts
 // (Ctrl K and "/" open the command palette) and the theme / language buttons.
 
-import { h, icon, toast } from '../core/dom.js';
+import { h, icon, section, toast } from '../core/dom.js';
 import { t, lang } from '../core/i18n.js';
 import { prefs } from '../core/prefs.js';
 import './dx-command-palette.js';
@@ -171,13 +171,13 @@ function passwordDialog() {
   const field = (name, label, ac) => h('label', { class: 'pw-field' }, h('span', { class: 'muted small' }, label),
     h('input', { class: 'input', type: 'password', name, autocomplete: ac, required: true }));
   const form = h('form', { method: 'dialog', class: 'pw-form' },
-    h('h2', { class: 'section-title' }, t('shell.password').replace('…', '')),
-    field('current', t('shell.pw.current'), 'current-password'),
-    field('next', t('shell.pw.new'), 'new-password'),
-    field('repeat', t('shell.pw.repeat'), 'new-password'), err,
-    h('div', { class: 'row jc-end' },
-      h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, t('shell.pw.cancel')),
-      h('button', { class: 'btn primary', type: 'submit' }, t('shell.pw.save'))));
+    section(t('shell.password').replace('…', ''), {},
+      field('current', t('shell.pw.current'), 'current-password'),
+      field('next', t('shell.pw.new'), 'new-password'),
+      field('repeat', t('shell.pw.repeat'), 'new-password'), err,
+      h('div', { class: 'row jc-end' },
+        h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, t('shell.pw.cancel')),
+        h('button', { class: 'btn primary', type: 'submit' }, t('shell.pw.save')))));
   const dlg = h('dialog', { class: 'pw-dialog' }, form);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

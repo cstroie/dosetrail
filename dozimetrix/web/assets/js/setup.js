@@ -61,7 +61,7 @@ async function refresh() {
 function checksView() {
   const list = el('ul', { class: 'checks' }, st.checks.map((c) => el('li', {},
     el('span', {}, c.ok ? '✅' : c.optional ? '·' : '⚠️'), el('span', {}, c.label), c.detail ? el('span', { class: 'd' }, c.detail) : null)));
-  const parts = [el('h2', {}, 'Installation checks'), list];
+  const parts = [el('hgroup', {}, el('h2', {}, 'Installation checks')), list];
   if (st.needs_admin) {
     parts.push(el('p', { class: 'note' }, 'This server has no account yet. Enter the setup token: the web service printed it to its log when it started, and wrote it to the file ',
       el('code', {}, 'setup-token'), ' in the data folder. It proves you have access to the server.'));
@@ -72,7 +72,7 @@ function checksView() {
         const r = await api('POST', '/api/setup/database', { token });
         err.textContent = '';
         await refresh(); render();
-        view.append(el('section', {}, el('h2', {}, 'Database created'), el('pre', {}, r.report.join('\n'))));
+        view.append(el('section', {}, el('hgroup', {}, el('h2', {}, 'Database created')), el('pre', {}, r.report.join('\n'))));
       }));
     } else {
       parts.push(form([el('label', {}, 'Setup token', tok)], 'Continue', async (d) => {
@@ -86,10 +86,9 @@ function checksView() {
 }
 
 function adminView() {
-  if (!st.needs_admin) return el('section', {}, el('h2', {}, 'Administrator'), el('p', { class: 'note' }, 'An account exists already.'),
+  if (!st.needs_admin) return el('section', {}, el('hgroup', {}, el('h2', {}, 'Administrator'), el('p', { class: 'note' }, 'An account exists already.')),
     el('div', { class: 'actions' }, el('button', { class: 'btn primary', type: 'button', onclick: () => go('site') }, 'Continue')));
-  return el('section', {}, el('h2', {}, 'Administrator account'),
-    el('p', { class: 'note' }, 'It gets every role (viewer, exporter, patient identifiers, importer, admin). Create the other users later under Admin → Users.'),
+  return el('section', {}, el('hgroup', {}, el('h2', {}, 'Administrator account'), el('p', { class: 'note' }, 'It gets every role (viewer, exporter, patient identifiers, importer, admin). Create the other users later under Admin → Users.')),
     form([
       el('label', {}, 'Username', el('input', { name: 'username', autocomplete: 'username', required: true, autofocus: true })),
       el('label', {}, 'Full name', el('input', { name: 'name', autocomplete: 'name' })),
@@ -105,8 +104,7 @@ function adminView() {
 }
 
 function siteView() {
-  return el('section', {}, el('h2', {}, 'Site'),
-    el('p', { class: 'note' }, 'The institution this server collects for. The name appears on reports; the code identifies the site in survey exports.'),
+  return el('section', {}, el('hgroup', {}, el('h2', {}, 'Site'), el('p', { class: 'note' }, 'The institution this server collects for. The name appears on reports; the code identifies the site in survey exports.')),
     form([
       el('label', {}, 'Institution name', el('input', { name: 'name', required: true, value: st.site.name || '' })),
       el('label', {}, 'Short code (letters and digits)', el('input', { name: 'code', value: st.site.code || '', placeholder: 'e.g. HOSP1', class: 'mono' })),
@@ -115,9 +113,8 @@ function siteView() {
 
 function dicomView() {
   const out = el('div', {});
-  return el('section', {}, el('h2', {}, 'DICOM'),
-    el('p', { class: 'note' }, 'This server receives dose reports as AE ', el('code', {}, st.receiver.aet), ' on port ', el('code', {}, String(st.receiver.port)),
-      ' (set in the configuration file). Register it on the modalities or the PACS that should send. To pull from a PACS instead, add it here; more nodes later under Admin → DICOM nodes.'),
+  return el('section', {}, el('hgroup', {}, el('h2', {}, 'DICOM'), el('p', { class: 'note' }, 'This server receives dose reports as AE ', el('code', {}, st.receiver.aet), ' on port ', el('code', {}, String(st.receiver.port)),
+      ' (set in the configuration file). Register it on the modalities or the PACS that should send. To pull from a PACS instead, add it here; more nodes later under Admin → DICOM nodes.')),
     form([
       el('div', { class: 'grid2' },
         el('label', {}, 'Name', el('input', { name: 'name', required: true, value: 'PACS' })),
@@ -141,8 +138,7 @@ function dicomView() {
 
 function growthView() {
   const out = el('div', {});
-  return el('section', {}, el('h2', {}, 'Growth tables'),
-    el('p', { class: 'note' }, 'WHO (0–10 years) and CDC 2000 (to 20 years) weight-for-age tables are downloaded from their publishers (they are not bundled, because of their licence). Dozimetrix uses them to check children\'s weights, to estimate missing ones, and to leave out of DRL statistics the children below P5 or above P95.'),
+  return el('section', {}, el('hgroup', {}, el('h2', {}, 'Growth tables'), el('p', { class: 'note' }, 'WHO (0–10 years) and CDC 2000 (to 20 years) weight-for-age tables are downloaded from their publishers (they are not bundled, because of their licence). Dozimetrix uses them to check children\'s weights, to estimate missing ones, and to leave out of DRL statistics the children below P5 or above P95.')),
     ok('growth') ? el('p', { class: 'note' }, '✅ Installed.') : null, out,
     el('div', { class: 'actions' }, skip('done', ok('growth') ? 'Next' : 'Skip'),
       el('button', { class: 'btn primary', type: 'button', onclick: async (ev) => {
@@ -155,7 +151,7 @@ function growthView() {
 
 function doneView() {
   const missing = st.checks.filter((c) => !c.ok && !c.optional);
-  return el('section', {}, el('h2', {}, 'Finish'),
+  return el('section', {}, el('hgroup', {}, el('h2', {}, 'Finish')),
     missing.length ? el('p', { class: 'note' }, 'Still open (you can finish now and do these later): ', missing.map((c) => c.label).join(', '), '.') :
       el('p', { class: 'note' }, 'Everything is in place.'),
     el('p', { class: 'note' }, 'Next: back up the site secret and the database; import history (dozimetrix openrem-import) or let query/retrieve fill it; review devices under Admin → Devices.'),
