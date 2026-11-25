@@ -94,7 +94,8 @@ function notifyPanel(n) {
     smtp_password: pw(n.smtp_password_set, 'Password'),
   };
   const nt = { ntfy_url: inp('ntfy_url', { placeholder: 'the ntfy topic address' }), ntfy_token: pw(n.ntfy_token_set, 'Token') };
-  const fld = (label, el, k) => h('label', { class: 'field' }, label, el, k && src(k) ? h('span', { class: 'muted small' }, src(k)) : null);
+  const fld = (label, el, k, cls = '') => h('label', { class: `field ${cls}` }, label, el, k && src(k) ? h('span', { class: 'muted small' }, src(k)) : null);
+  const tick = (label, el) => h('label', { class: 'field check' }, el, label);
   const tag = (on) => h('span', { class: `tag ${on ? 'ok' : 'warn'}` }, on ? 'configured' : 'not configured');
 
   const collect = (els) => {
@@ -132,23 +133,23 @@ function notifyPanel(n) {
       : `Rules with Notify on send to: ${n.channels.join(', ')}. Messages carry no patient identifiers, only the exam, the dose and a link (login needed).`),
     h('p', { class: 'muted small' }, `${st.waiting} waiting · ${st.sent_24h} sent in the last 24 h · ${st.failed} failed`
       + (st.last_error ? ` · last error: ${st.last_error.slice(0, 160)}` : '')),
-    h('div', { class: 'kpis drl-kpis' },
-      h('div', { class: 'panel', style: { padding: 'var(--sp-3)' } },
-        h('div', { class: 'row' }, h('strong', {}, 'E-mail'), ' ', tag(n.channels.includes('email'))),
-        h('div', { style: { display: 'grid', 'grid-template-columns': '1fr 1fr', gap: 'var(--sp-2)' } },
-          fld('To', e.email_to, 'email_to'), fld('From', e.email_from, 'email_from'),
+    h('div', { class: 'notify-cards' },
+      h('div', { class: 'panel notify-card' },
+        h('div', { class: 'row' }, h('strong', {}, 'E-mail'), h('span', { class: 'spacer' }), tag(n.channels.includes('email'))),
+        h('div', { class: 'fields' },
+          fld('To', e.email_to, 'email_to', 'wide'), fld('From', e.email_from, 'email_from', 'wide'),
           fld('SMTP host', e.smtp_host, 'smtp_host'), fld('Port', e.smtp_port, 'smtp_port'),
           fld('User', e.smtp_user, 'smtp_user'), fld('Password', e.smtp_password),
-          fld('STARTTLS', e.smtp_starttls), fld('SSL (port 465)', e.smtp_ssl)),
-        h('div', { class: 'row' }, save(e, { clear_smtp_password: false }), ' ', test('email', n.channels.includes('email')),
-          n.smtp_password_set ? [' ', act('Remove password', async () => { await saveNotify({ clear_smtp_password: true }); render(); })] : '')),
-      h('div', { class: 'panel', style: { padding: 'var(--sp-3)' } },
-        h('div', { class: 'row' }, h('strong', {}, 'ntfy'), ' ', tag(n.channels.includes('ntfy'))),
-        h('div', { style: { display: 'grid', 'grid-template-columns': '1fr', gap: 'var(--sp-2)' } },
-          fld('Topic URL', nt.ntfy_url, 'ntfy_url'), fld('Access token (optional)', nt.ntfy_token),
-          fld('Link base URL (both channels)', baseUrl, 'base_url')),
-        h('div', { class: 'row' }, save(nt), ' ', test('ntfy', n.channels.includes('ntfy')),
-          n.ntfy_token_set ? [' ', act('Remove token', async () => { await saveNotify({ clear_ntfy_token: true }); render(); })] : ''))));
+          h('div', { class: 'checks' }, tick('STARTTLS', e.smtp_starttls), tick('SSL (port 465)', e.smtp_ssl))),
+        h('div', { class: 'row' }, save(e), test('email', n.channels.includes('email')),
+          n.smtp_password_set ? act('Remove password', async () => { await saveNotify({ clear_smtp_password: true }); render(); }) : '')),
+      h('div', { class: 'panel notify-card' },
+        h('div', { class: 'row' }, h('strong', {}, 'ntfy'), h('span', { class: 'spacer' }), tag(n.channels.includes('ntfy'))),
+        h('div', { class: 'fields' },
+          fld('Topic address', nt.ntfy_url, 'ntfy_url', 'wide'), fld('Access token (optional)', nt.ntfy_token, null, 'wide'),
+          fld('Link base address (both channels)', baseUrl, 'base_url', 'wide')),
+        h('div', { class: 'row' }, save(nt), test('ntfy', n.channels.includes('ntfy')),
+          n.ntfy_token_set ? act('Remove token', async () => { await saveNotify({ clear_ntfy_token: true }); render(); }) : ''))));
 }
 
 async function render() {
