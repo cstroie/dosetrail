@@ -5,7 +5,7 @@ import { h, append, clear, toast, panelHead, pageHead } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
 import { live } from '../core/live.js';
-import { overview, lookup, studyHref, studyLabel, ackAlert, deadlineDone, isSample } from '../core/api.js';
+import { overview, lookup, studyHref, studyLabel, ackAlert, deadlineDone, isSample, dropCache } from '../core/api.js';
 
 // the API's groups are CT, DX, RF, XA, MG, NM, PT; anything else takes the accent
 const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', CR: '--m-dx', RF: '--m-rf', XA: '--m-xa', MG: '--m-mg', NM: '--m-nm', PT: '--m-pt' };
@@ -210,6 +210,6 @@ const onPulse = async (p) => {
     return;
   }
   busy = true;
-  try { await render(true); pulse = key; } finally { busy = false; }
+  try { dropCache(); await render(true); pulse = key; } finally { busy = false; }
 };
 render().then(() => live(['pulse', 'services'], { pulse: onPulse, services: drawServices }));

@@ -13,7 +13,7 @@ import { h, toast, esc, panelHead, pageHead } from '../core/dom.js';
 import { hisPanel, weightNote } from '../components/his-panel.js';
 import { t } from '../core/i18n.js';
 import { num, dap, dapUnit, mgy, mmss, clock, DAP_UNITS } from '../core/format.js';
-import { rdsrUrl, doseStatementHref, study, studyLabel, isSample, identifyStudy, ackAlert, skinDose } from '../core/api.js';
+import { rdsrUrl, doseStatementHref, study, studyLabel, isSample, identifyStudy, ackAlert, skinDose, dropCache } from '../core/api.js';
 import { renderStudy, onUnitChange } from './study-generic.js';
 import { live } from '../core/live.js';
 import { prefs } from '../core/prefs.js';
@@ -362,7 +362,7 @@ async function onStudy(v) {
   if (dialog) { dialog.addEventListener('close', () => onStudy(v), { once: true }); return; }
   busy = true;
   const y = scrollY;
-  try { await render(); stamp = key; scrollTo(0, y); } catch (err) { console.error('live study', err); } finally { busy = false; }
+  try { dropCache(); await render(); stamp = key; scrollTo(0, y); } catch (err) { console.error('live study', err); } finally { busy = false; }
 }
 
 render().then((s) => { if (s?.id != null && !isSample) live([`study:${s.id}`], { [`study:${s.id}`]: onStudy }); }).catch((err) => page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'), h('span', { class: 'muted mono' }, err.message))));

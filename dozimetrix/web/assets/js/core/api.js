@@ -37,6 +37,9 @@ const remote = (path, params = {}) => {
 
 export const isSample = MODE === 'sample';
 
+/** Forget the cached reads: a live update says the server has newer data than the ones held. */
+export const dropCache = () => cache.clear();
+
 /** Writes (API mode only). Every successful write drops the read cache. */
 async function send(method, path, body) {
   const r = await fetch(new URL(path, MODE).href, {

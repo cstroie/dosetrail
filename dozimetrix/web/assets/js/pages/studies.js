@@ -7,7 +7,7 @@ import '../components/dx-data-grid.js';
 import { h, toast, panelHead } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
-import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
+import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, dropCache, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { live } from '../core/live.js';
 import { rememberList } from '../core/study-nav.js';
@@ -269,6 +269,7 @@ async function init() {
     seen = newest;
     if (!moved) return;
     const keep = focused;
+    dropCache();  // the same list URL would otherwise come back from the read cache
     await grid.reload();
     if (keep != null) grid.focusById(keep);
   } });
