@@ -355,6 +355,9 @@ match = 'shoulder|\bumar'
 code = "CT-MSCT"
 match = 'elbow|\bcot\b'
 [[ct]]
+code = "CT-MSAB"
+match = 'forearm|antebrat'
+[[ct]]
 code = "CT-MSPN"
 match = 'wrist|pumn'
 [[ct]]
