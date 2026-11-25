@@ -75,8 +75,25 @@ LIVE_RECHECK_S = 30
 LIVE_MAX_S = 600  # a stream ends after 10 min and the browser reopens it: no stale sockets  # old name -> page (DICOM, HIS and more now)
 
 
+_HOST_IPS_TTL_S = 60.0
+_host_ips_seen: tuple[float, list[str]] | None = None
+
+
 def _host_ips() -> list[str]:
-    """This machine's IPv4 addresses (what modalities and PACS must be told to send to)."""
+    """This machine's IPv4 addresses (what modalities and PACS must be told to send to). Asking the
+    resolver for the host name can take seconds when DNS is slow, and the Integration page asks on
+    every refresh, so the answer is kept for a minute."""
+    global _host_ips_seen
+    import time
+
+    if _host_ips_seen and time.monotonic() - _host_ips_seen[0] < _HOST_IPS_TTL_S:
+        return list(_host_ips_seen[1])
+    ips = _lookup_host_ips()
+    _host_ips_seen = (time.monotonic(), ips)
+    return list(ips)
+
+
+def _lookup_host_ips() -> list[str]:
     import socket
 
     ips: set[str] = set()
@@ -2586,6 +2603,17 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 raise HTTPException(403, "the admin role is required")
         return FileResponse(SETUP_HTML, headers={"Cache-Control": "no-store"})
 
+    page_cache: dict[str, tuple[int, str]] = {}  # file -> (modified time, text)
+
+    def page_html(name: str) -> str:
+        """A page's HTML, read again only when its file changed."""
+        path = WEB / name
+        mtime = path.stat().st_mtime_ns
+        hit = page_cache.get(name)
+        if hit is None or hit[0] != mtime:
+            hit = page_cache[name] = (mtime, path.read_text(encoding="utf-8"))
+        return hit[1]
+
     @app.get("/{page:path}", response_class=HTMLResponse)
     def pages(page: str, request: Request, session: Session = Depends(db)):
         if page in OLD_PAGES:  # renamed pages: old bookmarks keep working
@@ -2596,7 +2624,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         if session_user(request, session) is None:
             return RedirectResponse("/setup" if first_run.needs_admin(session) else "/login",
                                     status_code=303)
-        html = (WEB / PAGES[page]).read_text(encoding="utf-8")
+        html = page_html(PAGES[page])
         origin = _html.escape(str(request.base_url).rstrip("/"), quote=True)
         html = re.sub(r"<html(\s|>)", lambda m: f'<html data-api="{origin}"{m.group(1)}', html,
                       count=1)

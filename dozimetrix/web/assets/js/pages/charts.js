@@ -3,7 +3,7 @@
 // Each panel has a summary table (n, median, P75, IQR, P75/DRL). A user's workspaces are kept on
 // the server per user; admins also publish shared ones, which everyone sees and only admins change.
 
-import { confirmDialog } from '../core/confirm.js';
+import { confirmDialog, promptDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
 import '../components/dx-query-bar.js';
 import '../components/dx-chart.js';
@@ -689,9 +689,9 @@ async function init() {
   countEl = h('span', { class: 'muted mono' });
   gridHost = h('div', { class: 'ws' });
 
-  const wsSelect = h('select', { 'aria-label': t('charts.workspace'), onchange: (e) => {
+  const wsSelect = h('select', { 'aria-label': t('charts.workspace'), onchange: async (e) => {
     if (e.target.value === '__new') {
-      const name = (prompt('Name of the new workspace', '') || '').trim();
+      const name = ((await promptDialog('The workspace keeps its own panels and query.', { title: 'New workspace', label: 'Create' })) || '').trim();
       if (!name) { e.target.value = ws.name; return; }
       if (wsNames().includes(name)) { toast(`A workspace named “${name}” exists already.`); e.target.value = ws.name; return; }
       prefs.set('workspaces', [...wsNames(), name]);
@@ -704,8 +704,8 @@ async function init() {
   h('option', { value: '__new' }, '+ New workspace…'));
 
   // a shared workspace: admins change it for everyone; anyone else can keep a copy of their changes
-  const saveMine = () => {
-    let name = (prompt('Name of your copy', `${ws.name} (mine)`) || '').trim();
+  const saveMine = async () => {
+    const name = ((await promptDialog('Your copy keeps this query and these panels.', { title: 'Name of your copy', label: 'Keep a copy', value: `${ws.name} (mine)` })) || '').trim();
     if (!name) return;
     if (wsNames().includes(name)) { toast(`A workspace named “${name}” exists already.`); return; }
     prefs.set(wsKey(name), { name, q: ws.q, panels: ws.panels });

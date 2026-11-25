@@ -2,7 +2,7 @@
 // are audit-logged (never the password). You cannot disable yourself or drop your own admin
 // role; only users without the admin role can be removed.
 
-import { confirmDialog } from '../core/confirm.js';
+import { confirmDialog, promptDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, section, toast } from '../core/dom.js';
@@ -36,7 +36,7 @@ async function render() {
     });
     const reset = h('button', { class: 'btn xs ghost', type: 'button' }, 'Set password…');
     reset.addEventListener('click', async () => {
-      const pw = window.prompt(`New password for ${u.username} (at least 10 characters):`);
+      const pw = await promptDialog(`At least 10 characters. It is not shown as you type.`, { title: `New password for ${u.username}`, label: 'Change password', password: true, minLength: 10 });
       if (!pw) return;
       try { await updateUser(u.username, { password: pw }); toast(`Password of ${u.username} changed`); } catch (err) { toast(err.message); }
     });

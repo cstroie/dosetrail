@@ -5,6 +5,7 @@ import '../components/dx-shell.js';
 import '../components/dx-query-bar.js';
 import '../components/dx-data-grid.js';
 import { h, toast, panelHead } from '../core/dom.js';
+import { confirmDialog, promptDialog } from '../core/confirm.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
 import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, dropCache, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
@@ -146,7 +147,7 @@ function tabs(currentQ, onPick) {
     const extra = [];
     if (s.view && queries.admin) {
       extra.push(xBtn(`Stop sharing “${s.name}”`, 'Remove this shared query for everyone', async () => {
-        if (!confirm(`Remove the shared query “${s.name}” for everyone?`)) return;
+        if (!(await confirmDialog(`Remove the shared query “${s.name}” for everyone?`, { title: 'Remove shared query', label: 'Remove', danger: true }))) return;
         try { await deleteView(s.view.id); } catch (e) { toast(`Not removed: ${e.message}`); return; }
         queries.shared = queries.shared.filter((v) => v !== s.view);
         toast(`Removed “${s.name}” for everyone`);
@@ -157,8 +158,8 @@ function tabs(currentQ, onPick) {
         extra.push(h('button', { type: 'button', class: 'tab-x tab-share', 'aria-label': `Share “${s.name}” with everyone`, title: 'Share with everyone',
           onclick: async () => { await share(s.name, s.q, s); onPick(currentQ); } }, '↑'));
       }
-      extra.push(xBtn(`Delete “${s.name}”`, 'Delete this saved query', () => {
-        if (!confirm(`Delete the saved query “${s.name}”?`)) return;
+      extra.push(xBtn(`Delete “${s.name}”`, 'Delete this saved query', async () => {
+        if (!(await confirmDialog(`Delete the saved query “${s.name}”?`, { title: 'Delete saved query', label: 'Delete', danger: true }))) return;
         saveMine(queries.mine.filter((x) => x !== s));
         toast(`Deleted “${s.name}”`);
         onPick(currentQ);
@@ -166,9 +167,9 @@ function tabs(currentQ, onPick) {
     }
     nav.append(h('span', { class: 'tab-saved' }, tab, ...extra));
   }
-  const ask = () => prompt('Name for this query', '');
-  nav.append(h('button', { type: 'button', onclick: () => {
-    const name = ask();
+  const ask = () => promptDialog('The saved query appears as a tab.', { title: 'Name for this query', label: 'Save' });
+  nav.append(h('button', { type: 'button', onclick: async () => {
+    const name = await ask();
     if (!name) return;
     saveMine([...queries.mine, { name, q: currentQ }]);
     toast(isSample ? `Saved “${name}” (this browser only)` : `Saved “${name}” to your account`);
@@ -176,7 +177,7 @@ function tabs(currentQ, onPick) {
   } }, match ? '+ Save as…' : '● Unsaved · Save…'));
   if (queries.admin) {
     nav.append(h('button', { type: 'button', title: 'Save this query for everyone', onclick: async () => {
-      const name = ask();
+      const name = await ask();
       if (!name) return;
       await share(name, currentQ, null);
       onPick(currentQ);

@@ -1177,3 +1177,34 @@ def test_maintenance_endpoints(client, tmp_path, monkeypatch):
     assert "--days" not in spawned[-1]
     with jobs.locked(lock):  # a job holds the lock: refused
         assert client.post("/api/maintenance/maintain", json={}).status_code == 409
+
+
+def test_host_ips_are_kept_for_a_minute(monkeypatch):
+    from dozimetrix.api import app as app_mod
+
+    calls = []
+    monkeypatch.setattr(app_mod, "_lookup_host_ips", lambda: calls.append(1) or ["10.0.0.5"])
+    monkeypatch.setattr(app_mod, "_host_ips_seen", None)
+    assert app_mod._host_ips() == ["10.0.0.5"] and app_mod._host_ips() == ["10.0.0.5"]
+    assert len(calls) == 1
+    app_mod._host_ips_seen = (app_mod._host_ips_seen[0] - 61, app_mod._host_ips_seen[1])  # a minute later
+    app_mod._host_ips()
+    assert len(calls) == 2
+
+
+def test_page_html_is_read_again_only_when_the_file_changes(client, monkeypatch):
+    from pathlib import Path
+
+    reads = []
+    real = Path.read_text
+
+    def counting(self, *a, **kw):
+        if self.name == "studies.html":
+            reads.append(1)
+        return real(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "read_text", counting)
+    login(client, "viewer", "viewer-pass-1")
+    for _ in range(3):
+        assert client.get("/studies.html").status_code == 200
+    assert len(reads) <= 1  # at most the first request reads the file

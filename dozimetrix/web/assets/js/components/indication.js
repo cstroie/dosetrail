@@ -1,7 +1,7 @@
 // The study's clinical indication (ro-nom-indications) for the study pages: the code and its
 // meaning, how it was found (HIS guideline item / free text, DICOM, CSV, a person), and
 // for admins a "Change…" control. Server side: dozimetrix/indications.py.
-import { h } from '../core/dom.js';
+import { h, toast } from '../core/dom.js';
 import { me, codes, setStudyIndication } from '../core/api.js';
 
 const STATUS = { auto: ['ok', 'matched'], confirmed: ['ok', 'mapped'], manual: ['ok', 'set by hand'], suggested: ['warn', 'suggested'] };
@@ -28,7 +28,7 @@ export function indicationRow(s) {
       const input = h('input', { class: 'input w-260', list: id, placeholder: 'code or words…' });
       const dl = h('datalist', { id }, items.map((c) => h('option', { value: c.code }, `${c.code} ${c.meaning}`)));
       const save = async (code) => {
-        try { s.indication = await setStudyIndication(s.id, code); dd.replaceChildren(view(s.indication), ' ', btn); } catch (e) { alert(e.message); }
+        try { s.indication = await setStudyIndication(s.id, code); dd.replaceChildren(view(s.indication), ' ', btn); } catch (e) { toast(e.message); }
       };
       dd.replaceChildren(view(s.indication), h('div', { class: 'row no-print' }, input, dl,
         h('button', { class: 'btn xs primary', type: 'button', onclick: () => save(input.value.trim().split(/\s/)[0] || null) }, 'Save'),
