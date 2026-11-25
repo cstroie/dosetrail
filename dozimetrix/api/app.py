@@ -1279,6 +1279,19 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 select(DicomNode).order_by(DicomNode.name))],
         }
 
+    @app.get("/api/backup/status")
+    def backup_status(user: User = Depends(admin_user)):
+        """Read-only: when deploy/backup/dozimetrix-backup last finished well (its marker file)."""
+        marker = Path(settings.data_dir) / "backup-last-ok"
+        try:
+            ts = int(marker.read_text().strip())
+        except (OSError, ValueError):
+            return {"state": "never", "last_ok": None, "age_h": None, "max_hours": 26}
+        last = dt.datetime.fromtimestamp(ts, dt.timezone.utc)
+        age_h = max(0.0, (dt.datetime.now().timestamp() - ts) / 3600)
+        return {"state": "ok" if age_h <= 26 else "stale", "last_ok": last.isoformat(),
+                "age_h": round(age_h, 1), "max_hours": 26}
+
     @app.post("/api/dicom/nodes")
     def dicom_create(body: NodeIn, request: Request, user: User = Depends(admin_user),
                      session: Session = Depends(db)):

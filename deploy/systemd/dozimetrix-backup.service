@@ -1,0 +1,14 @@
+[Unit]
+Description=Dozimetrix backup (database dump, secret, configuration, spool leftovers)
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# root: it reads the config and secret of the dozimetrix user and writes root-only archives
+ExecStart=/opt/dozimetrix/deploy/backup/dozimetrix-backup /etc/dozimetrix/backup.conf
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/backups/dozimetrix /var/lib/dozimetrix

@@ -597,6 +597,14 @@ def test_dicom_node_endpoints(client):
     assert client.delete(f"/api/dicom/nodes/{nid}").json() == {"deleted": "CT 1"}
 
 
+def test_backup_status_is_admin_only(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/backup/status").status_code == 403
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/backup/status").json()
+    assert r["state"] in ("never", "ok", "stale") and r["max_hours"] == 26
+
+
 def test_his_server_endpoints(client):
     from tests import his_stub
 

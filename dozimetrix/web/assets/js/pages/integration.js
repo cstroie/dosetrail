@@ -10,7 +10,7 @@ import { adminTabs } from '../components/admin-tabs.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { live } from '../core/live.js';
-import { dicomStatus, createNode, updateNode, deleteNode, echoNode,
+import { backupStatus, dicomStatus, createNode, updateNode, deleteNode, echoNode,
   hisStatus, createHisServer, updateHisServer, deleteHisServer, checkHisServer } from '../core/api.js';
 
 const page = document.getElementById('page');
@@ -36,11 +36,27 @@ function serviceTag(st, what) {
     : h('span', { class: 'tag warn' }, `${what}: stopped · last ${ago(st.age_s)}`);
 }
 
+// Read-only: the backup itself runs on the host (deploy/backup, settings in backup.conf)
+function backupSection(bk) {
+  const tag = bk.error ? h('span', { class: 'tag warn' }, bk.error)
+    : bk.state === 'ok' ? h('span', { class: 'tag ok' }, 'last backup OK')
+    : bk.state === 'stale' ? h('span', { class: 'tag alert' }, `last backup ${Math.round(bk.age_h)} h ago`)
+    : h('span', { class: 'tag warn' }, 'no backup recorded');
+  const when = bk.last_ok ? `${new Date(bk.last_ok).toLocaleString()} · ${ago(Math.round(bk.age_h * 3600))}` : '';
+  return h('div', null,
+    h('h2', { class: 'section-title' }, 'Backups'),
+    h('div', { class: 'panel', style: { padding: 'var(--sp-3)' } }, tag, ' ', h('span', { class: 'muted small' }, when),
+      h('p', { class: 'muted small' },
+        `Expected at least every ${bk.max_hours || 26} h. Read-only: the schedule, destination and encryption are set in backup.conf on the server (docs/deploy.md, “Backup and restore”).`)));
+}
+
 async function render() {
   let st;
   try { st = await dicomStatus(); } catch (e) { clear(page).append(tabs(), h('p', { class: 'error' }, e.message)); return; }
   let his;
   try { his = await hisStatus(); } catch (e) { his = { error: e.message }; }
+  let bk;
+  try { bk = await backupStatus(); } catch (e) { bk = { error: e.message }; }
   dicomBox = h('div');
   hisBox = h('div');
   local = st.local;
@@ -54,6 +70,7 @@ async function render() {
     h('h2', { class: 'section-title' }, 'PACS sync coverage · last 120 days'),
     coverage(st.coverage),
     hisSection(his),
+    backupSection(bk),
     h('dialog', { id: 'node-dlg', class: 'panel', style: { padding: 'var(--sp-3)', 'min-width': '520px' } }),
     h('dialog', { id: 'his-dlg', class: 'panel', style: { padding: 'var(--sp-3)', 'min-width': '560px' } })]);
 }

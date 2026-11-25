@@ -1,0 +1,138 @@
+#!/bin/bash
+# Nightly backup: database dump + site secret, configuration and DICOM spool leftovers.
+# Usage: dozimetrix-backup [backup.conf]      (default /etc/dozimetrix/backup.conf)
+# The archives hold patient identifiers in clear: they are PHI. Everything is made with umask 077.
+set -Eeuo pipefail
+umask 077
+CONF=${1:-/etc/dozimetrix/backup.conf}
+[ -r "$CONF" ] || { echo "cannot read $CONF" >&2; exit 2; }
+# shellcheck disable=SC1090
+. "$CONF"
+: "${MODE:?}" "${STAGING:?}"
+KEEP_DAILY=${KEEP_DAILY:-7}; KEEP_WEEKLY=${KEEP_WEEKLY:-4}; KEEP_MONTHLY=${KEEP_MONTHLY:-12}
+ENCRYPT=${ENCRYPT:-none}
+STAMP=$(date +%Y%m%d-%H%M)
+mkdir -p "$STAGING"; chmod 700 "$STAGING"
+WORK=$(mktemp -d "$STAGING/.work.XXXXXX")
+
+notify_fail() {
+    echo "dozimetrix-backup FAILED (line $1)" >&2
+    if [ -n "${NTFY_URL:-}" ]; then
+        local auth=()
+        [ -n "${NTFY_TOKEN_FILE:-}" ] && auth=(-H "Authorization: Bearer $(cat "$NTFY_TOKEN_FILE")")
+        curl -fsS -m 20 "${auth[@]}" -H "Title: Dozimetrix backup failed" -H "Priority: high" \
+             -d "Backup on $(hostname) failed at line $1 ($STAMP). Nothing in this message identifies a patient." \
+             "$NTFY_URL" >/dev/null 2>&1 || true
+    fi
+}
+cleanup() { rm -rf "$WORK"; }
+trap 'notify_fail $LINENO' ERR
+trap cleanup EXIT
+
+dc() { docker compose -f "${COMPOSE_FILE:?}" "$@"; }
+
+# ---- 1. database ---------------------------------------------------------------------------
+DUMP="$WORK/dozimetrix-$STAMP.sql.gz"
+OPTS=(--single-transaction --routines --events --default-character-set=utf8mb4)
+if [ "$MODE" = docker ]; then
+    # the db container has the root password in its own environment: it never passes through here
+    dc exec -T db sh -c 'exec mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" "$@" "$MARIADB_DATABASE"' \
+        _ "${OPTS[@]}" | gzip -6 >"$DUMP"
+else
+    CNF="$WORK/my.cnf"
+    python3 -I - "$CONFIG" >"$CNF" <<'PY'
+import sys, tomllib
+from urllib.parse import urlsplit, unquote
+url = tomllib.load(open(sys.argv[1], "rb"))["database"]["url"]
+u = urlsplit(url)
+if not u.scheme.startswith("mysql"):
+    sys.exit("backup of this database kind is not supported: " + u.scheme)
+print("[client]")
+print(f"user={unquote(u.username or '')}")
+print(f"password=\"{unquote(u.password or '').replace(chr(92), chr(92)*2).replace(chr(34), chr(92)+chr(34))}\"")
+print(f"host={u.hostname or 'localhost'}")
+print(f"port={u.port or 3306}")
+print(f"database={u.path.lstrip('/')}")
+PY
+    DB=$(sed -n 's/^database=//p' "$CNF")
+    mariadb-dump --defaults-extra-file="$CNF" "${OPTS[@]}" "$DB" | gzip -6 >"$DUMP"
+fi
+gzip -t "$DUMP"
+[ "$(stat -c %s "$DUMP")" -gt 1024 ] || { echo "dump is suspiciously small" >&2; false; }
+
+# ---- 2. files: secret, config, spool leftovers ------------------------------------------------
+FILES="$WORK/files-$STAMP.tar.gz"
+TREE="$WORK/tree"; mkdir -p "$TREE"
+if [ "$MODE" = docker ]; then
+    dc exec -T web tar -C /var/lib/dozimetrix -cf - secret setup-token spool/failed spool/archive \
+        --ignore-failed-read 2>/dev/null | tar -C "$TREE" -xf - || true
+    for f in ${HOST_FILES:-}; do [ -e "$f" ] && { mkdir -p "$TREE/host"; cp -a "$f" "$TREE/host/"; }; done
+else
+    CDIR=$(dirname "$CONFIG")
+    mkdir -p "$TREE/etc"; cp -a "$CDIR/." "$TREE/etc/"
+    SECRET=$(python3 -I - "$CONFIG" "$CDIR" <<'PY'
+import sys, tomllib, pathlib
+raw = tomllib.load(open(sys.argv[1], "rb"))
+print(raw.get("paths", {}).get("secret_file") or raw.get("secret_file") or pathlib.Path(sys.argv[2]) / "secret")
+PY
+)
+    [ -f "$SECRET" ] && cp -a "$SECRET" "$TREE/secret"
+    for d in failed archive; do
+        [ -d "$DATA_DIR/spool/$d" ] && { mkdir -p "$TREE/spool"; cp -a "$DATA_DIR/spool/$d" "$TREE/spool/"; }
+    done
+fi
+[ -e "$TREE/secret" ] || echo "warning: no site secret found; the backup cannot restore sessions, pseudonyms or the HIS password" >&2
+tar -C "$TREE" -czf "$FILES" .
+rm -rf "$TREE"
+
+# ---- 3. encrypt, checksum, move into staging ---------------------------------------------------
+for f in "$DUMP" "$FILES"; do
+    if [ "$ENCRYPT" = age ]; then
+        : "${AGE_RECIPIENT:?ENCRYPT=age needs AGE_RECIPIENT}"
+        age -r "$AGE_RECIPIENT" -o "$f.age" "$f" && rm -f "$f"; f="$f.age"
+    fi
+    ( cd "$WORK" && sha256sum "$(basename "$f")" >"$(basename "$f").sha256" )
+    mv "$f" "$f.sha256" "$STAGING/"
+done
+
+# ---- 4. retention (the destination mirrors the staging folder) ---------------------------------
+prune() {
+    python3 -I - "$STAGING" "$KEEP_DAILY" "$KEEP_WEEKLY" "$KEEP_MONTHLY" <<'PY'
+import sys, re, datetime as dt
+from pathlib import Path
+root, nd, nw, nm = Path(sys.argv[1]), *map(int, sys.argv[2:5])
+pat = re.compile(r"^(dozimetrix|files)-(\d{8})-(\d{4})\.(sql|tar)\.gz(\.age)?(\.sha256)?$")
+sets = {}
+for p in root.iterdir():
+    m = pat.match(p.name)
+    if m:
+        sets.setdefault((m[1], m[2] + m[3], m[5] or ""), []).append(p)
+for kind in {k[0] for k in sets}:
+    stamps = sorted({k[1] for k in sets if k[0] == kind}, reverse=True)
+    keep = set(stamps[:nd]); weeks = {}; months = {}
+    for s in reversed(stamps):  # oldest first, so the first of each period is kept
+        d = dt.datetime.strptime(s, "%Y%m%d%H%M").date()
+        weeks.setdefault(d.isocalendar()[:2], s); months.setdefault((d.year, d.month), s)
+    keep |= set(sorted(weeks.values(), reverse=True)[:nw]) | set(sorted(months.values(), reverse=True)[:nm])
+    for k, ps in sets.items():
+        if k[0] == kind and k[1] not in keep:
+            for p in ps:
+                p.unlink()
+PY
+}
+prune
+
+# ---- 5. ship it ----------------------------------------------------------------------------------
+if [ -n "${DEST:-}" ]; then
+    SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=yes"
+    [ -n "${SSH_KEY:-}" ] && SSH="$SSH -i $SSH_KEY"
+    rsync -a --delete --exclude=".work.*" --chmod=F600,D700 -e "$SSH" "$STAGING/" "$DEST/"
+fi
+
+# ---- 6. marker for `dozimetrix migrate` -------------------------------------------------------------
+if [ "$MODE" = docker ]; then
+    dc exec -T web sh -c 'date +%s >/var/lib/dozimetrix/backup-last-ok' || true
+else
+    date +%s >"$DATA_DIR/backup-last-ok" 2>/dev/null || true
+fi
+echo "backup $STAMP done: $(ls "$STAGING" | grep -c "$STAMP") files in $STAGING${DEST:+, copied to $DEST}"

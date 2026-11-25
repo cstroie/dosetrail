@@ -156,6 +156,35 @@ docker compose --profile his up -d his   # HIS worker (needs a HIS server)
 - The volume `dozimetrix-data` holds the site secret, the spool and the growth tables (`docker compose run --rm web growth install`). Back it up together with `dozimetrix-db`.
 - The image build has not been tested here (no Docker on the development host); the same install steps were checked in a clean virtual environment.
 
+## Backup and restore
+
+`deploy/backup/` holds one script for both installs (set `MODE=systemd` or `MODE=docker` in `backup.conf`).
+**The archives contain patient identifiers in clear: treat them as PHI** (root-only, mode 0600).
+
+- `dozimetrix-backup` dumps MariaDB (`--single-transaction`) and archives the site secret, the configuration
+  (`/etc/dozimetrix`, or `.env` and the local toml for Docker) and the spool's `failed/` and `archive/`.
+  It keeps the newest `KEEP_DAILY` days plus one per week and per month, and mirrors the folder to
+  `DEST` (another LAN host) with `rsync` over SSH. A failure exits non-zero and, if `NTFY_URL` is set, notifies.
+- Install (systemd): `cp deploy/backup/backup.conf.example /etc/dozimetrix/backup.conf` (mode 0600), edit it,
+  copy `deploy/systemd/dozimetrix-backup*` to `/etc/systemd/system/`, then
+  `systemctl enable --now dozimetrix-backup.timer dozimetrix-backup-check.timer`.
+  Docker: call the script from the host's cron or a timer the same way.
+- The destination: a user on the other host that owns the folder, with a key used for nothing else
+  (`restrict,command="rrsync /srv/backups/dozimetrix"` in its `authorized_keys`). Add the host key to
+  `known_hosts` first; the script checks it. The mirror deletes what retention removes, so also snapshot that folder if
+  you need protection from a compromised production host.
+- Encryption is off by default. `ENCRYPT=age` with `AGE_RECIPIENT` encrypts both archives (`.age`); keep the private key
+  off the production host, or the backups cannot be restored. The site secret is inside the archive: without encryption it
+  is as exposed as the database.
+- `dozimetrix-restore --check` verifies the newest backup (checksums, integrity, the study table present), and runs
+  weekly from `dozimetrix-backup-check.timer`. It does not load the dump into a database: do a full restore on a spare
+  machine at least once a year.
+- `dozimetrix-restore 20261125-0230` replaces the database and the site files (it asks you to retype the stamp).
+- `dozimetrix migrate` warns when a schema change is pending and the last backup (`<data_dir>/backup-last-ok`) is older than
+  26 h; `--require-backup` turns it into a refusal, `--no-backup-check` silences it. Upgrade by hand with
+  `dozimetrix-backup && dozimetrix migrate --require-backup`. The Docker entrypoint only warns, so a container never
+  stops starting because of it.
+
 ## Local DRLs
 
 Admin → Local DRLs proposes local diagnostic reference levels from the hospital's own data (ICRP 135). For each national DRL examination and patient group, the median of each room (device) with at least *n* values is computed; the local DRL is the P75 of those room medians, or the median when only one room qualifies. CT is per series; radiography, fluoroscopy and mammography per study; DRL exclusions are left out. Groups are the national age groups or the ICRP 135 / RP 185 groups (head by age, body by weight). Head CT series reported on the 32 cm phantom are left out (about half the 16 cm value; each row says how many). Weights estimated from the growth charts do not place a patient in a weight group unless asked for; the same default applies to the DRL comparison, the second-grid report and the central statistics. Each value is shown against the national DRL or the RP 185 EDRL.

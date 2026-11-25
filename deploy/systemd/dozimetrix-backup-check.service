@@ -1,0 +1,6 @@
+[Unit]
+Description=Verify the newest Dozimetrix backup (checksums, integrity); changes nothing
+
+[Service]
+Type=oneshot
+ExecStart=/opt/dozimetrix/deploy/backup/dozimetrix-restore --check

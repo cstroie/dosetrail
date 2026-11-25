@@ -1,0 +1,9 @@
+[Unit]
+Description=Verify the newest Dozimetrix backup every week
+
+[Timer]
+OnCalendar=Sun *-*-* 06:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

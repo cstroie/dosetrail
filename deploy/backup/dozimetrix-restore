@@ -1,0 +1,79 @@
+#!/bin/bash
+# Restore from a backup made by dozimetrix-backup.
+#   dozimetrix-restore --check [STAMP]   verify the newest (or STAMP's) archives; changes nothing
+#   dozimetrix-restore STAMP             restore it (asks first); STAMP is e.g. 20261125-0300
+# Options: --conf FILE (default /etc/dozimetrix/backup.conf), --identity FILE (age private key).
+set -Eeuo pipefail
+umask 077
+CONF=/etc/dozimetrix/backup.conf; CHECK=0; ID=""; STAMP=""
+while [ $# -gt 0 ]; do
+    case $1 in
+        --conf) CONF=$2; shift 2;;
+        --identity) ID=$2; shift 2;;
+        --check) CHECK=1; shift;;
+        *) STAMP=$1; shift;;
+    esac
+done
+# shellcheck disable=SC1090
+. "$CONF"
+dc() { docker compose -f "${COMPOSE_FILE:?}" "$@"; }
+
+[ -n "$STAMP" ] || STAMP=$(ls "$STAGING" | sed -n 's/^dozimetrix-\([0-9]\{8\}-[0-9]\{4\}\)\..*\.sha256$/\1/p' | sort | tail -1)
+[ -n "$STAMP" ] || { echo "no backup found in $STAGING" >&2; exit 1; }
+DUMP=$(ls "$STAGING"/dozimetrix-"$STAMP".sql.gz* | grep -v sha256 | head -1)
+FILES=$(ls "$STAGING"/files-"$STAMP".tar.gz* | grep -v sha256 | head -1)
+for f in "$DUMP" "$FILES"; do ( cd "$STAGING" && sha256sum -c "$(basename "$f").sha256" ); done
+
+WORK=$(mktemp -d "$STAGING/.restore.XXXXXX"); trap 'rm -rf "$WORK"' EXIT
+plain() {  # decrypt if needed, print the plain path
+    case $1 in
+        *.age) [ -n "$ID" ] || { echo "encrypted: pass --identity KEYFILE" >&2; exit 1; }
+               age -d -i "$ID" -o "$WORK/$(basename "${1%.age}")" "$1"; echo "$WORK/$(basename "${1%.age}")";;
+        *) echo "$1";;
+    esac
+}
+PD=$(plain "$DUMP"); PF=$(plain "$FILES")
+gzip -t "$PD"; tar -tzf "$PF" >/dev/null
+zcat "$PD" | grep -q 'CREATE TABLE `study`' || { echo "dump has no study table" >&2; exit 1; }
+tar -tzf "$PF" | grep -qx './secret' || echo "warning: the archive holds no site secret" >&2
+if [ "$CHECK" = 1 ]; then echo "backup $STAMP verified (checksums, gzip/tar integrity, study table present)"; exit 0; fi
+
+echo "This replaces the database and the site files of this installation with backup $STAMP."
+read -r -p "Type the stamp to continue: " ANS
+[ "$ANS" = "$STAMP" ] || { echo "aborted"; exit 1; }
+
+if [ "$MODE" = docker ]; then
+    dc stop web receive qr his 2>/dev/null || true
+    dc exec -T db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS \`$MARIADB_DATABASE\`; CREATE DATABASE \`$MARIADB_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"'
+    zcat "$PD" | dc exec -T db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"'
+    mkdir -p "$WORK/t"; tar -C "$WORK/t" -xzf "$PF"
+    [ -d "$WORK/t/host" ] && for f in "$WORK/t/host/".[!.]* "$WORK/t/host/"*; do
+        [ -e "$f" ] && echo "left for you to place by hand: $f (kept in $STAGING/restored-$STAMP)"; done
+    mkdir -p "$STAGING/restored-$STAMP"; cp -a "$WORK/t/host" "$STAGING/restored-$STAMP/" 2>/dev/null || true
+    tar -C "$WORK/t" --exclude=./host -cf - . | dc exec -T web tar -C /var/lib/dozimetrix -xf -
+    dc up -d web receive
+else
+    systemctl stop dozimetrix-web dozimetrix-receive dozimetrix-his 2>/dev/null || true
+    CNF="$WORK/my.cnf"
+    python3 -I - "$CONFIG" >"$CNF" <<'PY'
+import sys, tomllib
+from urllib.parse import urlsplit, unquote
+u = urlsplit(tomllib.load(open(sys.argv[1], "rb"))["database"]["url"])
+print("[client]\nuser=%s\npassword=\"%s\"\nhost=%s\nport=%s\ndatabase=%s" % (
+    unquote(u.username or ""), unquote(u.password or "").replace("\\", "\\\\").replace('"', '\\"'),
+    u.hostname or "localhost", u.port or 3306, u.path.lstrip("/")))
+PY
+    DB=$(sed -n 's/^database=//p' "$CNF")
+    mariadb --defaults-extra-file="$CNF" -e "DROP DATABASE IF EXISTS \`$DB\`; CREATE DATABASE \`$DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+    zcat "$PD" | mariadb --defaults-extra-file="$CNF" "$DB"
+    mkdir -p "$WORK/t"; tar -C "$WORK/t" -xzf "$PF"
+    CDIR=$(dirname "$CONFIG")
+    [ -d "$WORK/t/etc" ] && cp -a "$WORK/t/etc/." "$CDIR/"
+    [ -f "$WORK/t/secret" ] && install -m 600 "$WORK/t/secret" "$DATA_DIR/secret"
+    [ -d "$WORK/t/spool" ] && cp -a "$WORK/t/spool/." "$DATA_DIR/spool/"
+    chown -R dozimetrix:dozimetrix "$DATA_DIR" 2>/dev/null || true
+    # the web unit migrates nothing by itself in this install: bring the schema to this code's head
+    ( cd /opt/dozimetrix && .venv/bin/dozimetrix --config "$CONFIG" migrate )
+    systemctl start dozimetrix-web dozimetrix-receive
+fi
+echo "restored backup $STAMP"

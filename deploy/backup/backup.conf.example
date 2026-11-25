@@ -1,0 +1,27 @@
+# /etc/dozimetrix/backup.conf  (sourced by dozimetrix-backup and dozimetrix-restore; mode 0600)
+
+MODE=systemd                      # systemd | docker
+CONFIG=/etc/dozimetrix/dozimetrix.toml   # systemd: the file holding [database] url and [paths]
+DATA_DIR=/var/lib/dozimetrix      # systemd: data_dir (secret, spool); the marker file goes here
+STAGING=/var/backups/dozimetrix   # where archives are made; keep it root-owned, mode 0700
+
+# docker only
+#COMPOSE_FILE=/opt/dozimetrix/docker-compose.yml
+#HOST_FILES="/opt/dozimetrix/.env /opt/dozimetrix/deploy/docker/dozimetrix.local.toml"
+
+# Another host on the LAN, over SSH (rsync). Empty = keep local copies only.
+DEST=backup@nas.lan:/srv/backups/dozimetrix
+SSH_KEY=/root/.ssh/dozimetrix-backup   # a key used for nothing else, restricted on the receiving host
+
+# Retention: newest N dailies, plus the first of each of the last W weeks and M months.
+KEEP_DAILY=7
+KEEP_WEEKLY=4
+KEEP_MONTHLY=12
+
+# Optional encryption (default none). The private key must NOT be kept on this host.
+ENCRYPT=none                      # none | age
+#AGE_RECIPIENT=age1...            # the public key
+
+# Optional: the existing ntfy topic, told when a backup fails
+#NTFY_URL=https://ntfy.example/dozimetrix
+#NTFY_TOKEN_FILE=/etc/dozimetrix/ntfy.token

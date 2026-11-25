@@ -10,10 +10,49 @@ from . import __version__
 from .config import load_settings, set_config_path
 
 
+def _check_recent_backup(settings, url: str, args: argparse.Namespace) -> None:
+    """DDL is not transactional: warn (or refuse, with --require-backup) when a schema change is
+    pending and the last good backup (written by deploy/backup/dozimetrix-backup) is old."""
+    import time
+    from pathlib import Path
+
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import create_engine
+
+    from .db.migrate import alembic_config
+
+    if args.no_backup_check or url.startswith("sqlite"):
+        return
+    try:
+        script = ScriptDirectory.from_config(alembic_config(url))
+        with create_engine(url).connect() as conn:
+            current = MigrationContext.configure(conn).get_current_revision()
+        if current is None or current == script.get_current_head():
+            return  # a fresh database, or nothing pending
+    except Exception:
+        return  # cannot tell: let the upgrade itself report
+    marker = Path(settings.data_dir) / "backup-last-ok"
+    try:
+        age_h = (time.time() - int(marker.read_text().strip())) / 3600
+    except (OSError, ValueError):
+        age_h = None
+    if age_h is not None and age_h <= args.backup_max_hours:
+        return
+    what = "no backup recorded" if age_h is None else f"last backup {age_h:.0f} h ago"
+    msg = f"schema changes are pending and {what} ({marker})"
+    if args.require_backup:
+        raise SystemExit(f"refusing to migrate: {msg}. Run dozimetrix-backup first.")
+    print(f"warning: {msg}. Run dozimetrix-backup first; --require-backup makes this an error.",
+          file=sys.stderr)
+
+
 def _cmd_migrate(args: argparse.Namespace) -> int:
     from .db.migrate import upgrade
 
-    url = args.url or load_settings().database_url
+    settings = load_settings()
+    url = args.url or settings.database_url
+    _check_recent_backup(settings, url, args)
     upgrade(url, args.revision)
     print(f"database at {args.revision}")
     return 0
@@ -1212,6 +1251,11 @@ def build_parser() -> argparse.ArgumentParser:
     m = sub.add_parser("migrate", help="create/upgrade the database schema")
     m.add_argument("--url", help="database URL (default: from settings)")
     m.add_argument("--revision", default="head")
+    m.add_argument("--require-backup", action="store_true",
+                   help="refuse to change the schema unless a backup is recent")
+    m.add_argument("--backup-max-hours", type=float, default=26.0,
+                   help="how old the last backup may be (default 26)")
+    m.add_argument("--no-backup-check", action="store_true", help="skip the backup check")
     m.set_defaults(func=_cmd_migrate)
 
     s = sub.add_parser("seed", help="load/refresh bundled vocabularies, group schemes, DRL sets")

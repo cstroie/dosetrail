@@ -524,6 +524,11 @@ export const updateNode = (id, patch) => send('PATCH', `/api/dicom/nodes/${id}`,
 export const deleteNode = (id) => send('DELETE', `/api/dicom/nodes/${id}`);
 export const echoNode = (id) => send('POST', `/api/dicom/nodes/${id}/echo`);
 
+/** GET /api/backup/status → { state: ok|stale|never, last_ok, age_h, max_hours } (admin, read-only) */
+export function backupStatus() {
+  return isSample ? serverOnly('Backups') : remote('/api/backup/status');
+}
+
 /* ---------------- HIS / RIS servers (admin) ---------------- */
 /** GET /api/his/status → { worker, queue: {status: n}, servers } */
 export function hisStatus() {
