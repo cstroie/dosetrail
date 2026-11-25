@@ -27,7 +27,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -60,9 +60,10 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "alerts.html": "alerts.html", "local-drl.html": "local-drl.html",
          "protocols.html": "protocols.html",
          "indications.html": "indications.html", "survey-central.html": "survey-central.html",
-         "dose-statement.html": "dose-statement.html", "settings.html": "settings.html"}
+         "dose-statement.html": "dose-statement.html", "settings.html": "settings.html",
+         "maintenance.html": "maintenance.html"}
 OLD_PAGES = {"dicom.html": "integration.html"}
-LIVE_TOPICS = {"pulse", "services", "dicom", "his", "studies", "alerts"}
+LIVE_TOPICS = {"pulse", "services", "dicom", "his", "studies", "alerts", "maintenance"}
 LIVE_TOPIC_EVERY_S = {"studies": 15, "alerts": 60}  # list pages: scarce updates are enough
 LIVE_EVERY_S = 5  # heartbeats come every minute or so, HIS lookups every few seconds
 LIVE_PING_S = 25
@@ -161,6 +162,11 @@ class SetupAdminIn(BaseModel):
     username: str
     password: str
     name: str | None = None
+
+
+class JobIn(BaseModel):
+    """Start a maintenance job: ``days`` limits it to the last N days, none = every study."""
+    days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class SiteIn(BaseModel):
@@ -1502,6 +1508,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 out["dicom"] = {
                     "receiver": nodes.read_status(session, nodes.RECEIVER_KEY, stale_after=120),
                     "qr": nodes.read_status(session, nodes.QR_KEY, stale_after=nodes.QR_STALE_S)}
+            if "maintenance" in topics:
+                from .. import jobs as _jobs
+
+                out["maintenance"] = {"current": _jobs.current(session, _jobs.lock_path(settings.data_dir))}
             if "his" in topics:
                 row = session.get(AppSetting, servers.STATUS_KEY)
                 worker = dict(row.value or {}) if row else None
@@ -1608,8 +1618,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 return True
             except HTTPException:
                 return False
-        if "his" in want and "admin" not in user.role_set():
-            want.discard("his")
+        if "admin" not in user.role_set():
+            want -= {"his", "maintenance"}  # admin-only topics
 
         async def stream():
             open_streams[uid] = open_streams.get(uid, 0) + 1
@@ -1783,6 +1793,28 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return {**{c: getattr(r, c) for c in cols}, "custom": r.key not in seeded}
 
     # ------------------------------------------------------------ site settings
+
+    @app.get("/api/maintenance")
+    def maintenance_info(user: User = Depends(admin_user), session: Session = Depends(db)):
+        from .. import jobs
+
+        return jobs.overview(session, jobs.lock_path(settings.data_dir))
+
+    @app.post("/api/maintenance/{name}")
+    def maintenance_start(name: str, body: JobIn, request: Request,
+                          user: User = Depends(admin_user), session: Session = Depends(db)):
+        from .. import jobs
+
+        if name not in jobs.JOBS:
+            raise HTTPException(404, "unknown job")
+        days = body.days if jobs.JOBS[name]["days"] else None
+        try:
+            state = jobs.start(settings, session, name, days, user.username)
+        except jobs.Busy as e:
+            raise HTTPException(409, str(e)) from e
+        _audit(session, request, user, "maintenance.start", name, {"days": days})
+        session.commit()
+        return state
 
     @app.get("/api/settings")
     def site_settings(user: User = Depends(admin_user), session: Session = Depends(db)):

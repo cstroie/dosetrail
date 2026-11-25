@@ -4,7 +4,7 @@ import { h } from '../core/dom.js';
 export const ADMIN_PAGES = [
   ['Devices', 'devices.html'], ['Integration', 'integration.html'], ['Protocol mappings', 'review.html'], ['Indications', 'indications.html'],
   ['DRLs', 'drl-sets.html'], ['Local DRLs', 'local-drl.html'], ['Protocol comparison', 'protocols.html'], ['Data quality', 'quality.html'], ['Alerts', 'rules.html'],
-  ['Users', 'users.html'], ['Audit log', 'audit.html'], ['Settings', 'settings.html'],
+  ['Users', 'users.html'], ['Audit log', 'audit.html'], ['Maintenance', 'maintenance.html'], ['Settings', 'settings.html'],
 ];
 
 export function adminTabs(current) {

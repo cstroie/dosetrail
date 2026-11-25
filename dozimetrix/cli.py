@@ -715,16 +715,38 @@ def _cmd_alerts(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_classify(args: argparse.Namespace) -> int:
-    from . import classify
+def _run_job(args: argparse.Namespace, name: str, days: int | None, run) -> int:
+    """Run a maintenance job under the shared lock and record its state (Admin → Maintenance
+    shows it); exit 75 when another job is running."""
+    import getpass
+
+    from . import jobs
     from .db.session import make_engine, make_sessionmaker
 
-    engine = make_engine(args.url or load_settings().database_url)
-    with make_sessionmaker(engine)() as session:
-        stats = classify.run(session, args.study, progress=print)
-        session.commit()
-    print(", ".join(f"{k}: {v}" for k, v in sorted(stats.items())))
-    return 0
+    settings = load_settings()
+    maker = make_sessionmaker(make_engine(args.url or settings.database_url))
+    by = getattr(args, "by", None) or f"cli:{getpass.getuser()}"
+    try:
+        res = jobs.execute(maker, name, lambda say: run(maker, say), {"days": days}, by,
+                           jobs.lock_path(settings.data_dir))
+    except jobs.Busy as e:
+        print(f"{name}: {e}")
+        return 75
+    return 0 if not isinstance(res, dict) or res.get("ok", True) else 1
+
+
+def _cmd_classify(args: argparse.Namespace) -> int:
+    from . import classify, maintenance
+
+    def run(maker, say):
+        with maker() as session:
+            ids = args.study or (maintenance._recent_ids(session, args.days) if args.days else None)
+            stats = classify.run(session, ids, progress=say)
+            session.commit()
+        say(", ".join(f"{k}: {v}" for k, v in sorted(stats.items())))
+        return {"ok": True, **dict(stats)}
+
+    return _run_job(args, "classify", args.days, run)
 
 
 def _cmd_openrem_fix(args: argparse.Namespace) -> int:
@@ -757,26 +779,30 @@ def _cmd_openrem_fix(args: argparse.Namespace) -> int:
 
 
 def _cmd_recompute(args: argparse.Namespace) -> int:
-    from .db.session import make_engine, make_sessionmaker
     from .maintenance import recompute_all
 
-    engine = make_engine(args.url or load_settings().database_url)
-    with make_sessionmaker(engine)() as session:
-        for line in recompute_all(session, _secret()):
-            print(line)
-        session.commit()
-    return 0
+    def run(maker, say):
+        lines = []
+        with maker() as session:
+            for line in recompute_all(session, _secret()):
+                say(line)
+                lines.append(line)
+            session.commit()
+        return {"ok": True, "lines": lines}
+
+    return _run_job(args, "recompute", None, run)
 
 
 def _cmd_maintain(args: argparse.Namespace) -> int:
-    from .db.session import make_engine, make_sessionmaker
     from .maintenance import run_periodic
 
-    maker = make_sessionmaker(make_engine(args.url or load_settings().database_url))
-    res = run_periodic(maker, days=args.days, full=args.full, progress=print)
-    print(f"maintenance ({res['mode']}{', rules changed' if res['rules_changed'] else ''}): "
-          f"{'ok' if res['ok'] else 'FAILED'} in {res['seconds']} s")
-    return 0 if res["ok"] else 1
+    def run(maker, say):
+        res = run_periodic(maker, days=args.days, full=args.full, progress=say)
+        say(f"maintenance ({res['mode']}{', rules changed' if res['rules_changed'] else ''}): "
+            f"{'ok' if res['ok'] else 'FAILED'} in {res['seconds']} s")
+        return res
+
+    return _run_job(args, "maintain", None if args.full else args.days, run)
 
 
 def _secret() -> bytes:
@@ -1434,6 +1460,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     cl = sub.add_parser("classify", help="assign standard exam codes and DRL codes to studies")
     cl.add_argument("--study", type=int, action="append", help="only this study id (repeatable)")
+    cl.add_argument("--days", type=int, help="only the studies of the last N days")
+    cl.add_argument("--by", help=argparse.SUPPRESS)  # who started it (Admin → Maintenance)
     cl.add_argument("--url")
     cl.set_defaults(func=_cmd_classify)
 
@@ -1445,6 +1473,7 @@ def build_parser() -> argparse.ArgumentParser:
     fx.set_defaults(func=_cmd_openrem_fix)
 
     r = sub.add_parser("recompute", help="recompute derived study and device columns")
+    r.add_argument("--by", help=argparse.SUPPRESS)
     r.add_argument("--url")
     r.set_defaults(func=_cmd_recompute)
 
@@ -1453,6 +1482,7 @@ def build_parser() -> argparse.ArgumentParser:
     mt.add_argument("--days", type=int, default=90, help="studies of the last N days (default 90)")
     mt.add_argument("--full", action="store_true",
                     help="every study (also done by itself when the classification rules changed)")
+    mt.add_argument("--by", help=argparse.SUPPRESS)
     mt.add_argument("--url")
     mt.set_defaults(func=_cmd_maintain)
 

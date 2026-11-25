@@ -505,6 +505,9 @@ export const deleteAlertRule = (id) => send('DELETE', `/api/alert-rules/${id}`);
 /** GET /api/settings (admin: site name/code, web address, spool retention, read-only deployment info) · PUT (partial) */
 export const siteSettings = () => remote('/api/settings');
 export const saveSiteSettings = (body) => send('PUT', '/api/settings', body);
+/** GET /api/maintenance (admin: the jobs, the running or last one, the last periodic run) · POST /api/maintenance/{job} {days} starts one */
+export const maintenanceInfo = () => remote('/api/maintenance');
+export const startMaintenance = (job, days) => send('POST', `/api/maintenance/${job}`, { days: days ?? null });
 /** GET /api/notify (admin: fields with their source, channels, status) · PUT (partial; secrets write-only) · POST test */
 export const notifySettings = () => remote('/api/notify');
 export const saveNotify = (body) => send('PUT', '/api/notify', body);

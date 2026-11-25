@@ -1148,3 +1148,32 @@ def test_size_bands_several_devices(client):
     assert [d["name"] for d in one["devices"]] == ["Luminos B"] and one["device"]["id"] == ids[1]
     assert client.get("/api/charts/size-bands", params={"device": "x"}).status_code == 400
     assert client.get("/api/charts/size-bands", params={"device": f"{ids[0]},999999"}).status_code == 400
+
+
+def test_maintenance_endpoints(client, tmp_path, monkeypatch):
+    from dozimetrix import jobs
+
+    lock = tmp_path / "maintain.lock"
+    monkeypatch.setattr(jobs, "lock_path", lambda _d: lock)
+    spawned = []
+    monkeypatch.setattr(jobs.subprocess, "Popen", lambda cmd, **kw: spawned.append(cmd))
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/maintenance").status_code == 403
+    assert client.post("/api/maintenance/maintain", json={}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    got = client.get("/api/maintenance").json()
+    assert [j["name"] for j in got["jobs"]] == ["maintain", "classify", "recompute"]
+    assert got["current"] is None
+    assert client.post("/api/maintenance/nope", json={}).status_code == 404
+    assert client.post("/api/maintenance/maintain", json={"days": 0}).status_code == 422
+    r = client.post("/api/maintenance/classify", json={"days": 30})
+    assert r.status_code == 200 and r.json()["state"] == "running"
+    cmd = spawned[-1]
+    assert cmd[cmd.index("classify"):cmd.index("classify") + 3] == ["classify", "--days", "30"]
+    assert cmd[cmd.index("--by") + 1] == "boss"
+    assert client.get("/api/maintenance").json()["current"]["job"] == "classify"
+    # recompute takes no day limit even if one is sent
+    client.post("/api/maintenance/recompute", json={"days": 9})
+    assert "--days" not in spawned[-1]
+    with jobs.locked(lock):  # a job holds the lock: refused
+        assert client.post("/api/maintenance/maintain", json={}).status_code == 409
