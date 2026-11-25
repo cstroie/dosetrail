@@ -298,3 +298,5 @@ table.grid.svc-table { width: 100%; min-width: 0; table-layout: auto; }
 .block > header .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .panel-head > hgroup > h1 { font-size: 15px; text-transform: none; letter-spacing: normal; color: var(--text); }
 .panel-head > hgroup, header.row > hgroup { min-width: 0; }
+
+.legend-actions { display: flex; gap: var(--sp-1); margin-bottom: var(--sp-1); }

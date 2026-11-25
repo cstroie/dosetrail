@@ -251,8 +251,7 @@ async function buildSize(cfg, q) {
       data: shown.filter((s) => top.has(s.anatomy)).flatMap((s) => s.cells.filter((c) => c.n >= minN && c.drl != null)
         .map((c) => ({ value: [c.band + (slot.get(s) || 0), c.drl * f[0]], s, c, drl: true }))) };
     return { ...base, legend: { ...base.legend, data: [...shown.map(label), 'DRL'], selected: { ...selected, DRL: true },
-      selector: [{ type: 'all', title: 'All' }, { type: 'inverse', title: 'Invert' }], selectorPosition: 'start',
-      selectorLabel: { color: th.muted, fontSize: 11 }, selectorItemGap: 4, selectorButtonGap: 8, left: 0, right: 0 },
+      left: 0, right: 0 },
       grid: { left: 8, right: 20, top: 56, bottom: nb > 12 ? 78 : 52, containLabel: true },
       tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => {
         const { s, c } = p.data || {};
@@ -267,7 +266,19 @@ async function buildSize(cfg, q) {
         axisLine: { ...base._axis.axisLine, onZero: false } },
       series: [...bars, ...lines, drl] };
   };
-  return { title, option, csv, summary: null, unit, height: '460' };
+  // All / None / Invert for the series (the legend's own selector has no "None")
+  const toolbar = (chart) => {
+    const names = shown.map(label);
+    const act = (fn) => () => { const inst = chart.instance; if (inst) for (const n of names) fn(inst, n); };
+    const isOn = (inst, n) => inst.getOption().legend?.[0]?.selected?.[n] !== false;
+    const set = (on) => act((inst, n) => inst.dispatchAction({ type: on ? 'legendSelect' : 'legendUnSelect', name: n }));
+    const invert = act((inst, n) => inst.dispatchAction({ type: isOn(inst, n) ? 'legendUnSelect' : 'legendSelect', name: n }));
+    return h('div', { class: 'legend-actions', role: 'group', 'aria-label': 'Show protocols' },
+      h('button', { class: 'btn xs', type: 'button', onclick: set(true) }, 'All'),
+      h('button', { class: 'btn xs', type: 'button', onclick: set(false) }, 'None'),
+      h('button', { class: 'btn xs', type: 'button', onclick: invert }, 'Invert'));
+  };
+  return { title, option, csv, summary: null, unit, height: '460', toolbar };
 }
 
 async function buildDrl(cfg, q) {
