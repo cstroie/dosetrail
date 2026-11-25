@@ -170,6 +170,20 @@ def test_shared_views_admin_writes_everyone_reads(client):
     assert {"view.create", "view.update", "view.order", "view.delete"} <= actions
 
 
+def test_page_defaults(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/page-defaults").json() == {"drl": {}, "quality": {}, "alerts": {}}
+    assert client.put("/api/page-defaults/drl", json={"q": "date:30d"}).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    assert client.put("/api/page-defaults/nope", json={}).status_code == 404
+    assert client.put("/api/page-defaults/drl", json={"theme": "x"}).status_code == 400
+    assert client.put("/api/page-defaults/drl", json={"minN": "20"}).status_code == 400
+    r = client.put("/api/page-defaults/drl", json={"q": "date:30d", "minN": 10, "by": ""})
+    assert r.json()["value"] == {"q": "date:30d", "minN": 10}
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/page-defaults").json()["drl"] == {"q": "date:30d", "minN": 10}
+
+
 def test_modality_profiles(client):
     login(client, "viewer", "viewer-pass-1")
     profs = {p["code"]: p for p in client.get("/api/modalities").json()}

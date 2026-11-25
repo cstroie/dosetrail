@@ -602,6 +602,50 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         session.commit()
         return {"ordered": len(ids)}
 
+    # The filters a page opens with when the user has none of their own, set by an admin.
+    # Field name -> type, per page; anything else is refused.
+    PAGE_DEFAULTS = {
+        "drl": {"q": str, "set": str, "by": str, "minN": int},
+        "quality": {"q": str},
+        "alerts": {"status": str, "rule": str, "level": str, "modality": str},
+    }
+
+    @app.get("/api/page-defaults")
+    def get_page_defaults(user: User = Depends(current_user), session: Session = Depends(db)):
+        from ..db.models import AppSetting
+
+        out = {}
+        for page in PAGE_DEFAULTS:
+            row = session.get(AppSetting, f"page_default.{page}")
+            out[page] = row.value if row and row.value else {}
+        return out
+
+    @app.put("/api/page-defaults/{page}")
+    def put_page_defaults(page: str, request: Request, body: dict = Body(...),  # noqa: B008
+                          user: User = Depends(admin_user), session: Session = Depends(db)):
+        from ..db.models import AppSetting
+
+        spec = PAGE_DEFAULTS.get(page)
+        if spec is None:
+            raise HTTPException(404, "no such page")
+        unknown = set(body) - set(spec)
+        if unknown:
+            raise HTTPException(400, f"unknown fields: {', '.join(sorted(unknown))}")
+        value = {}
+        for k, x in body.items():
+            if x is None or x == "":
+                continue
+            if not isinstance(x, spec[k]) or isinstance(x, bool) or len(str(x)) > 500:
+                raise HTTPException(400, f"{k} must be a {spec[k].__name__}")
+            value[k] = x
+        key = f"page_default.{page}"
+        row = session.get(AppSetting, key) or AppSetting(key=key)
+        row.value = value
+        session.add(row)
+        _audit(session, request, user, "page_default.set", page, value)
+        session.commit()
+        return {"page": page, "value": value}
+
     # ------------------------------------------------------------------ data
 
     @app.get("/api/overview")
