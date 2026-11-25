@@ -638,6 +638,11 @@ def test_alert_rule_create_and_delete(client):
     assert client.post("/api/alert-rules", json={**cum, "metric": "dap_total", "window_days": None}).status_code == 400
     assert client.post("/api/alert-rules", json={**cum, "metric": "dap_total"}).status_code == 200
     assert client.post("/api/alert-rules", json={"name": "Preg", "kind": "pregnant"}).json()["threshold"] == 0
+    # a group stands for its modalities; a code no group knows is refused (the rule would never fire)
+    dx = client.post("/api/alert-rules", json={**good, "name": "DX", "modality": "dx"}).json()
+    assert dx["modality"] == "DX,CR"
+    r = client.post("/api/alert-rules", json={**good, "name": "XR", "modality": "XR"})
+    assert r.status_code == 400 and "XR" in r.text
     assert client.post("/api/alert-rules", json={"name": "N", "kind": "count", "threshold": 3,
                                                  "window_days": 365}).status_code == 200
     # delete: a default rule stays, a custom one goes with its alerts

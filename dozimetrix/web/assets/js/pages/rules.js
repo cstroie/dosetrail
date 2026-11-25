@@ -7,7 +7,7 @@ import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
 import { confirmDialog } from '../core/confirm.js';
 import { h, clear, section, toast } from '../core/dom.js';
-import { alertRules, updateAlertRule, createAlertRule, deleteAlertRule, alertRuleMetrics, notifySettings, saveNotify, testNotify } from '../core/api.js';
+import { alertRules, updateAlertRule, createAlertRule, deleteAlertRule, alertRuleMetrics, notifySettings, saveNotify, testNotify, modalities } from '../core/api.js';
 import { shownUnit } from '../core/format.js';
 
 const page = document.getElementById('page');
@@ -19,13 +19,17 @@ const field = (label, input, hint) => h('label', { class: 'field' }, label, inpu
 
 async function addRule() {
   let metrics;
-  try { metrics = await alertRuleMetrics(); } catch (e) { toast(e.message); return; }
+  let groups;
+  try { [metrics, groups] = await Promise.all([alertRuleMetrics(), modalities()]); } catch (e) { toast(e.message); return; }
   let dlg = document.getElementById('rule-dlg');
   if (!dlg) { dlg = h('dialog', { id: 'rule-dlg', class: 'panel', style: { padding: 'var(--sp-3)', 'min-width': '520px' } }); document.body.append(dlg); }
   const kind = h('select', { class: 'input' }, NEW_KINDS.map((k) => h('option', { value: k }, KIND[k])));
   const name = h('input', { class: 'input', type: 'text', maxlength: 255, placeholder: 'e.g. CT: CTDIvol ≥ 100 mGy' });
   const metric = h('select', { class: 'input' });
-  const modality = h('input', { class: 'input', type: 'text', placeholder: 'all, or e.g. CT,RF' });
+  // the modality groups of the other pages (DX/CR together); none ticked: every modality
+  const modBoxes = groups.map((p) => h('input', { type: 'checkbox', value: p.code }));
+  const modality = h('span', { class: 'row', style: { gap: '8px', 'flex-wrap': 'wrap' } },
+    modBoxes.map((b, i) => h('label', { class: 'chk' }, b, ` ${groups[i].label}`)));
   const threshold = h('input', { class: 'input num-input', type: 'number', step: 'any', min: 0 });
   const unitTag = h('span', { class: 'muted small' });
   const windowDays = h('input', { class: 'input num-input', type: 'number', min: 1, step: 1, value: 365 });
@@ -55,7 +59,7 @@ async function addRule() {
   save.addEventListener('click', async () => {
     const k = kind.value;
     const m = metrics.find((x) => x.key === metric.value);
-    const body = { kind: k, name: name.value, modality: modality.value || null, severity: severity.value, notify: notifyBox.checked,
+    const body = { kind: k, name: name.value, modality: modBoxes.filter((b) => b.checked).map((b) => b.value).join(',') || null, severity: severity.value, notify: notifyBox.checked,
       note: note.value || null, max_age_days: ageYears.value === '' ? null : Math.round(Number(ageYears.value) * 365.25) };
     if (k === 'threshold' || k === 'cumulative') body.metric = metric.value;
     if (k !== 'pregnant') body.threshold = Number(threshold.value) / ((k === 'threshold' || k === 'cumulative') ? shownUnit(m?.unit).f : 1);
@@ -70,7 +74,7 @@ async function addRule() {
   dlg.replaceChildren(section('Add alert rule', { sub: 'Applies to studies evaluated from now on. For earlier ones run: dozimetrix alerts evaluate --since YYYY-MM-DD' },
     h('div', { style: { display: 'grid', 'grid-template-columns': '1fr 1fr', gap: 'var(--sp-2)' } },
       field('Kind', kind), field('Name', name), rows.metric, rows.threshold, rows.window,
-      field('Modality', modality, 'comma list'), field('Younger than (years)', ageYears), field('Severity', severity),
+      h('div', { class: 'field', role: 'group', 'aria-label': 'Modality' }, 'Modality', modality, h('span', { class: 'muted small' }, 'none ticked: all')), field('Younger than (years)', ageYears), field('Severity', severity),
       field('Notify', notifyBox, 'by e-mail / ntfy'), field('Note', note)),
     h('div', { class: 'row jc-end' }, h('button', { class: 'btn', type: 'button', onclick: () => dlg.close() }, 'Cancel'), save)));
   sync();

@@ -2109,10 +2109,19 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(400, "severity is warn|alert")
         modality = None
         if body.modality and body.modality.strip():
+            from ..modality_profiles import PROFILES
+
+            # a group stands for its modalities (DX = DX and CR, as everywhere else); a code
+            # no group knows would make a rule that never fires
+            known = {m: [m] for p in PROFILES for m in p["modalities"]}
+            known.update({p["code"]: p["modalities"] for p in PROFILES})
             parts = [m.strip().upper() for m in body.modality.split(",") if m.strip()]
-            if not parts or not all(re.fullmatch(r"[A-Z]{2,3}", m) for m in parts):
-                raise HTTPException(400, "modality is a comma list of codes, e.g. CT,RF")
-            modality = ",".join(parts)
+            bad = [m for m in parts if m not in known]
+            if not parts or bad:
+                every = ", ".join(sorted({m for v in known.values() for m in v}))
+                raise HTTPException(400, f"unknown modality {', '.join(bad) or body.modality!r}:"
+                                         f" use {every}")
+            modality = ",".join(dict.fromkeys(m for x in parts for m in known[x]))
         if body.max_age_days is not None and not 1 <= body.max_age_days <= 3650:
             raise HTTPException(400, "the age limit must be positive")
         metric = unit = None
