@@ -543,12 +543,10 @@ def _previous(session: Session, s: Study, weeks: int = 12) -> list[dict]:
 
 
 def ct_acquisitions(session: Session, q: str, now: dt.datetime, limit: int = 50000) -> list:
-    """Non-localizer CT events of the studies matching q (keys: date device proto desc origin
-    weight and the default test-patient exclusion), one row per acquisition."""
-    allowed = {"date", "device", "proto", "desc", "origin", "weight", "age", "modality", "phantom"}
-    tokens = [t for t in parse(q) if t.key in allowed]
-    _refuse_errors(tokens)
-    conds = conditions(tokens, now, overrides(session))
+    """Non-localizer CT events of the studies matching q, one row per acquisition. Every
+    filter of q applies, as on the statistics panels beside these on the same page: a chart
+    must not answer for a wider population than its query says."""
+    conds = checked_conditions(q, now, overrides(session))
     phys = _physical_ids(session)
     names = device_names(session)
     rows = session.execute(
@@ -652,11 +650,8 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
         raise QueryError(f"unknown modality group {group!r}")
     if prof["code"] == "CT":
         return ct_acquisitions(session, q, now, limit)
-    allowed = {"date", "device", "proto", "desc", "origin", "weight", "age", "phantom"}
-    tokens = [t for t in parse(q) if t.key in allowed]
-    _refuse_errors(tokens)
     ov = overrides(session)
-    conds = conditions(tokens, now, ov)
+    conds = checked_conditions(q, now, ov)  # every filter of q (see ct_acquisitions)
     mods = prof["modalities"]
     mod_cond = Study.modality.in_(mods)
     if ov:
@@ -737,10 +732,7 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_ids: list[int]
     if not device_ids or any(d not in names for d in device_ids):
         raise QueryError("unknown device")
     ids = [d for d, p in phys.items() if p in device_ids]
-    allowed = {"date", "origin", "weight", "age", "phantom"}  # the device is the one chosen
-    tokens = [t for t in parse(q) if t.key in allowed]
-    _refuse_errors(tokens)
-    conds = conditions(tokens, now, overrides(session))
+    conds = checked_conditions(q, now, overrides(session))  # every filter narrows the device's
     rows = session.execute(
         select(Event.protocol, Event.dap, Study.id, Event.id, Study.age_days, Study.weight_kg,
                Study.weight_source, Event.view, Study.device_id)

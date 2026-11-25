@@ -1121,6 +1121,23 @@ def test_dx_rows_carry_the_cross_device_group(client):
     assert all(r["band"].startswith(">") for r in banded)
 
 
+def test_chart_rows_apply_every_filter(client):
+    """The browser chart panels follow the whole query, like the statistics panels beside them:
+    a filter they used to drop (acc:, dlp:, flag: …) made them chart a wider population."""
+    login(client, "viewer", "viewer-pass-1")
+    rows = client.get("/api/stats/DX/rows").json()
+    studies = client.get("/api/studies", params={"q": "modality:DX,CR", "size": 500}).json()["rows"]
+    one = next(x for x in studies if x["accession"] and x["n_events"])
+    only = client.get("/api/stats/DX/rows", params={"q": f"acc:{one['accession']}"}).json()
+    assert len(only) == one["n_events"]  # one row per exposure of that study
+    rest = client.get("/api/stats/DX/rows", params={"q": f"-acc:{one['accession']}"}).json()
+    assert len(rest) == len(rows) - len(only)
+    assert client.get("/api/stats/DX/rows", params={"q": "acc:NO-SUCH-ACC"}).json() == []
+    assert client.get("/api/stats/ct/acquisitions", params={"q": "acc:NO-SUCH-ACC"}).json() == []
+    # a filter that does not parse is refused, not dropped
+    assert client.get("/api/stats/DX/rows", params={"q": "dlp:lots"}).status_code == 400
+
+
 def test_size_bands_several_devices(client):
     url = str(client.app.state.settings.database_url)
     ids = []
