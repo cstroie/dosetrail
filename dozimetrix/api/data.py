@@ -634,6 +634,12 @@ class _NationalDRL:
             self.values.get((code, None, quantity))
 
 
+def rxprotocols_inf() -> float:
+    from ..rxprotocols import INF
+
+    return INF  # an open band end ("> 50 kg") is infinity: JSON has no infinity, the rows carry null
+
+
 def group_rows(session: Session, q: str, now: dt.datetime, group: str,
                limit: int = 50000) -> list:
     """Chart rows of one modality group (the browser chart panels): CT keeps its acquisition
@@ -695,7 +701,8 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
                                None if wsrc == SizeSource.estimated_reference else w)
             if g is not None:
                 r.update(anatomy=g.anatomy, projection=g.projection, band=g.label,
-                         band_src=g.source, group=g.name)
+                         band_src=g.source, group=g.name, band_kind=g.kind, band_lo=g.lo,
+                         band_hi=None if g.hi == rxprotocols_inf() else g.hi)
         if quantity:  # the national DRL of this exposure's / study's exam and age group
             ref = refs.value(sid, eid if per_event else None, age, quantity[1])
             if ref is not None:

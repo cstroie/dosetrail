@@ -207,10 +207,20 @@ function protoFor(cfg, metric, need = () => true) {
   return protocolsBy('n', metric).find((p) => ok.has(p)) || protocolsBy('n', metric)[0];
 }
 
+const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+/** Anatomy, then projection, then the size band by its numbers ("5-15 kg" before "15-30 kg"; no band last).
+ *  Rows that are not grouped by anatomy (the raw protocol names) compare equal: those sort by name. */
+function natural(a, b) {
+  if (!a.anatomy || !b.anatomy) return 0;
+  const lo = (r) => r.band_lo ?? Infinity;
+  const hi = (r) => r.band_hi ?? Infinity;
+  return a.anatomy.localeCompare(b.anatomy) || a.projection.localeCompare(b.projection) || cmp(a.band_kind, b.band_kind) || cmp(lo(a), lo(b)) || cmp(hi(a), hi(b));
+}
+
 function protocolsBy(sort, metric) {
   const g = groupBy(rows, (r) => r.protocol);
   const list = [...g.entries()].map(([p, rs]) => ({ p, n: rs.length, med: summary(rs.map((r) => r[METRICS[metric].field])).median }));
-  if (sort === 'name') list.sort((a, b) => a.p.localeCompare(b.p));
+  if (sort === 'name') list.sort((a, b) => natural(g.get(a.p)[0], g.get(b.p)[0]) || a.p.localeCompare(b.p));
   else if (sort === 'value') list.sort((a, b) => b.med / (protoRef(metric, b.p) || 1) - a.med / (protoRef(metric, a.p) || 1));
   else list.sort((a, b) => b.n - a.n);
   return list.map((x) => x.p);

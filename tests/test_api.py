@@ -1115,3 +1115,7 @@ def test_dx_rows_carry_the_cross_device_group(client):
     t = next(r for r in rows if r["protocol"] == "W035 Torace a.p. 10kg")
     # no band in the name and no patient weight: anatomy and projection only
     assert (t["anatomy"], t["projection"], t["group"]) == ("Toracică", "AP", "Toracică AP")
+    assert (t["band_kind"], t["band_lo"], t["band_hi"]) == ("none", None, None)
+    # numbers for sorting the bands ("5-15 kg" before "15-30 kg"); an open end is null, not infinity
+    banded = [r for r in rows if r.get("band_kind") == "weight" and r["band_hi"] is None]
+    assert all(r["band"].startswith(">") for r in banded)
