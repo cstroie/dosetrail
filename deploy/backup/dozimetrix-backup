@@ -8,6 +8,7 @@ CONF=${1:-/etc/dozimetrix/backup.conf}
 [ -r "$CONF" ] || { echo "cannot read $CONF" >&2; exit 2; }
 # shellcheck disable=SC1090
 . "$CONF"
+PYTHON=${PYTHON:-/opt/dozimetrix/.venv/bin/python}   # needs Python 3.11+ (tomllib)
 : "${MODE:?}" "${STAGING:?}"
 KEEP_DAILY=${KEEP_DAILY:-7}; KEEP_WEEKLY=${KEEP_WEEKLY:-4}; KEEP_MONTHLY=${KEEP_MONTHLY:-12}
 ENCRYPT=${ENCRYPT:-none}
@@ -40,7 +41,7 @@ if [ "$MODE" = docker ]; then
         _ "${OPTS[@]}" | gzip -6 >"$DUMP"
 else
     CNF="$WORK/my.cnf"
-    python3 -I - "$CONFIG" >"$CNF" <<'PY'
+    "$PYTHON" -I - "$CONFIG" >"$CNF" <<'PY'
 import sys, tomllib
 from urllib.parse import urlsplit, unquote
 url = tomllib.load(open(sys.argv[1], "rb"))["database"]["url"]
@@ -52,9 +53,9 @@ print(f"user={unquote(u.username or '')}")
 print(f"password=\"{unquote(u.password or '').replace(chr(92), chr(92)*2).replace(chr(34), chr(92)+chr(34))}\"")
 print(f"host={u.hostname or 'localhost'}")
 print(f"port={u.port or 3306}")
-print(f"database={u.path.lstrip('/')}")
+print(f"# dbname={u.path.lstrip('/')}")
 PY
-    DB=$(sed -n 's/^database=//p' "$CNF")
+    DB=$(sed -n 's/^# dbname=//p' "$CNF")
     mariadb-dump --defaults-extra-file="$CNF" "${OPTS[@]}" "$DB" | gzip -6 >"$DUMP"
 fi
 gzip -t "$DUMP"
@@ -70,7 +71,7 @@ if [ "$MODE" = docker ]; then
 else
     CDIR=$(dirname "$CONFIG")
     mkdir -p "$TREE/etc"; cp -a "$CDIR/." "$TREE/etc/"
-    SECRET=$(python3 -I - "$CONFIG" "$CDIR" <<'PY'
+    SECRET=$("$PYTHON" -I - "$CONFIG" "$CDIR" <<'PY'
 import sys, tomllib, pathlib
 raw = tomllib.load(open(sys.argv[1], "rb"))
 print(raw.get("paths", {}).get("secret_file") or raw.get("secret_file") or pathlib.Path(sys.argv[2]) / "secret")

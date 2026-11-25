@@ -3,6 +3,7 @@
 MODE=systemd                      # systemd | docker
 CONFIG=/etc/dozimetrix/dozimetrix.toml   # systemd: the file holding [database] url and [paths]
 DATA_DIR=/var/lib/dozimetrix      # systemd: data_dir (secret, spool); the marker file goes here
+PYTHON=/opt/dozimetrix/.venv/bin/python   # Python 3.11+ (reads the toml); the app's own venv
 STAGING=/var/backups/dozimetrix   # where archives are made; keep it root-owned, mode 0700
 
 # docker only
