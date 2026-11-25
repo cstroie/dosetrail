@@ -9,11 +9,14 @@ import { h, clear, append, section } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { quality, studyHref, importSizes } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
-import { adminDefaults, defaultsActions } from '../core/page-defaults.js';
+import { adminDefaults, defaultsActions, keepOwn } from '../core/page-defaults.js';
 
 const page = document.getElementById('page');
 const defaults = await adminDefaults('quality');
-let q = prefs.get('quality.q') || defaults.value.q || 'origin:local date:90d';
+const DEFAULT_Q = defaults.value.q || 'origin:local date:90d';
+if (prefs.get('quality.q') === DEFAULT_Q) prefs.set('quality.q', undefined);  // the same as the default: not the user's own
+// a link's query (?q=) for this visit, then the user's own, then the default
+let q = new URLSearchParams(location.search).get('q') ?? prefs.get('quality.q') ?? DEFAULT_Q;
 
 function pct(x) {
   if (x == null) return h('span', { class: 'muted' }, '—');
@@ -24,7 +27,7 @@ function pct(x) {
 
 function render() {
   const qb = h('dx-query-bar', { value: q });
-  qb.addEventListener('query-change', (e) => { q = e.detail; prefs.set('quality.q', q); load(); });
+  qb.addEventListener('query-change', (e) => { q = e.detail; keepOwn('quality.q', q, DEFAULT_Q); load(); });
   clear(page).append(
     adminTabs('quality.html'),
     h('div', { class: 'row', style: { 'align-items': 'flex-start' } }, h('div', { style: { flex: '1 1 600px' } }, qb),
@@ -34,6 +37,9 @@ function render() {
 }
 
 async function load() {
+  const u = new URL(location.href);  // the query in the address bar: a copied link opens the same checks
+  u.search = q ? `?q=${encodeURIComponent(q)}` : '';
+  history.replaceState(null, '', u);
   const host = document.getElementById('qa');
   clear(host).append(h('p', { class: 'muted' }, 'Checking…'));
   let r;

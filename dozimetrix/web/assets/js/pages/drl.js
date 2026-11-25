@@ -9,7 +9,7 @@ import { scopeWarnings } from '../core/query.js';
 import { num, smart, shown, shownUnit } from '../core/format.js';
 import { drlSets, drlCompare, drlDownloadUrl } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
-import { adminDefaults, defaultsActions } from '../core/page-defaults.js';
+import { adminDefaults, defaultsActions, keepOwn } from '../core/page-defaults.js';
 
 const page = document.getElementById('page');
 const STATUS = {
@@ -24,15 +24,26 @@ const QUANTITY = { dlp: 'DLP', dlp_study: 'DLP (study)', ctdivol: 'CTDIvol', dap
 
 const defaults = await adminDefaults('drl');
 const D = { q: 'origin:local date:365d', set: 'ro-ms838-2025', by: 'facility', minN: 20, ...defaults.value };
+// stored before only what differs was kept: a value equal to the default is not the user's own
+for (const [pk, k] of [['drl.q', 'q'], ['drl.set', 'set'], ['drl.by', 'by'], ['drl.minN', 'minN']]) if (prefs.get(pk) === D[k]) prefs.set(pk, undefined);
+// a link's filters (?q=&set=&by=&min_n=&group=) for this visit, then the user's own, then the defaults
+const url = new URLSearchParams(location.search);
 const state = {
-  q: prefs.get('drl.q') || D.q,
-  set: new URLSearchParams(location.search).get('set') || prefs.get('drl.set') || D.set,
-  by: prefs.get('drl.by') || D.by,
-  minN: prefs.get('drl.minN') || D.minN,
+  q: url.get('q') ?? prefs.get('drl.q') ?? D.q,
+  set: url.get('set') || prefs.get('drl.set') || D.set,
+  by: url.get('by') || prefs.get('drl.by') || D.by,
+  minN: Number(url.get('min_n')) || prefs.get('drl.minN') || D.minN,
   estimated: false,
   showEmpty: false,
-  group: prefs.get('drl.group') || null,
+  group: url.get('group') || prefs.get('drl.group') || null,
 };
+// the view in the address bar, so a copied link opens the same table
+function syncUrl() {
+  const u = new URL(location.href);
+  u.search = '';
+  for (const [k, v] of [['q', state.q], ['set', state.set], ['by', state.by], ['min_n', state.minN], ['group', state.group]]) if (v != null && v !== '') u.searchParams.set(k, v);
+  history.replaceState(null, '', u);
+}
 const GROUP_LABEL = { CT: 'CT', DX: 'DX/CR', RF: 'RF', XA: 'XA', MG: 'MG', NM: 'NM', PT: 'PT' };
 
 
@@ -60,18 +71,18 @@ async function render() {
     page.append(h('p', { class: 'empty' }, e.message));
     return;
   }
-  const setSel = h('select', { class: 'input', 'aria-label': 'Reference set', onchange: (e) => { state.set = e.target.value; prefs.set('drl.set', state.set); load(); } },
+  const setSel = h('select', { class: 'input', 'aria-label': 'Reference set', onchange: (e) => { state.set = e.target.value; keepOwn('drl.set', state.set, D.set); load(); } },
     sets.map((s) => h('option', { value: s.key, selected: s.key === state.set }, s.name)));
   const byBtns = ['facility', 'device'].map((b) => h('button', {
     type: 'button', 'aria-pressed': String(state.by === b), dataset: { by: b },
-    onclick: () => { state.by = b; prefs.set('drl.by', b); byBtns.forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.by === b))); load(); },
+    onclick: () => { state.by = b; keepOwn('drl.by', b, D.by); byBtns.forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.by === b))); load(); },
   }, b === 'facility' ? 'Facility' : 'Per device'));
   const minN = h('input', { type: 'number', min: 1, max: 500, value: state.minN, class: 'input num-input', 'aria-label': 'Minimum n',
-    onchange: (e) => { state.minN = Math.max(1, Number(e.target.value) || 20); prefs.set('drl.minN', state.minN); load(); } });
+    onchange: (e) => { state.minN = Math.max(1, Number(e.target.value) || 20); keepOwn('drl.minN', state.minN, D.minN); load(); } });
   const empty = h('label', { class: 'chk' }, h('input', { type: 'checkbox', onchange: (e) => { state.showEmpty = e.target.checked; draw(); } }), ' show groups without data');
   const qb = h('dx-query-bar', { value: state.q });
   qb.check = (toks) => scopeWarnings(toks, null, [], null, { tabsOwn: true });
-  qb.addEventListener('query-change', (e) => { state.q = e.detail; prefs.set('drl.q', state.q); load(); });
+  qb.addEventListener('query-change', (e) => { state.q = e.detail; keepOwn('drl.q', state.q, D.q); load(); });
 
   const download = (kind) => () => {
     const href = drlDownloadUrl(kind, { q: state.q, set: state.set, min_n: state.minN });
@@ -100,6 +111,7 @@ async function render() {
 let last = null;
 
 async function load() {
+  syncUrl();
   const table = document.getElementById('drl-table');
   clear(table).append(h('tbody', {}, h('tr', {}, h('td', {}, 'Loading…'))));
   try {
@@ -116,11 +128,14 @@ function draw() {
   if (!last) return;
   // one table per modality group: a DLP row never sits next to a DAP or MGD row
   const present = Object.keys(GROUP_LABEL).filter((k) => last.rows.some((r) => r.group === k));
-  if (!present.includes(state.group)) state.group = present.find((k) => last.rows.some((r) => r.group === k && r.groups.length)) || present[0] || null;
+  if (!present.includes(state.group)) {
+    state.group = present.find((k) => last.rows.some((r) => r.group === k && r.groups.length)) || present[0] || null;
+    syncUrl();
+  }
   append(clear(document.getElementById('drl-groups')), present.map((k) => {
     const n = last.rows.filter((r) => r.group === k && r.groups.length).length;
     return h('button', { type: 'button', 'aria-current': k === state.group ? 'page' : false,
-      onclick: () => { state.group = k; prefs.set('drl.group', k); draw(); } }, `${GROUP_LABEL[k]} `, h('span', { class: 'muted' }, `(${n})`));
+      onclick: () => { state.group = k; prefs.set('drl.group', k); syncUrl(); draw(); } }, `${GROUP_LABEL[k]} `, h('span', { class: 'muted' }, `(${n})`));
   }));
   const mine = last.rows.filter((r) => r.group === state.group);
   const rows = mine.filter((r) => state.showEmpty || r.groups.length);
