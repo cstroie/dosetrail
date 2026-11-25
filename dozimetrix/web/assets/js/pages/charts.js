@@ -553,7 +553,7 @@ function renderPanel(cfg, index) {
       if (b.height) chart.setAttribute('height', b.height);
       chart.csv = b.csv;
       chart.draw(b.option);
-      if (b.toolbar) chart.before(b.toolbar(chart));
+      if (b.mountControls) b.mountControls(panel.querySelector('.ws-opts'), update);
       panel.querySelector('.srv-summary').replaceChildren(serverSummary(b.summary, b.unit) || '');
     }).catch((err) => { head.textContent = TYPES[cfg.type]; chart.replaceWith(h('p', { class: 'error' }, err.message)); });
   }

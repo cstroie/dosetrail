@@ -299,4 +299,12 @@ table.grid.svc-table { width: 100%; min-width: 0; table-layout: auto; }
 .panel-head > hgroup > h1 { font-size: 15px; text-transform: none; letter-spacing: normal; color: var(--text); }
 .panel-head > hgroup, header.row > hgroup { min-width: 0; }
 
-.legend-actions { display: flex; gap: var(--sp-1); margin-bottom: var(--sp-1); }
+ .multi { position: relative; }
+.multi-btn { list-style: none; cursor: pointer; height: 24px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line-2); border-radius: 3px; font-size: var(--fs-xs); white-space: nowrap; }
+.multi-btn::-webkit-details-marker { display: none; }
+.multi-btn::after { content: "▾"; color: var(--muted); }
+.multi-menu { position: absolute; z-index: 30; top: 28px; left: 0; min-width: 220px; max-height: 320px; overflow: auto; background: var(--panel); border: 1px solid var(--line-2); border-radius: 4px; padding: 6px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.35); display: flex; flex-direction: column; gap: 4px; }
+.multi-tools { display: flex; gap: 4px; align-items: center; position: sticky; top: -6px; background: var(--panel); padding-bottom: 4px; }
+.multi-tools .input { flex: 1; min-width: 0; height: 24px; }
+.multi-item { display: flex; align-items: center; gap: 4px; padding: 2px 4px; font-size: var(--fs-xs); white-space: nowrap; cursor: pointer; }
+.multi-item:hover { background: var(--panel-2); }

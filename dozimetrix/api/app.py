@@ -1166,10 +1166,15 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(400, str(e)) from e
 
     @app.get("/api/charts/size-bands")
-    def size_bands(device: int, kind: str = "weight", other: str = "hide", q: str = "",
+    def size_bands(device: str, kind: str = "weight", other: str = "hide", q: str = "",
                    user: User = Depends(current_user), session: Session = Depends(db)):
+        """``device``: one device id, or several separated by commas."""
         try:
-            return data.size_bands(session, q, clock(), device, kind, other)
+            ids = [int(x) for x in device.split(",") if x.strip()]
+        except ValueError as e:
+            raise HTTPException(400, "device must be an id or a comma-separated list of ids") from e
+        try:
+            return data.size_bands(session, q, clock(), ids, kind, other)
         except data.QueryError as e:
             raise HTTPException(400, str(e)) from e
 

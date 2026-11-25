@@ -714,9 +714,9 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
 MIN_CELL = 3  # a band with fewer exposures is drawn but flagged: its quartiles say little
 
 
-def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind: str,
+def size_bands(session: Session, q: str, now: dt.datetime, device_ids: list[int], kind: str,
                other: str = "hide") -> dict:
-    """Radiography DAP per exposure of one device, by size band: for every anatomy and
+    """Radiography DAP per exposure of one or several devices, by size band: for every device, anatomy and
     projection (``rxgroup``: the exposure's exam code, so "Skull" and "Craniu" meet), the
     median and quartiles in each weight band (kind "weight") or age band ("age"). The band
     is the one written in the protocol name; a protocol that states none (the Discovery's
@@ -731,18 +731,18 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind:
     if other not in ("hide", "reband", "keep"):
         raise QueryError("other must be hide, reband or keep")
     names = device_names(session)
-    if device_id not in names:
-        raise QueryError("unknown device")
-    name = names[device_id]
     phys = _physical_ids(session)
-    ids = [d for d, p in phys.items() if p == device_id]
+    device_ids = list(dict.fromkeys(phys.get(d, d) for d in device_ids))
+    if not device_ids or any(d not in names for d in device_ids):
+        raise QueryError("unknown device")
+    ids = [d for d, p in phys.items() if p in device_ids]
     allowed = {"date", "origin", "weight", "age", "phantom"}  # the device is the one chosen
     tokens = [t for t in parse(q) if t.key in allowed]
     _refuse_errors(tokens)
     conds = conditions(tokens, now, overrides(session))
     rows = session.execute(
         select(Event.protocol, Event.dap, Study.id, Event.id, Study.age_days, Study.weight_kg,
-               Study.weight_source, Event.view)
+               Study.weight_source, Event.view, Study.device_id)
         .join(Study, Study.id == Event.study_id)
         .where(Study.device_id.in_(ids), Study.modality.in_(["DX", "CR"]),
                Event.dap.is_not(None), Event.protocol.is_not(None), *conds)).all()
@@ -751,7 +751,7 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind:
     cells: dict[tuple, dict] = {}
     unparsed: dict[str, int] = {}
     other_kind = hidden = 0
-    for proto, dap, sid, eid, age, w, wsrc, view in rows:
+    for proto, dap, sid, eid, age, w, wsrc, view, did in rows:
         b = bands_of[eid]
         if desc.kind_of(b) != kind:
             other_kind += 1  # a weight exam is not charted by age, nor an age exam by weight
@@ -764,7 +764,7 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind:
             hidden += 1  # a band the ICRP 135 / RP 185 scheme does not have, and the chart hides it
             continue
         band = (g.kind, g.lo, g.hi, g.label) if g.kind != "none" else ("none", None, None, "")
-        c = cells.setdefault(((g.anatomy, g.projection), band),
+        c = cells.setdefault(((phys.get(did, did), g.anatomy, g.projection), band),
                              {"dap": [], "ref": [], "prefixes": set(), "patient": 0})
         c["dap"].append(dap)
         c["ref"].append((sid, eid, age))
@@ -800,8 +800,8 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind:
     for (sk, b), c in cells.items():
         d = stats.describe(c["dap"])
         drl = sorted(c["drl"])
-        se = series.setdefault(sk, {"anatomy": sk[0], "projection": sk[1], "n": 0,
-                                    "prefixes": set(), "cells": []})
+        se = series.setdefault(sk, {"device_id": sk[0], "device": names[sk[0]], "anatomy": sk[1],
+                                    "projection": sk[2], "n": 0, "prefixes": set(), "cells": []})
         se["n"] += d["n"]
         se["prefixes"] |= c["prefixes"]
         se["cells"].append({"band": index[b], "n": d["n"], "p25": d["p25"], "median": d["median"],
@@ -814,7 +814,12 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind:
     for s_ in out:
         s_["prefixes"] = sorted(s_["prefixes"])
         s_["cells"].sort(key=lambda c: c["band"])
-    return {"device": {"id": device_id, "name": name}, "kind": kind, "bands": bands,
+    anatomies: dict[str, int] = {}
+    for s_ in out:
+        anatomies[s_["anatomy"]] = anatomies.get(s_["anatomy"], 0) + s_["n"]
+    return {"device": {"id": device_ids[0], "name": names[device_ids[0]]},
+            "devices": [{"id": d, "name": names[d]} for d in device_ids], "kind": kind, "bands": bands,
+            "anatomies": [{"name": a, "n": n} for a, n in sorted(anatomies.items(), key=lambda kv: -kv[1])],
             "series": out, "n_rows": len(rows), "n_other_kind": other_kind, "n_hidden": hidden, "other": other,
             "n_patient_band": sum(c["patient"] for c in cells.values()),
             "unparsed": sorted(unparsed, key=lambda k: -unparsed[k])[:50]}

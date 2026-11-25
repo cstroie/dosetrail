@@ -1119,3 +1119,32 @@ def test_dx_rows_carry_the_cross_device_group(client):
     # numbers for sorting the bands ("5-15 kg" before "15-30 kg"); an open end is null, not infinity
     banded = [r for r in rows if r.get("band_kind") == "weight" and r["band_hi"] is None]
     assert all(r["band"].startswith(">") for r in banded)
+
+
+def test_size_bands_several_devices(client):
+    url = str(client.app.state.settings.database_url)
+    ids = []
+    with make_sessionmaker(make_engine(url))() as s:
+        for i, nm in enumerate(["Ysio A", "Luminos B"]):
+            d = Device(display_name=nm, model_name="X", identity_key=f"k-multi-{i}", is_local=True)
+            s.add(d)
+            s.flush()
+            ids.append(d.id)
+            for j, dap in enumerate([0.01 * (i + 1), 0.02 * (i + 1), 0.03 * (i + 1)]):
+                s.add(Study(study_uid=f"6.6.{i}.{j}", accession=f"M{i}{j}", modality="DX", device_id=d.id,
+                            study_datetime=NOW - dt.timedelta(days=1), source_kind="test", n_events=1,
+                            events=[Event(protocol="W035 Torace a.p. 5-15Kg" if i == 0 else "T035 Thorax a.p. 5-15Kg", dap=dap)]))
+        s.flush()
+        classify.run(s, list(s.scalars(select(Study.id).where(Study.device_id.in_(ids)))))  # Torace = Thorax
+        s.commit()
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/charts/size-bands", params={"device": f"{ids[0]},{ids[1]}", "kind": "weight"}).json()
+    assert [d["name"] for d in r["devices"]] == ["Ysio A", "Luminos B"]
+    by = {(s["device"], s["anatomy"], s["projection"]): s for s in r["series"]}
+    assert set(by) == {("Ysio A", "Toracică", "AP"), ("Luminos B", "Toracică", "AP")}  # one anatomy, two units
+    assert len({s["device_id"] for s in r["series"]}) == 2
+    assert r["anatomies"] and r["anatomies"][0]["n"] == 6  # the picker's list: the same anatomy on both units
+    one = client.get("/api/charts/size-bands", params={"device": ids[1]}).json()
+    assert [d["name"] for d in one["devices"]] == ["Luminos B"] and one["device"]["id"] == ids[1]
+    assert client.get("/api/charts/size-bands", params={"device": "x"}).status_code == 400
+    assert client.get("/api/charts/size-bands", params={"device": f"{ids[0]},999999"}).status_code == 400

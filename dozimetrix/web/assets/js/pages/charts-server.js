@@ -42,7 +42,7 @@ let dxDevices = [];
 export function setDevices(list) { dxDevices = (list || []).filter((d) => ['DX', 'CR'].includes(d.modality) && d.origin !== 'external'); }
 
 export function defaultsFor(type) {
-  if (type === 'ssize') return { type, modality: 'DX', metric: 'dap', device: null, kind: 'weight', other: 'hide', top: 8, min_n: 3, span: 'XL' };
+  if (type === 'ssize') return { type, modality: 'DX', metric: 'dap', devices: null, anatomies: null, kind: 'weight', other: 'hide', min_n: 3, span: 'XL' };
   return { type, modality: 'CT', metric: 'dlp_total', by: type === 'strend' ? 'month' : 'exam', series: type === 'strend' ? 'exam' : '',
     system: '', age_scheme: 'ro-drl-age', set: 'ro-ms838-2025', stat: 'median', min_n: 5, span: 'M' };
 }
@@ -52,10 +52,11 @@ export function serverOptions(cfg, update, select) {
   const mod = cfg.modality || 'CT';
   const metrics = METRICS[mod];
   if (cfg.type === 'ssize') {
-    return [select('Device', String(cfg.device || dxDevices[0]?.id || ''), Object.fromEntries(dxDevices.map((d) => [String(d.id), d.display_name])), (v) => update({ device: Number(v) })),
+    const devs = sizeDevices(cfg);
+    return [multiSelect('Devices', dxDevices.map((d) => ({ value: d.id, label: d.display_name })), devs, (v) => update({ devices: v, anatomies: v.length > 1 && cfg.anatomies?.length > 1 ? cfg.anatomies.slice(0, 1) : cfg.anatomies })),
+      h('span', { class: 'anat-slot' }),  // the anatomy picker: its list comes with the data (mountControls)
       select('Size band', cfg.kind || 'weight', { weight: 'Weight (kg)', age: 'Age' }, (v) => update({ kind: v })),
       select('Other bands', cfg.other || 'hide', { hide: 'Hide', reband: 'Re-band from the patient', keep: 'Keep as named' }, (v) => update({ other: v })),
-      select('Anatomies shown', String(cfg.top ?? 8), { 0: 'None', 1: '1', 4: '4', 8: '8', 12: '12', 99: 'All' }, (v) => update({ top: Number(v) })),
       select('Min n', String(cfg.min_n ?? 3), { 1: '1', 3: '3', 5: '5', 10: '10', 20: '20' }, (v) => update({ min_n: Number(v) }))];
   }
   const out = [select('Modality', mod, MODALITIES, (v) => update({ modality: v, metric: Object.keys(METRICS[v])[0] }))];
@@ -186,6 +187,47 @@ export async function buildServer(cfg, q, devColor) {
   return { title: title + truncated, option, csv, summary, unit };
 }
 
+/** A drop-down with check boxes (``single``: radio buttons). The choice is applied when the menu closes,
+ *  so several boxes can be ticked in one go (a change re-draws the whole panel). */
+function multiSelect(label, items, selected, onChange, { single = false } = {}) {
+  let chosen = new Set(selected);
+  const text = () => {
+    const names = items.filter((i) => chosen.has(i.value)).map((i) => i.label.replace(/ \([\d,.\s]+\)$/, ''));
+    return names.length === 0 ? 'none' : names.length <= 2 ? names.join(', ') : `${names[0]} +${names.length - 1}`;
+  };
+  const summary = h('summary', { class: 'multi-btn' }, h('span', { class: 'muted' }, `${label} `), h('span', {}, text()));
+  const list = h('div', { class: 'multi-list' });
+  const draw = (filter = '') => {
+    list.replaceChildren(...items.filter((i) => i.label.toLowerCase().includes(filter.toLowerCase())).map((i) =>
+      h('label', { class: 'multi-item' },
+        h('input', { type: single ? 'radio' : 'checkbox', name: `m-${label}`, checked: chosen.has(i.value),
+          onchange: (e) => { if (single) chosen = new Set([i.value]); else if (e.target.checked) chosen.add(i.value); else chosen.delete(i.value); summary.lastChild.textContent = text(); } }),
+        ` ${i.label}`)));
+  };
+  draw();
+  const tools = h('div', { class: 'multi-tools' },
+    items.length > 8 ? h('input', { class: 'input', type: 'search', placeholder: 'Find…', 'aria-label': `Find in ${label}`, oninput: (e) => draw(e.target.value) }) : null,
+    single ? null : h('button', { class: 'btn xs', type: 'button', onclick: () => { chosen = new Set(items.map((i) => i.value)); draw(); summary.lastChild.textContent = text(); } }, 'All'),
+    single ? null : h('button', { class: 'btn xs', type: 'button', onclick: () => { chosen = new Set(); draw(); summary.lastChild.textContent = text(); } }, 'None'));
+  const box = h('details', { class: 'multi' }, summary, h('div', { class: 'multi-menu' }, tools, list));
+  const before = [...chosen].sort().join();
+  const close = (e) => { if (box.open && !box.contains(e.target)) box.open = false; };
+  document.addEventListener('click', close);
+  box.addEventListener('toggle', () => {
+    if (box.open) return;
+    document.removeEventListener('click', close);
+    if ([...chosen].sort().join() !== before) onChange(items.map((i) => i.value).filter((v) => chosen.has(v)));
+  });
+  return box;
+}
+
+/** The radiography units a "dose by size band" panel shows: the saved ones that still exist, else the first. */
+function sizeDevices(cfg) {
+  const ok = new Set(dxDevices.map((d) => d.id));
+  const saved = (cfg.devices || (cfg.device ? [cfg.device] : [])).filter((d) => ok.has(d));
+  return saved.length ? saved : dxDevices.slice(0, 1).map((d) => d.id);
+}
+
 // One marker and line style per projection (anatomy gives the colour).
 const PROJ_STYLE = {
   AP: { symbol: 'circle', dash: 'solid' }, PA: { symbol: 'diamond', dash: [9, 4] }, 'AP/PA': { symbol: 'circle', dash: [9, 4, 2, 4] },
@@ -194,69 +236,77 @@ const PROJ_STYLE = {
 };
 const projStyle = (p) => PROJ_STYLE[p] || { symbol: 'roundRect', dash: [5, 5] };
 
-/** "Dose by size band": every protocol of one radiography unit, by the band its name states. */
+/** "Dose by size band": the protocols of the chosen anatomies on the chosen units, by size band. */
 async function buildSize(cfg, q) {
-  const dev = cfg.device || dxDevices[0]?.id;
-  if (!dev) throw new Error('No radiography unit to chart.');
-  const res = await sizeBands({ device: dev, kind: cfg.kind || 'weight', other: cfg.other || 'hide', q });
+  const devs = sizeDevices(cfg);
+  if (!devs.length) throw new Error('No radiography unit to chart.');
+  const res = await sizeBands({ device: devs.join(','), kind: cfg.kind || 'weight', other: cfg.other || 'hide', q });
   const f = shownUnit('Gy.cm2');
   const minN = cfg.min_n ?? 3;
   const unit = unitLabel(f[1]);
   const kindLabel = res.kind === 'age' ? 'age' : 'weight';
-  const label = (s) => [s.anatomy, s.projection].filter(Boolean).join(' ');
-  const anat = new Map();
-  for (const s of res.series) anat.set(s.anatomy, (anat.get(s.anatomy) || 0) + s.n);
-  const order = [...anat.entries()].sort((a, b) => b[1] - a[1]).map(([a]) => a);
-  const top = new Set(order.slice(0, (cfg.top ?? 8) >= 99 ? order.length : (cfg.top ?? 8)));
-  const shown = res.series.filter((s) => s.cells.some((c) => c.n >= minN));
-  const csv = [['anatomy', 'projection', 'band', 'n', 'p25', 'median', 'p75', 'drl', 'program sets']].concat(res.series.flatMap((s) =>
-    s.cells.map((c) => [s.anatomy, s.projection, res.bands[c.band].label, c.n, c.p25 * f[0], c.median * f[0], c.p75 * f[0], c.drl == null ? '' : c.drl * f[0], s.prefixes.join(' ')])));
+  const multiDev = res.devices.length > 1;
+  const order = res.anatomies.map((a) => a.name);  // busiest first, over the chosen units
+  // the picked anatomies that exist here (several units: one anatomy), else the busiest one
+  let picked = (cfg.anatomies || []).filter((a) => order.includes(a));
+  // never chosen, or none of the chosen exists any more (other units / size type): the busiest; an explicit empty choice stays empty
+  if (cfg.anatomies == null || (cfg.anatomies.length && !picked.length)) picked = order.slice(0, 1);
+  if (multiDev) picked = picked.slice(0, 1);
+  const pickedSet = new Set(picked);
+  const devIndex = new Map(res.devices.map((d, i) => [d.id, i]));
+  const projections = [...new Set(res.series.filter((s) => pickedSet.has(s.anatomy)).map((s) => s.projection))];
+  const label = (s) => (multiDev ? `${s.device} · ${s.projection || 'all views'}` : [s.anatomy, s.projection].filter(Boolean).join(' '));
+  const shown = res.series.filter((s) => pickedSet.has(s.anatomy) && s.cells.some((c) => c.n >= minN))
+    .sort((a, b) => devIndex.get(a.device_id) - devIndex.get(b.device_id) || a.projection.localeCompare(b.projection));
+  const csv = [['device', 'anatomy', 'projection', 'band', 'n', 'p25', 'median', 'p75', 'drl', 'program sets']].concat(res.series.flatMap((s) =>
+    s.cells.map((c) => [s.device, s.anatomy, s.projection, res.bands[c.band].label, c.n, c.p25 * f[0], c.median * f[0], c.p75 * f[0], c.drl == null ? '' : c.drl * f[0], s.prefixes.join(' ')])));
   const nCells = shown.reduce((a, s) => a + s.cells.filter((c) => c.n >= minN).length, 0);
-  const title = `DAP per exposure (${unit}) · ${res.device.name} · by ${kindLabel} band in the protocol name · ${num(res.n_rows)} exposures · ${shown.length} protocols · ${nCells} bands`
+  const title = `DAP per exposure (${unit}) · ${res.devices.map((d) => d.name).join(' + ')} · ${picked.length ? picked.join(', ') : 'no anatomy picked'} · by ${kindLabel} band · ${num(res.n_rows)} exposures · ${nCells} bands`
     + (res.n_patient_band ? ` · ${num(res.n_patient_band)} banded from the patient's ${kindLabel} (hollow)` : '')
     + (res.n_hidden ? ` · ${num(res.n_hidden)} in bands outside ICRP 135 / RP 185 hidden` : '')
     + (res.n_other_kind ? ` · ${num(res.n_other_kind)} ${res.kind === 'age' ? 'weight' : 'age'}-type exposures not shown` : '')
     + (res.unparsed.length ? ` · ${res.unparsed.length} names not understood` : '');
   const option = (th) => {
     const base = baseOption(th);
-    const colorOf = (a) => { const i = order.indexOf(a); return th.devices[i % th.devices.length]; };
-    const inTop = shown.filter((s) => top.has(s.anatomy));
-    const slot = new Map(inTop.map((s, i) => [s, (i - (inTop.length - 1) / 2) * Math.min(0.8 / Math.max(inTop.length, 1), 0.12)]));
+    // colour: the unit when several are compared; else the projection when one anatomy is shown; else the anatomy
+    const colorOf = (s) => {
+      const i = multiDev ? devIndex.get(s.device_id) : picked.length === 1 ? projections.indexOf(s.projection) : order.indexOf(s.anatomy);
+      return th.devices[Math.max(i, 0) % th.devices.length];
+    };
+    const slot = new Map(shown.map((s, i) => [s, (i - (shown.length - 1) / 2) * Math.min(0.8 / Math.max(shown.length, 1), 0.12)]));
     const nb = res.bands.length;
     const hollow = (c, col) => (c.source === 'name' ? {} : { itemStyle: { color: th.panel, borderColor: col, borderWidth: 2 } });
     const pts = (s) => s.cells.filter((c) => c.n >= minN && c.median > 0).map((c) => ({
-      value: [c.band + (slot.get(s) || 0), c.median * f[0]], s, c, ...hollow(c, colorOf(s.anatomy)) }));
+      value: [c.band + (slot.get(s) || 0), c.median * f[0]], s, c, ...hollow(c, colorOf(s)) }));
     const all = shown.flatMap((s) => s.cells.filter((c) => c.n >= minN && c.p25 > 0).map((c) => c.p25 * f[0]));
     const logMin = all.length ? 10 ** Math.floor(Math.log10(Math.min(...all))) : 0.001;
-    const selected = Object.fromEntries(shown.map((s) => [label(s), top.has(s.anatomy)]));
     const lines = shown.map((s) => {
       const st = projStyle(s.projection);
-      const col = colorOf(s.anatomy);
+      const col = colorOf(s);
       return { name: label(s), type: 'line', connectNulls: true, symbol: st.symbol, symbolSize: 7, data: pts(s),
         lineStyle: { width: 1.5, type: st.dash, color: col }, itemStyle: { color: col }, z: 3 };
     });
     const bars = shown.map((s) => ({
       name: label(s), type: 'custom', silent: true, z: 2, tooltip: { show: false }, encode: { x: 0, y: [1, 2] },
-      itemStyle: { color: colorOf(s.anatomy) },  // the legend takes its colour from the first series of the name
+      itemStyle: { color: colorOf(s) },  // the legend takes its colour from the first series of the name
       data: s.cells.filter((c) => c.n >= minN && c.p25 > 0).map((c) => [c.band + (slot.get(s) || 0), c.p25 * f[0], c.p75 * f[0]]),
       renderItem: (params, api) => {
         const a = api.coord([api.value(0), api.value(1)]); const b = api.coord([api.value(0), api.value(2)]);
-        const color = colorOf(s.anatomy);
+        const color = colorOf(s);
         return { type: 'group', children: [
           { type: 'line', shape: { x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, style: { stroke: color, lineWidth: 2, opacity: 0.55 } },
           { type: 'line', shape: { x1: a[0] - 3, y1: a[1], x2: a[0] + 3, y2: a[1] }, style: { stroke: color, lineWidth: 1.5 } },
           { type: 'line', shape: { x1: b[0] - 3, y1: b[1], x2: b[0] + 3, y2: b[1] }, style: { stroke: color, lineWidth: 1.5 } }] };
       } }));
     const drl = { name: 'DRL', type: 'scatter', symbol: 'rect', symbolSize: [10, 3], itemStyle: { color: th.ref }, z: 4,
-      data: shown.filter((s) => top.has(s.anatomy)).flatMap((s) => s.cells.filter((c) => c.n >= minN && c.drl != null)
+      data: shown.flatMap((s) => s.cells.filter((c) => c.n >= minN && c.drl != null)
         .map((c) => ({ value: [c.band + (slot.get(s) || 0), c.drl * f[0]], s, c, drl: true }))) };
-    return { ...base, legend: { ...base.legend, data: [...shown.map(label), 'DRL'], selected: { ...selected, DRL: true },
-      left: 0, right: 0 },
-      grid: { left: 8, right: 20, top: 56, bottom: nb > 12 ? 78 : 52, containLabel: true },
+    return { ...base, legend: { ...base.legend, data: [...shown.map(label), 'DRL'], left: 0, right: 0 },
+      grid: { left: 8, right: 20, top: 40, bottom: nb > 12 ? 78 : 52, containLabel: true },
       tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => {
         const { s, c } = p.data || {};
         if (!c) return '';
-        return `${esc(label(s))} · ${esc(res.bands[c.band].label)}<br>median ${smart(c.median * f[0])} ${esc(unit)} · P25–P75 ${smart(c.p25 * f[0])}–${smart(c.p75 * f[0])}<br>n ${c.n}${c.drl != null ? ` · DRL ${smart(c.drl * f[0])}` : ''}<br><span style="opacity:.7">${esc(s.prefixes.join(' '))}${c.source === 'name' ? '' : `${s.prefixes.length ? ' · ' : ''}band from the patient's ${kindLabel}${c.source === 'mixed' ? ` (${c.n_patient} of ${c.n})` : ''}`}</span>`;
+        return `${esc(s.device)} · ${esc([s.anatomy, s.projection].filter(Boolean).join(' '))} · ${esc(res.bands[c.band].label)}<br>median ${smart(c.median * f[0])} ${esc(unit)} · P25–P75 ${smart(c.p25 * f[0])}–${smart(c.p75 * f[0])}<br>n ${c.n}${c.drl != null ? ` · DRL ${smart(c.drl * f[0])}` : ''}<br><span style="opacity:.7">${esc(s.prefixes.join(' '))}${c.source === 'name' ? '' : `${s.prefixes.length ? ' · ' : ''}band from the patient's ${kindLabel}${c.source === 'mixed' ? ` (${c.n_patient} of ${c.n})` : ''}`}</span>`;
       } },
       xAxis: { type: 'value', min: -0.5, max: nb - 0.5, interval: 1, name: res.kind === 'age' ? 'Age band in the protocol name' : 'Weight band in the protocol name (kg)', nameLocation: 'middle', nameGap: nb > 12 ? 58 : 40,
         ...base._axis, splitLine: { show: false }, axisTick: { ...base._axis.axisTick, customValues: res.bands.map((_, i) => i) },
@@ -266,19 +316,14 @@ async function buildSize(cfg, q) {
         axisLine: { ...base._axis.axisLine, onZero: false } },
       series: [...bars, ...lines, drl] };
   };
-  // All / None / Invert for the series (the legend's own selector has no "None")
-  const toolbar = (chart) => {
-    const names = shown.map(label);
-    const act = (fn) => () => { const inst = chart.instance; if (inst) for (const n of names) fn(inst, n); };
-    const isOn = (inst, n) => inst.getOption().legend?.[0]?.selected?.[n] !== false;
-    const set = (on) => act((inst, n) => inst.dispatchAction({ type: on ? 'legendSelect' : 'legendUnSelect', name: n }));
-    const invert = act((inst, n) => inst.dispatchAction({ type: isOn(inst, n) ? 'legendUnSelect' : 'legendSelect', name: n }));
-    return h('div', { class: 'legend-actions', role: 'group', 'aria-label': 'Show protocols' },
-      h('button', { class: 'btn xs', type: 'button', onclick: set(true) }, 'All'),
-      h('button', { class: 'btn xs', type: 'button', onclick: set(false) }, 'None'),
-      h('button', { class: 'btn xs', type: 'button', onclick: invert }, 'Invert'));
+  // the anatomy picker: its list (with the exposure counts) comes with the data
+  const mountControls = (opts, update) => {
+    const slotEl = opts.querySelector('.anat-slot');
+    if (!slotEl) return;
+    const items = res.anatomies.map((a) => ({ value: a.name, label: `${a.name} (${num(a.n)})` }));
+    slotEl.replaceWith(multiSelect('Anatomy', items, picked, (v) => update({ anatomies: v }), { single: multiDev }));
   };
-  return { title, option, csv, summary: null, unit, height: '460', toolbar };
+  return { title, option, csv, summary: null, unit, height: '460', mountControls };
 }
 
 async function buildDrl(cfg, q) {
