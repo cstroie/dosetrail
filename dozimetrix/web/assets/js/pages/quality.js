@@ -9,9 +9,11 @@ import { h, clear, append } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { quality, studyHref, importSizes } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
+import { adminDefaults, defaultsActions } from '../core/page-defaults.js';
 
 const page = document.getElementById('page');
-let q = prefs.get('quality.q') || 'origin:local date:90d';
+const defaults = await adminDefaults('quality');
+let q = prefs.get('quality.q') || defaults.value.q || 'origin:local date:90d';
 
 function pct(x) {
   if (x == null) return h('span', { class: 'muted' }, '—');
@@ -25,7 +27,9 @@ function render() {
   qb.addEventListener('query-change', (e) => { q = e.detail; prefs.set('quality.q', q); load(); });
   clear(page).append(
     adminTabs('quality.html'),
-    qb, h('div', { id: 'qa' }), sizesPanel());
+    h('div', { class: 'row', style: { 'align-items': 'flex-start' } }, h('div', { style: { flex: '1 1 600px' } }, qb),
+      ...defaultsActions('quality', { admin: defaults.admin, prefKeys: ['quality.q'], current: () => ({ q }) })),
+    h('div', { id: 'qa' }), sizesPanel());
   load();
 }
 

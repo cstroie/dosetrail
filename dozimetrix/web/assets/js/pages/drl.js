@@ -8,6 +8,7 @@ import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart, shown, shownUnit } from '../core/format.js';
 import { drlSets, drlCompare, drlDownloadUrl } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
+import { adminDefaults, defaultsActions } from '../core/page-defaults.js';
 
 const page = document.getElementById('page');
 const STATUS = {
@@ -20,11 +21,13 @@ const STATUS = {
 };
 const QUANTITY = { dlp: 'DLP', dlp_study: 'DLP (study)', ctdivol: 'CTDIvol', dap: 'DAP', kae: 'Ka,e', mgd: 'MGD', activity: 'Activity' };
 
+const defaults = await adminDefaults('drl');
+const D = { q: 'origin:local date:365d', set: 'ro-ms838-2025', by: 'facility', minN: 20, ...defaults.value };
 const state = {
-  q: prefs.get('drl.q') || 'origin:local date:365d',
-  set: new URLSearchParams(location.search).get('set') || prefs.get('drl.set') || 'ro-ms838-2025',
-  by: prefs.get('drl.by') || 'facility',
-  minN: prefs.get('drl.minN') || 20,
+  q: prefs.get('drl.q') || D.q,
+  set: new URLSearchParams(location.search).get('set') || prefs.get('drl.set') || D.set,
+  by: prefs.get('drl.by') || D.by,
+  minN: prefs.get('drl.minN') || D.minN,
   estimated: false,
   showEmpty: false,
   group: prefs.get('drl.group') || null,
@@ -79,6 +82,8 @@ async function render() {
       h('label', { class: 'chk', title: 'Weight bands (RP 185 body exams): also use weights estimated from the growth charts (median for age and sex)' },
         h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; load(); } }), ' estimated weights'), empty,
       h('span', { class: 'spacer' }),
+      ...defaultsActions('drl', { admin: defaults.admin, prefKeys: ['drl.q', 'drl.set', 'drl.by', 'drl.minN'],
+        current: () => ({ q: state.q, set: state.set, by: state.by, minN: state.minN }) }),
       h('button', { class: 'btn', type: 'button', title: 'Per room and facility: n, median, quartiles, DRL ratio (XLSX)', onclick: download('summary') }, 'ICRP 135 summary'),
       h('button', { class: 'btn', type: 'button', title: 'One row per study and DRL exam, pseudonymous, with a data dictionary (XLSX)', onclick: download('dataset') }, 'DRL dataset')),
     qb,

@@ -7,11 +7,15 @@ import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart, dap, dapUnit, mgy } from '../core/format.js';
 import { alertList, alertStudies, alertSummary, ackAlerts, studyHref } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
+import { adminDefaults, defaultsActions } from '../core/page-defaults.js';
 import { live } from '../core/live.js';
 
 const page = document.getElementById('page');
 const PAGE = 100;
-const f = { status: 'open', rule: '', level: '', modality: '', since: '', until: '', ...(prefs.get('alerts.filters') || {}) };
+const defaults = await adminDefaults('alerts');
+// the page's filters before the user's own: built-in, then the admin's default for everyone
+const BASE = { status: 'open', rule: '', level: '', modality: '', since: '', until: '', ...defaults.value };
+const f = { ...BASE, ...(prefs.get('alerts.filters') || {}) };
 let offset = 0;
 const selected = new Set();
 // new or acknowledged alerts elsewhere (checked once a minute): offer a refresh, never jump
@@ -24,7 +28,9 @@ const params = () => Object.fromEntries(Object.entries(f).filter(([, v]) => v !=
 async function load() {
   fresh.style.display = 'none';
   seen = null;  // the next event is the new baseline (our own acknowledgements included)
-  prefs.set('alerts.filters', f);
+  // only what the user changed is theirs: a later default from an admin still reaches the rest
+  const own = Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== BASE[k]));
+  prefs.set('alerts.filters', Object.keys(own).length ? own : undefined);
   selected.clear();
   let sum;
   let rows;
@@ -120,7 +126,9 @@ function draw(sum, rows) {
       select('Level', 'level', [['', 'all'], ['alert', 'alert'], ['warn', 'warning']]),
       select('Modality', 'modality', [['', 'all'], ...['CT', 'DX', 'CR', 'RF', 'XA', 'MG'].map((m) => [m, m])]),
       ...dates,
-      h('a', { class: 'btn ghost', href: 'rules.html' }, 'Rules…'), fresh),
+      h('a', { class: 'btn ghost', href: 'rules.html' }, 'Rules…'),
+      ...defaultsActions('alerts', { admin: defaults.admin, prefKeys: ['alerts.filters'],
+        current: () => ({ status: f.status, rule: f.rule, level: f.level, modality: f.modality }) }), fresh),
     f.status !== 'acknowledged' ? ackBar : null,
     h('div', { class: 'panel' }, h('div', { class: 'grid-scroll' }, h('table', { class: 'grid' },
       h('thead', {}, h('tr', {}, h('th', {}, all), ['Study date', 'Kind', 'Study · rule', 'Mod.', 'Value · limit', 'Status'].map((c, i) => h('th', { class: i === 4 ? 'r' : '' }, c)))), body))),
