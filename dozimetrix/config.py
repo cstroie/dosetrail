@@ -30,6 +30,7 @@ class Settings:
     web_port: int = 8104
     web_trusted_proxies: list[str] = field(default_factory=lambda: ["127.0.0.1"])
     web_allowed_hosts: list[str] = field(default_factory=list)  # empty = any Host header
+    result_cache_s: float = 120.0  # heavy chart / DRL / statistics answers are reused this long; 0 = off
     max_upload_mb: float = 50.0  # request bodies under /api/ (CSV imports, survey uploads)
     # DICOM networking
     dicom_aet: str = "DOZIMETRIX"
@@ -98,6 +99,7 @@ def load_settings() -> Settings:
             s.web_trusted_proxies = list(web.get("trusted_proxies", s.web_trusted_proxies))
             s.web_allowed_hosts = list(web.get("allowed_hosts", s.web_allowed_hosts))
             s.max_upload_mb = float(web.get("max_upload_mb", s.max_upload_mb))
+            s.result_cache_s = float(web.get("result_cache_s", s.result_cache_s))
             dcm = raw.get("dicom", {})
             s.dicom_aet = dcm.get("aet", s.dicom_aet)
             s.dicom_port = int(dcm.get("port", s.dicom_port))

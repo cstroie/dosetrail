@@ -31,6 +31,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import delete, func, insert, select, update
@@ -63,14 +64,19 @@ EVENT_FIELDS = ("protocol", "anatomy")
 BATCH = 2000
 
 
+@lru_cache(maxsize=16384)  # a unit has a few hundred distinct texts; they come back thousands of times
+def _normalise(text: str) -> str:
+    t = unicodedata.normalize("NFKD", text)
+    t = "".join(c for c in t if not unicodedata.combining(c)).casefold()
+    t = re.sub(r"[^0-9a-z]+", " ", t).strip()
+    return f" {t} " if t else ""
+
+
 def normalise(text: str | None) -> str:
     """' w035 torace a p 10kg ' – lower case, no accents, alphanumerics separated by spaces."""
     if not text:
         return ""
-    t = unicodedata.normalize("NFKD", str(text))
-    t = "".join(c for c in t if not unicodedata.combining(c)).casefold()
-    t = re.sub(r"[^0-9a-z]+", " ", t).strip()
-    return f" {t} " if t else ""
+    return _normalise(text if isinstance(text, str) else str(text))
 
 
 _VIEW_FIELD = [
@@ -134,6 +140,7 @@ def nm_text(study: dict, events: list[dict]) -> str:
     return f" {text.strip()} " if text.strip() else ""
 
 
+@lru_cache(maxsize=16384)
 def view_code(view: str | None, protocol: str | None) -> str | None:
     """Projection from the DICOM view (preferred) or the protocol name."""
     v = normalise(view)

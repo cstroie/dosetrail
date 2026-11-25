@@ -348,6 +348,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     install_hardening(app, settings)
     app.state.live_streams = {}
+    from .resultcache import ResultCache
+
+    app.state.result_cache = rc = ResultCache(settings.result_cache_s)
     throttle = LoginThrottle()
     app.state.login_throttle = throttle
 
@@ -802,8 +805,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
         start, end = _period(start, end)
         try:
-            out = localdrl.propose(session, _period_conds(q, start, end, session), grid,
-                                   max(min_n, 1), estimated, rule, max(p75_n, 1), scope)
+            out = rc.get(session, "local-drl-propose",
+                         (q, start, end, grid, min_n, estimated, rule, p75_n, scope),
+                         lambda: localdrl.propose(session, _period_conds(q, start, end, session),
+                                                  grid, max(min_n, 1), estimated, rule,
+                                                  max(p75_n, 1), scope))
         except localdrl.LocalDRLError as e:
             raise HTTPException(400, str(e)) from e
         return {**out, "start": start.isoformat(), "end": end.isoformat(), "q": q}
@@ -896,7 +902,9 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         from .. import drl as drl_mod
 
         try:
-            return data.drl_compare(session, q, clock(), set, by, max(min_n, 1), estimated)
+            return rc.get(session, "drl-compare", (q, set, by, min_n, estimated),
+                          lambda: data.drl_compare(session, q, clock(), set, by, max(min_n, 1),
+                                                   estimated))
         except drl_mod.DRLError as e:
             raise HTTPException(400, str(e)) from e
 
@@ -1144,11 +1152,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                        user: User = Depends(current_user), session: Session = Depends(db)):
         from .. import quality
 
-        conds = data.checked_conditions(q, clock(), data.overrides(session))
-        out = quality.run(session, conds, min(max(limit, 1), 1000),
-                          names=data.device_names(session), physical=data._physical_ids(session))
-        out["q"] = q
-        return out
+        def compute():
+            conds = data.checked_conditions(q, clock(), data.overrides(session))
+            out = quality.run(session, conds, min(max(limit, 1), 1000),
+                              names=data.device_names(session), physical=data._physical_ids(session))
+            out["q"] = q
+            return out
+
+        return rc.get(session, "quality", (q, limit), compute)
 
     @app.post("/api/studies/{study_id}/identify")
     def identify(study_id: int, request: Request, user: User = Depends(current_user),
@@ -1184,8 +1195,11 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         from .. import stats as st
 
         try:
-            return data.stats(session, q, clock(), metric, by, system, exam, age_scheme,
-                              weight_scheme, min(max(bins, 0), 100), max(min_n, 1))
+            return rc.get(session, "stats", (q, metric, by, system, exam, age_scheme, weight_scheme,
+                                             bins, min_n),
+                          lambda: data.stats(session, q, clock(), metric, by, system, exam,
+                                             age_scheme, weight_scheme, min(max(bins, 0), 100),
+                                             max(min_n, 1)))
         except st.StatsError as e:
             raise HTTPException(400, str(e)) from e
 
@@ -1198,19 +1212,20 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         except ValueError as e:
             raise HTTPException(400, "device must be an id or a comma-separated list of ids") from e
         try:
-            return data.size_bands(session, q, clock(), ids, kind, other)
+            return rc.get(session, "size-bands", (q, tuple(ids), kind, other),
+                          lambda: data.size_bands(session, q, clock(), ids, kind, other))
         except data.QueryError as e:
             raise HTTPException(400, str(e)) from e
 
     @app.get("/api/stats/ct/acquisitions")
     def ct_acquisitions(q: str = "", user: User = Depends(current_user),
                         session: Session = Depends(db)):
-        return data.ct_acquisitions(session, q, clock())
+        return rc.get(session, "ct-acquisitions", (q,), lambda: data.ct_acquisitions(session, q, clock()))
 
     @app.get("/api/stats/{group}/rows")
     def group_rows(group: str, q: str = "", user: User = Depends(current_user),
                    session: Session = Depends(db)):
-        return data.group_rows(session, q, clock(), group)
+        return rc.get(session, "group-rows", (group, q), lambda: data.group_rows(session, q, clock(), group))
 
     # ------------------------------------------------------------------ classification
 
@@ -2657,6 +2672,10 @@ _DUMMY_HASH = hash_password(secrets.token_urlsafe(16))  # verified against for u
 
 def _audit(session: Session, request: Request, user: User | None, action: str,
            target: str | None, detail: dict | None = None) -> None:
+    cache = getattr(getattr(request, "app", None), "state", None)
+    cache = getattr(cache, "result_cache", None)
+    if cache is not None:  # something changed through the UI: the heavy answers are recomputed
+        cache.clear()
     session.add(AuditLog(user_id=user.id if user else None,
                          username=user.username if user else None, action=action,
                          target=target, detail=detail,

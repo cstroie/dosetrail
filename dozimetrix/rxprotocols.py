@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 from .classify import normalise
 
@@ -83,6 +84,7 @@ def _weight(t: str) -> tuple[float, float, str, tuple[int, int]] | None:
     return None
 
 
+@lru_cache(maxsize=8192)  # a unit has a few hundred distinct names; RxName is frozen
 def parse(protocol: str | None) -> RxName | None:
     """The parts of one radiography protocol name, or None for an empty name."""
     raw = (protocol or "").strip()

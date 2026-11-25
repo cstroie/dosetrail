@@ -39,8 +39,8 @@ _PROJ = {"LL": "LAT", "TG": "TG", "AX": "AX"}
 _PREFIX = ("radiografie ", "radiografia ")
 
 
-_parse = lru_cache(maxsize=4096)(rxprotocols.parse)  # a unit has a few hundred distinct names
-_view = lru_cache(maxsize=4096)(classify.view_code)
+_parse = rxprotocols.parse  # cached there, as are classify.view_code and anatomy_label
+_view = classify.view_code
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,7 @@ class Group:
         return " · ".join(x for x in (" ".join(x for x in (self.anatomy, self.projection) if x), self.label) if x)
 
 
+@lru_cache(maxsize=1024)
 def anatomy_label(meaning: str | None) -> str:
     """"Radiografie coloană lombară" -> "Coloană lombară"."""
     m = (meaning or "").strip()

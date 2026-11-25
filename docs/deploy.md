@@ -92,6 +92,10 @@ systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
 
 **Admin → Maintenance.** Admins start `maintain` (last N days, or every study), `classify` (same scope) and `recompute` from the web and watch them: the page shows the running job, its last lines and, below, the tasks of the last periodic run. The server does not run a job itself: it starts the command as its own detached process (`<data_dir>/jobs.log` keeps its output), so a restart of the web service does not kill it. All three commands take one lock, `<data_dir>/maintain.lock`, so only one job runs at a time, wherever it was started (web, cron, systemd timer, a shell); a second one exits with status 75 (the page answers 409). Do **not** wrap them in `flock` on the same file: the command would then wait for its own parent. The state of the last job (running, done, failed, who started it, its result) is in `app_setting` `maintenance.job`; a job that says it runs but holds no lock shows as interrupted (the process died). Starting a job is audit-logged (`maintenance.start`). Without systemd, a cron line is enough: `30 3 * * * cd /path/to/dozimetrix && .venv/bin/dozimetrix maintain >> var/maintain.log 2>&1`.
 
+## Reused answers (result cache)
+
+The heavy aggregate endpoints (chart rows `/api/stats/{group}/rows`, `/api/stats`, `/api/charts/size-bands`, `/api/drl/compare`, `/api/drl/local/propose`, `/api/quality`) take 0.4 – 3.5 s at 600k studies, and every open chart page asks them. The server keeps each answer for `[web] result_cache_s` seconds (default 120; `0` switches it off) and computes it once however many people ask at the same time. None of them depends on who asks. An action done through the web UI (anything in the audit log) empties the cache at once; new studies, a weight from the HIS and the nightly reclassify are not watched, so a chart can be up to that many seconds behind. It holds at most 48 answers / 400 000 rows in memory, and does not survive a restart.
+
 ## Growth tables (setup step)
 - Run `dozimetrix growth install` once; it downloads the weight-for-age tables into `<data_dir>/growth`:
   - the WHO Child Growth Standards for 0–5 years;

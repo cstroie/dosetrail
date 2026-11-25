@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 
 from sqlalchemy import and_, case, or_, select
 from sqlalchemy.orm import Session, aliased
@@ -192,6 +193,7 @@ class Item:
 PROJECTIONS = {"AP": "AP/PA", "PA": "AP/PA", "LL": "LL"}
 
 
+@lru_cache(maxsize=16384)  # called per exposure; a unit has a few hundred distinct (view, protocol)
 def projection_of(view: str | None, protocol: str | None) -> str:
     from .classify import view_code
 

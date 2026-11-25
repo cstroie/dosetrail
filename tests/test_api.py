@@ -1208,3 +1208,22 @@ def test_page_html_is_read_again_only_when_the_file_changes(client, monkeypatch)
     for _ in range(3):
         assert client.get("/studies.html").status_code == 200
     assert len(reads) <= 1  # at most the first request reads the file
+
+
+def test_heavy_endpoints_reuse_their_answer_until_something_changes(client, monkeypatch):
+    from dozimetrix import jobs  # noqa: F401 - app import order
+    from dozimetrix.api import data
+
+    calls = []
+    real = data.group_rows
+    monkeypatch.setattr(data, "group_rows", lambda *a, **k: calls.append(1) or real(*a, **k))
+    client.app.state.result_cache.clear()
+    login(client, "viewer", "viewer-pass-1")
+    first = client.get("/api/stats/DX/rows", params={"q": "modality:DX"}).json()
+    again = client.get("/api/stats/DX/rows", params={"q": "modality:DX"}).json()
+    assert first == again and len(calls) == 1
+    client.get("/api/stats/DX/rows", params={"q": "modality:DX date:90d"})  # another query
+    assert len(calls) == 2
+    login(client, "boss", "boss-pass-123")  # a login is audited: the answers are recomputed
+    client.get("/api/stats/DX/rows", params={"q": "modality:DX"})
+    assert len(calls) == 3
