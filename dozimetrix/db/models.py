@@ -543,6 +543,21 @@ class UserPref(Base):
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
     __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_pref"),)
 
+class SharedView(Base):
+    """A view an admin publishes for everyone: a chart workspace (``{q, panels}``) or a saved
+    study query (``{q}``). Users keep their own next to these in ``UserPref``."""
+
+    __tablename__ = "shared_view"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(AsciiId(32))  # workspace | study_query
+    name: Mapped[str] = mapped_column(Text(120))
+    value: Mapped[dict | list | None] = mapped_column(JSONType)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("app_user.id", ondelete="SET NULL"))
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    __table_args__ = (UniqueConstraint("kind", "name", name="uq_shared_view"),)
+
 class AuditLog(Base):
     """Append-only record of sensitive actions (identifier reveal, exports, admin changes)."""
 

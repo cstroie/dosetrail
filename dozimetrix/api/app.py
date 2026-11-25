@@ -459,8 +459,8 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def me(user: User = Depends(current_user)):
         return _me(user)
 
-    # a user's own settings on the server (chart workspaces): only "workspace*" keys, small
-    PREF_KEY = re.compile(r"^workspace[A-Za-z0-9._ \-]{0,100}$")
+    # a user's own settings on the server (chart workspaces, saved study queries), small
+    PREF_KEY = re.compile(r"^(workspace[A-Za-z0-9._ \-]{0,100}|studies\.saved)$")
 
     @app.get("/api/me/prefs/{key}")
     def get_pref(key: str, user: User = Depends(current_user),
@@ -490,6 +490,117 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         row.updated_at = clock()
         session.commit()
         return {"key": key, "saved": True}
+
+    # ------------------------------------------------------------------ shared views
+    # Workspaces and study queries an admin publishes for everyone (users keep their own in
+    # user_pref). Everyone reads them; only admins write, and every write is audited.
+
+    VIEW_KINDS = {"workspace", "study_query"}
+
+    def _view_json(v) -> dict:
+        return {"id": v.id, "kind": v.kind, "name": v.name, "value": v.value,
+                "position": v.position, "updated_at": v.updated_at}
+
+    def _view_body(body: dict, partial: bool) -> dict:
+        out = {}
+        if "kind" in body or not partial:
+            if body.get("kind") not in VIEW_KINDS:
+                raise HTTPException(400, "kind must be workspace or study_query")
+            out["kind"] = body["kind"]
+        if "name" in body or not partial:
+            name = str(body.get("name") or "").strip()
+            if not name or len(name) > 120:
+                raise HTTPException(400, "a name of 1 to 120 characters is required")
+            out["name"] = name
+        if "value" in body or not partial:
+            value = body.get("value")
+            if not isinstance(value, dict) or not isinstance(value.get("q", ""), str):
+                raise HTTPException(400, "value must be an object with a text q")
+            if len(json.dumps(value)) > 256_000:
+                raise HTTPException(413, "view too large")
+            out["value"] = value
+        if "position" in body:
+            out["position"] = int(body["position"] or 0)
+        return out
+
+    def _view_clash(session: Session, kind: str, name: str, skip: int | None = None) -> None:
+        from ..db.models import SharedView
+
+        other = session.scalar(select(SharedView).filter_by(kind=kind, name=name))
+        if other is not None and other.id != skip:
+            raise HTTPException(409, f"a shared view named “{name}” already exists")
+
+    @app.get("/api/views")
+    def list_views(kind: str | None = None, user: User = Depends(current_user),
+                   session: Session = Depends(db)):
+        from ..db.models import SharedView
+
+        stmt = select(SharedView).order_by(SharedView.position, SharedView.name)
+        if kind:
+            stmt = stmt.filter_by(kind=kind)
+        return {"views": [_view_json(v) for v in session.scalars(stmt)]}
+
+    @app.post("/api/views")
+    def create_view(request: Request, body: dict = Body(...),  # noqa: B008
+                    user: User = Depends(admin_user), session: Session = Depends(db)):
+        from ..db.models import SharedView
+
+        fields = _view_body(body, partial=False)
+        _view_clash(session, fields["kind"], fields["name"])
+        v = SharedView(**fields, created_by=user.id, updated_by=user.id, updated_at=clock())
+        session.add(v)
+        session.flush()
+        _audit(session, request, user, "view.create", f"{v.kind}:{v.id}", {"name": v.name})
+        session.commit()
+        return _view_json(v)
+
+    @app.put("/api/views/{view_id}")
+    def update_view(view_id: int, request: Request, body: dict = Body(...),  # noqa: B008
+                    user: User = Depends(admin_user), session: Session = Depends(db)):
+        from ..db.models import SharedView
+
+        v = session.get(SharedView, view_id)
+        if v is None:
+            raise HTTPException(404, "no such view")
+        fields = _view_body({k: x for k, x in body.items() if k != "kind"}, partial=True)
+        if "name" in fields:
+            _view_clash(session, v.kind, fields["name"], skip=v.id)
+        for k, x in fields.items():
+            setattr(v, k, x)
+        v.updated_by, v.updated_at = user.id, clock()
+        _audit(session, request, user, "view.update", f"{v.kind}:{v.id}",
+               {"name": v.name, "fields": sorted(fields)})
+        session.commit()
+        return _view_json(v)
+
+    @app.delete("/api/views/{view_id}")
+    def delete_view(view_id: int, request: Request, user: User = Depends(admin_user),
+                    session: Session = Depends(db)):
+        from ..db.models import SharedView
+
+        v = session.get(SharedView, view_id)
+        if v is None:
+            raise HTTPException(404, "no such view")
+        _audit(session, request, user, "view.delete", f"{v.kind}:{v.id}", {"name": v.name})
+        session.delete(v)
+        session.commit()
+        return {"deleted": view_id}
+
+    @app.post("/api/views/order")
+    def order_views(request: Request, body: dict = Body(...),  # noqa: B008
+                    user: User = Depends(admin_user), session: Session = Depends(db)):
+        from ..db.models import SharedView
+
+        ids = [int(i) for i in body.get("ids") or []]
+        rows = {v.id: v for v in session.scalars(
+            select(SharedView).filter_by(kind=body.get("kind")))}
+        if set(ids) != set(rows):
+            raise HTTPException(400, "ids must list every shared view of that kind once")
+        for pos, i in enumerate(ids):
+            rows[i].position = pos
+        _audit(session, request, user, "view.order", body.get("kind"), {"ids": ids})
+        session.commit()
+        return {"ordered": len(ids)}
 
     # ------------------------------------------------------------------ data
 

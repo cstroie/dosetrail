@@ -123,6 +123,53 @@ def test_workspaces_are_kept_per_user(client):
     assert client.get("/api/me/prefs/workspace.Audit").json()["value"] is None
 
 
+def test_study_queries_are_kept_per_user(client):
+    login(client, "viewer", "viewer-pass-1")
+    saved = [{"name": "CT kids", "q": "modality:CT age:<18"}]
+    assert client.put("/api/me/prefs/studies.saved", json={"value": saved}).status_code == 200
+    assert client.get("/api/me/prefs/studies.saved").json()["value"] == saved
+    assert client.get("/api/me/prefs/studies.other").status_code == 400
+
+
+def test_shared_views_admin_writes_everyone_reads(client):
+    login(client, "viewer", "viewer-pass-1")
+    body = {"kind": "study_query", "name": "CT kids", "value": {"q": "modality:CT age:<18"}}
+    assert client.post("/api/views", json=body).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    assert client.post("/api/views", json={**body, "kind": "theme"}).status_code == 400
+    assert client.post("/api/views", json={**body, "name": " "}).status_code == 400
+    big = {**body, "value": {"q": "x" * 300_000}}
+    assert client.post("/api/views", json=big).status_code == 413
+    a = client.post("/api/views", json=body).json()
+    assert client.post("/api/views", json=body).status_code == 409
+    b = client.post("/api/views",
+                    json={**body, "name": "DX all", "value": {"q": "modality:DX"}}).json()
+    ws = client.post("/api/views", json={"kind": "workspace", "name": "Audit CT",
+                                         "value": {"q": "date:90d", "panels": []}}).json()
+    assert client.put(f"/api/views/{b['id']}", json={"name": "CT kids"}).status_code == 409
+    renamed = client.put(f"/api/views/{b['id']}", json={"name": "DX, all"}).json()
+    assert renamed["name"] == "DX, all"
+    order = {"kind": "study_query", "ids": [b["id"]]}
+    assert client.post("/api/views/order", json=order).status_code == 400
+    order["ids"].append(a["id"])
+    assert client.post("/api/views/order", json=order).status_code == 200
+    login(client, "viewer", "viewer-pass-1")
+    views = client.get("/api/views", params={"kind": "study_query"}).json()["views"]
+    names = [v["name"] for v in views]
+    assert names == ["DX, all", "CT kids"]
+    assert [v["name"] for v in client.get("/api/views").json()["views"]].count("Audit CT") == 1
+    assert client.put(f"/api/views/{a['id']}", json={"name": "x"}).status_code == 403
+    assert client.delete(f"/api/views/{a['id']}").status_code == 403
+    login(client, "boss", "boss-pass-123")
+    for v in (a, b, ws):
+        assert client.delete(f"/api/views/{v['id']}").status_code == 200
+    assert client.delete(f"/api/views/{a['id']}").status_code == 404
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        actions = {x.action for x in s.scalars(select(AuditLog))}
+    assert {"view.create", "view.update", "view.order", "view.delete"} <= actions
+
+
 def test_modality_profiles(client):
     login(client, "viewer", "viewer-pass-1")
     profs = {p["code"]: p for p in client.get("/api/modalities").json()}
