@@ -158,7 +158,7 @@ class Rules:
         with path.open("rb") as fh:
             raw = tomllib.load(fh)
         fams = {f: [(r["code"], re.compile(r["match"])) for r in raw.get(f, [])]
-                for f in ("rx", "rf", "ct", "xa", "nm", "nmh")}
+                for f in ("rx", "rx_last", "rf", "ct", "xa", "nm", "nmh")}
         con = {k: re.compile(v) for k, v in raw.get("contrast", {}).items()}
         return cls(fams, con)
 
@@ -248,6 +248,16 @@ class Classifier:
                 return hit
         return None
 
+    def last_resort(self, family: str, pairs: Iterable[tuple[str, str | None]]):
+        """Vague-name rules (``[[<family>_last]]``), tried when nothing else matched any text."""
+        for _, raw in pairs:
+            text = normalise(raw)
+            code = self.rules.match(f"{family}_last", text) if text else None
+            cid = self.code_id.get((NOMENCLATOR[family], code)) if code else None
+            if cid:
+                return cid, None
+        return None
+
     def drl_codes(self, code_id: int, view: str | None) -> list[int]:
         return [dst for views, dst in self.crosswalk.get(code_id, ())
                 if views is None or (view is not None and view in views)]
@@ -287,8 +297,9 @@ class Classifier:
         if family == "rx":
             found: dict[int, int | None] = {}
             for e in events:
-                hit = self.first(family, [("protocol", e.get("protocol")),
-                                          ("anatomy", e.get("anatomy")), *study_pairs])
+                pairs = [("protocol", e.get("protocol")), ("anatomy", e.get("anatomy")),
+                         *study_pairs]
+                hit = self.first(family, pairs) or self.last_resort(family, pairs)
                 if not hit:
                     continue
                 cid, mid = hit
@@ -439,12 +450,12 @@ def run(session: Session, study_ids: Iterable[int] | None = None,
             select(*_STUDY_COLS).where(where(Study.id, chunk)))]
         if not studies:
             continue
-        ids = [s["id"] for s in studies]
+        sids = [s["id"] for s in studies]  # not `ids`: the chunk generator slices that list
         manual = set(conn.scalars(select(Classification.study_id).where(
-            Classification.study_id.in_(ids), Classification.mapping_id.is_(None),
+            Classification.study_id.in_(sids), Classification.mapping_id.is_(None),
             Classification.status == ClassificationStatus.confirmed)))
         events: dict[int, list[dict]] = defaultdict(list)
-        for r in conn.execute(select(*_EVENT_COLS).where(Event.study_id.in_(ids))
+        for r in conn.execute(select(*_EVENT_COLS).where(Event.study_id.in_(sids))
                               .order_by(Event.id)):
             events[r.study_id].append(dict(r._mapping))
         rows, contrast = [], []
@@ -459,7 +470,7 @@ def run(session: Session, study_ids: Iterable[int] | None = None,
                   else "unclassified"] += 1
             if res.contrast:
                 contrast.append({"sid": s["id"], "cm": res.contrast})
-        todo = [i for i in ids if i not in manual]
+        todo = [i for i in sids if i not in manual]
         conn.execute(delete(Classification).where(Classification.study_id.in_(todo)))
         if rows:
             conn.execute(insert(Classification), rows)

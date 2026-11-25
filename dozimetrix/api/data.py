@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from collections import Counter, defaultdict
 
-from sqlalchemy import and_, asc, desc, func, select
+from sqlalchemy import and_, asc, desc, func, literal, select
 from sqlalchemy.orm import Session
 
 from .. import modality_profiles
@@ -659,7 +659,8 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
     fields = _EVENT_FIELDS if per_event else _STUDY_FIELDS
     cols = [c for c, _ in fields.values()]
     base = [Study.device_id, Study.weight_kg, Study.age_days, Study.study_datetime,
-            Study.study_description]
+            Study.study_description, Study.weight_source,
+            Event.view if per_event else literal(None)]
     if per_event:
         stmt = (select(Study.id, Event.id, *base, Event.protocol, Event.event_datetime, *cols)
                 .join(Study, Study.id == Event.study_id))
@@ -673,8 +674,13 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
     refs = _NationalDRL(session, [r[0] for r in rows], [r[1] for r in rows] if per_event else [])
     quantity = {"DX": ("dap", "dap"), "RF": ("dap_total", "dap"), "XA": ("dap_total", "dap"),
                 "NM": ("activity", "activity"), "PT": ("activity", "activity")}.get(prof["code"])
+    rx = None
+    if prof["code"] == "DX":
+        from .. import rxgroup
+
+        rx = (rxgroup.Describer(session), rxgroup.rx_codes(session, [r[1] for r in rows]))
     out = []
-    for sid, eid, did, w, age, st, desc_, proto, t, *vals in rows:
+    for sid, eid, did, w, age, st, desc_, wsrc, view, proto, t, *vals in rows:
         pid = phys.get(did, did)
         r = {"protocol": proto or desc_ or "(none)", "device_id": pid, "device": names.get(pid),
              "weight": w, "age": age_years(age), "time": iso_min(t or st), "drl": {}}
@@ -684,12 +690,121 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
             r["activity_kg"] = _r(r["activity"] / w, 2) if r["activity"] and w else None
         if "kar_total" in r and r["kar_total"] is not None:
             r["kar_total"] = _r(r["kar_total"] * 1000, 1)  # Gy → mGy, as the list shows it
+        if rx is not None:  # radiography: the same anatomy · projection · band on every device
+            g = rx[0].describe(proto, view, rx[1].get(eid), age,
+                               None if wsrc == SizeSource.estimated_reference else w)
+            if g is not None:
+                r.update(anatomy=g.anatomy, projection=g.projection, band=g.label,
+                         band_src=g.source, group=g.name)
         if quantity:  # the national DRL of this exposure's / study's exam and age group
             ref = refs.value(sid, eid if per_event else None, age, quantity[1])
             if ref is not None:
                 r["drl"] = {quantity[0]: ref, "source": {quantity[0]: "OMS 838/2025"}}
         out.append(r)
     return out
+
+
+MIN_CELL = 3  # a band with fewer exposures is drawn but flagged: its quartiles say little
+
+
+def size_bands(session: Session, q: str, now: dt.datetime, device_id: int, kind: str) -> dict:
+    """Radiography DAP per exposure of one device, by size band: for every anatomy and
+    projection (``rxgroup``: the exposure's exam code, so "Skull" and "Craniu" meet), the
+    median and quartiles in each weight band (kind "weight") or age band ("age"). The band
+    is the one written in the protocol name; a protocol that states none (the Discovery's
+    "CRANIU") gets the patient's own weight or age band, and its cells are marked. Every exam
+    has one size type (its name's band, else head = age, the rest = weight) and appears only
+    in that view."""
+    from .. import rxgroup, rxprotocols, stats
+
+    if kind not in ("weight", "age"):
+        raise QueryError("kind must be weight or age")
+    names = device_names(session)
+    if device_id not in names:
+        raise QueryError("unknown device")
+    name = names[device_id]
+    phys = _physical_ids(session)
+    ids = [d for d, p in phys.items() if p == device_id]
+    allowed = {"date", "origin", "weight", "age", "phantom"}  # the device is the one chosen
+    tokens = [t for t in parse(q) if t.key in allowed]
+    _refuse_errors(tokens)
+    conds = conditions(tokens, now, overrides(session))
+    rows = session.execute(
+        select(Event.protocol, Event.dap, Study.id, Event.id, Study.age_days, Study.weight_kg,
+               Study.weight_source, Event.view)
+        .join(Study, Study.id == Event.study_id)
+        .where(Study.device_id.in_(ids), Study.modality.in_(["DX", "CR"]),
+               Event.dap.is_not(None), Event.protocol.is_not(None), *conds)).all()
+    codes = rxgroup.rx_codes(session, [r[3] for r in rows])
+    desc = rxgroup.Describer(session)
+    cells: dict[tuple, dict] = {}
+    unparsed: dict[str, int] = {}
+    other_kind = 0
+    for proto, dap, sid, eid, age, w, wsrc, view in rows:
+        if wsrc == SizeSource.estimated_reference:
+            w = None  # a weight taken from the growth chart says nothing about this patient
+        if desc.own_kind(proto, codes.get(eid)) != kind:
+            other_kind += 1  # a weight exam is not charted by age, nor an age exam by weight
+            continue
+        g = desc.describe(proto, view, codes.get(eid), age, w, kind)
+        if g is None:
+            unparsed[proto] = unparsed.get(proto, 0) + 1
+            continue
+        band = (g.kind, g.lo, g.hi, g.label) if g.kind != "none" else ("none", None, None, "")
+        c = cells.setdefault(((g.anatomy, g.projection), band),
+                             {"dap": [], "ref": [], "prefixes": set(), "patient": 0})
+        c["dap"].append(dap)
+        c["ref"].append((sid, eid, age))
+        c["patient"] += g.source == "patient"
+        if (p := rxprotocols.parse(proto)) and p.prefix:
+            c["prefixes"].add(p.prefix)
+    # The national DRL depends on the patient's age group (OMS 838: <1, 1-4, 5-9, 10-14, 15+):
+    # a cell shows the DRL of the age group most of its exposures belong to, looked up from a
+    # few of them (looking it up for every exposure costs minutes on a busy unit).
+    def group(age):
+        return -1 if age is None else sum(age >= e * 365.25 for e in (1, 5, 10, 15))
+
+    pick: dict[tuple, list] = {}
+    for key, c in cells.items():
+        by_group: dict[int, list] = {}
+        for t in c["ref"]:
+            by_group.setdefault(group(t[2]), []).append(t)
+        pick[key] = sorted(by_group.values(), key=len, reverse=True)
+    sample = [t for gs in pick.values() for g in gs for t in g[:4]]
+    refs = _NationalDRL(session, [t[0] for t in sample], [t[1] for t in sample])
+    for key, c in cells.items():
+        c["drl"] = []
+        for g in pick[key]:  # the biggest age group that has a DRL
+            got = [v for t in g[:4] if (v := refs.value(t[0], t[1], t[2], "dap")) is not None]
+            if got:
+                c["drl"] = got
+                break
+    band_keys = sorted({b for _, b in cells}, key=lambda b: rxprotocols.band_sort_key(b[0], b[1], b[2]))
+    bands = [{"key": i, "label": b[3] or "no band", "lo": b[1], "hi": None if b[2] == rxprotocols.INF else b[2]}
+             for i, b in enumerate(band_keys)]
+    index = {b: i for i, b in enumerate(band_keys)}
+    series: dict[tuple, dict] = {}
+    for (sk, b), c in cells.items():
+        d = stats.describe(c["dap"])
+        drl = sorted(c["drl"])
+        se = series.setdefault(sk, {"anatomy": sk[0], "projection": sk[1], "n": 0,
+                                    "prefixes": set(), "cells": []})
+        se["n"] += d["n"]
+        se["prefixes"] |= c["prefixes"]
+        se["cells"].append({"band": index[b], "n": d["n"], "p25": d["p25"], "median": d["median"],
+                            "p75": d["p75"], "drl": drl[len(drl) // 2] if drl else None,
+                            "thin": d["n"] < MIN_CELL,
+                            "source": ("patient" if c["patient"] == d["n"] else
+                                       "name" if not c["patient"] else "mixed"),
+                            "n_patient": c["patient"]})
+    out = sorted(series.values(), key=lambda s: -s["n"])
+    for s_ in out:
+        s_["prefixes"] = sorted(s_["prefixes"])
+        s_["cells"].sort(key=lambda c: c["band"])
+    return {"device": {"id": device_id, "name": name}, "kind": kind, "bands": bands,
+            "series": out, "n_rows": len(rows), "n_other_kind": other_kind,
+            "n_patient_band": sum(c["patient"] for c in cells.values()),
+            "unparsed": sorted(unparsed, key=lambda k: -unparsed[k])[:50]}
 
 
 def identify(session: Session, study_id: int) -> dict | None:

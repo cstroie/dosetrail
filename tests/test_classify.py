@@ -32,7 +32,7 @@ T = dt.datetime(2026, 3, 2, 10, 0)
     ("Lumbar-spine", "rx", "RG-CVLM"),
     ("X077a Deget a.p.", "rx", "RG-MSDG"),
     ("Deget picior", "rx", "RG-MIDG"),
-    ("COLOANA", "rx", None),  # which part of the spine is unknown: left for review
+    ("COLOANA", "rx", None),  # which part of the spine is unknown: only the last-resort rule (rx_last)
     ("Spine", "rx", None),
     ("Cistografie 5-15kg", "rf", "RF-PVCM"),
     ("Gastrointestinal Sup. 15-30kg", "rf", "RF-ABGD"),
@@ -119,8 +119,9 @@ def test_run_dx_per_exposure_ct_per_study_and_override(session):
     assert _codes(session, dx.id, lat.id) == {"ro-nom-rx:RG-TH",
                                                "ro-drl-ms838-2025:RX-TORACE-LAT",
                                                "ro-insp-1255-rx:T2"}
-    assert _codes(session, dx.id, spine.id) == set()
-    assert _codes(session, dx.id, None) == {"ro-nom-rx:RG-TH"}
+    # which part of the spine is unknown: the last-resort rule gives the unspecified-segment code
+    assert _codes(session, dx.id, spine.id) == {"ro-nom-rx:RG-CVNS"}
+    assert _codes(session, dx.id, None) == {"ro-nom-rx:RG-TH", "ro-nom-rx:RG-CVNS"}
     assert _codes(session, ct.id) == {"ro-nom-ct:CT-CR", "ro-drl-ms838-2025:CT-CAP",
                                       "ec-rp185:CT-HEAD", "ro-insp-1255-ct:C"}
     session.refresh(ct)

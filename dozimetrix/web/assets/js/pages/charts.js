@@ -14,7 +14,7 @@ import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
 import { groupRows, physicalDevices, drl, isSample, getPref, putPref, me, sharedViews, createView, updateView, deleteView } from '../core/api.js';
 import { summary, groupBy, histogram } from '../core/stats.js';
 import { prefs } from '../core/prefs.js';
-import { SERVER_TYPES, buildServer, serverOptions, serverSummary, defaultsFor } from './charts-server.js';
+import { SERVER_TYPES, buildServer, serverOptions, serverSummary, defaultsFor, setDevices } from './charts-server.js';
 
 const page = document.getElementById('page');
 
@@ -630,6 +630,7 @@ async function init() {
   let user;
   [devices, drlSet, shared, user] = await Promise.all([physicalDevices(), drl(),
     sharedViews('workspace').catch(() => []), me().catch(() => null)]);
+  setDevices(devices);
   isAdmin = !!user?.roles?.includes('admin');
   const names = wsNames();
   const urlQ = new URL(location.href).searchParams.get('q');

@@ -6,11 +6,12 @@
 import { baseOption } from '../components/dx-chart.js';
 import { h, esc } from '../core/dom.js';
 import { num, smart, dapUnit, DAP_UNITS } from '../core/format.js';
-import { stats, drlCompare } from '../core/api.js';
+import { stats, drlCompare, sizeBands } from '../core/api.js';
 
 export const SERVER_TYPES = {
   sbox: 'Boxplot (server)', sbar: 'Median / mean bars (server)', strend: 'Trend (server)',
   shist: 'Histogram (server)', sdrl: 'Median vs DRL (server)',
+  ssize: 'Dose by size band, all protocols (server)',
 };
 
 const MODALITIES = { CT: 'CT', 'DX,CR': 'Radiography DX + CR', DX: 'Radiography DX', CR: 'Radiography CR', RF: 'Fluoroscopy RF', XA: 'Angiography XA', MG: 'Mammography', NM: 'Nuclear medicine', PT: 'PET' };
@@ -36,7 +37,12 @@ const topOf = (cfg, dflt) => (cfg.top === 'all' ? Infinity : Number(cfg.top) || 
 const DEFAULT_TOP = 10;  // every Top-N panel starts with 10, never with all
 const topSelect = (cfg, select, update) => select('Top', String(cfg.top || DEFAULT_TOP), TOPS, (v) => update({ top: v }));
 
+let dxDevices = [];
+/** The radiography units of the "dose by size band" panel (the charts page hands over its device list). */
+export function setDevices(list) { dxDevices = (list || []).filter((d) => ['DX', 'CR'].includes(d.modality) && d.origin !== 'external'); }
+
 export function defaultsFor(type) {
+  if (type === 'ssize') return { type, modality: 'DX', metric: 'dap', device: null, kind: 'weight', top: 8, min_n: 3, span: 'XL' };
   return { type, modality: 'CT', metric: 'dlp_total', by: type === 'strend' ? 'month' : 'exam', series: type === 'strend' ? 'exam' : '',
     system: '', age_scheme: 'ro-drl-age', set: 'ro-ms838-2025', stat: 'median', min_n: 5, span: 'M' };
 }
@@ -45,6 +51,12 @@ export function defaultsFor(type) {
 export function serverOptions(cfg, update, select) {
   const mod = cfg.modality || 'CT';
   const metrics = METRICS[mod];
+  if (cfg.type === 'ssize') {
+    return [select('Device', String(cfg.device || dxDevices[0]?.id || ''), Object.fromEntries(dxDevices.map((d) => [String(d.id), d.display_name])), (v) => update({ device: Number(v) })),
+      select('Size band', cfg.kind || 'weight', { weight: 'Weight (kg)', age: 'Age' }, (v) => update({ kind: v })),
+      select('Anatomies shown', String(cfg.top ?? 8), { 0: 'None', 1: '1', 4: '4', 8: '8', 12: '12', 99: 'All' }, (v) => update({ top: Number(v) })),
+      select('Min n', String(cfg.min_n ?? 3), { 1: '1', 3: '3', 5: '5', 10: '10', 20: '20' }, (v) => update({ min_n: Number(v) }))];
+  }
   const out = [select('Modality', mod, MODALITIES, (v) => update({ modality: v, metric: Object.keys(METRICS[v])[0] }))];
   if (cfg.type === 'sdrl') {
     out.push(select('Reference', cfg.set || 'ro-ms838-2025', DRL_SETS, (v) => update({ set: v })));
@@ -96,6 +108,7 @@ function toShown(res) {
 /** Fetch and build: resolves to { title, option(th), csv, summary } */
 export async function buildServer(cfg, q, devColor) {
   if (cfg.type === 'sdrl') return buildDrl(cfg, q);
+  if (cfg.type === 'ssize') return buildSize(cfg, q);
   const mod = cfg.modality || 'CT';
   const metric = METRICS[mod][cfg.metric] ? cfg.metric : Object.keys(METRICS[mod])[0];
   const dims = cfg.type === 'shist' ? [cfg.series].filter(Boolean) : [cfg.by || 'exam', cfg.series].filter(Boolean);
@@ -170,6 +183,89 @@ export async function buildServer(cfg, q, devColor) {
       yAxis: yCat, series };
   };
   return { title: title + truncated, option, csv, summary, unit };
+}
+
+// One marker and line style per projection (anatomy gives the colour).
+const PROJ_STYLE = {
+  AP: { symbol: 'circle', dash: 'solid' }, PA: { symbol: 'diamond', dash: [9, 4] }, 'AP/PA': { symbol: 'circle', dash: [9, 4, 2, 4] },
+  LAT: { symbol: 'rect', dash: [3, 3] }, OBL: { symbol: 'triangle', dash: [1, 4] }, DV: { symbol: 'pin', dash: [9, 4, 2, 4] },
+  DP: { symbol: 'arrow', dash: [2, 2, 6, 2] },
+};
+const projStyle = (p) => PROJ_STYLE[p] || { symbol: 'roundRect', dash: [5, 5] };
+
+/** "Dose by size band": every protocol of one radiography unit, by the band its name states. */
+async function buildSize(cfg, q) {
+  const dev = cfg.device || dxDevices[0]?.id;
+  if (!dev) throw new Error('No radiography unit to chart.');
+  const res = await sizeBands({ device: dev, kind: cfg.kind || 'weight', q });
+  const f = shownUnit('Gy.cm2');
+  const minN = cfg.min_n ?? 3;
+  const unit = unitLabel(f[1]);
+  const kindLabel = res.kind === 'age' ? 'age' : 'weight';
+  const label = (s) => [s.anatomy, s.projection].filter(Boolean).join(' ');
+  const anat = new Map();
+  for (const s of res.series) anat.set(s.anatomy, (anat.get(s.anatomy) || 0) + s.n);
+  const order = [...anat.entries()].sort((a, b) => b[1] - a[1]).map(([a]) => a);
+  const top = new Set(order.slice(0, (cfg.top ?? 8) >= 99 ? order.length : (cfg.top ?? 8)));
+  const shown = res.series.filter((s) => s.cells.some((c) => c.n >= minN));
+  const csv = [['anatomy', 'projection', 'band', 'n', 'p25', 'median', 'p75', 'drl', 'program sets']].concat(res.series.flatMap((s) =>
+    s.cells.map((c) => [s.anatomy, s.projection, res.bands[c.band].label, c.n, c.p25 * f[0], c.median * f[0], c.p75 * f[0], c.drl == null ? '' : c.drl * f[0], s.prefixes.join(' ')])));
+  const nCells = shown.reduce((a, s) => a + s.cells.filter((c) => c.n >= minN).length, 0);
+  const title = `DAP per exposure (${unit}) · ${res.device.name} · by ${kindLabel} band in the protocol name · ${num(res.n_rows)} exposures · ${shown.length} protocols · ${nCells} bands`
+    + (res.n_patient_band ? ` · ${num(res.n_patient_band)} banded from the patient's ${kindLabel} (hollow)` : '')
+    + (res.n_other_kind ? ` · ${num(res.n_other_kind)} ${res.kind === 'age' ? 'weight' : 'age'}-type exposures not shown` : '')
+    + (res.unparsed.length ? ` · ${res.unparsed.length} names not understood` : '');
+  const option = (th) => {
+    const base = baseOption(th);
+    const colorOf = (a) => { const i = order.indexOf(a); return th.devices[i % th.devices.length]; };
+    const inTop = shown.filter((s) => top.has(s.anatomy));
+    const slot = new Map(inTop.map((s, i) => [s, (i - (inTop.length - 1) / 2) * Math.min(0.8 / Math.max(inTop.length, 1), 0.12)]));
+    const nb = res.bands.length;
+    const hollow = (c, col) => (c.source === 'name' ? {} : { itemStyle: { color: th.panel, borderColor: col, borderWidth: 2 } });
+    const pts = (s) => s.cells.filter((c) => c.n >= minN && c.median > 0).map((c) => ({
+      value: [c.band + (slot.get(s) || 0), c.median * f[0]], s, c, ...hollow(c, colorOf(s.anatomy)) }));
+    const all = shown.flatMap((s) => s.cells.filter((c) => c.n >= minN && c.p25 > 0).map((c) => c.p25 * f[0]));
+    const logMin = all.length ? 10 ** Math.floor(Math.log10(Math.min(...all))) : 0.001;
+    const selected = Object.fromEntries(shown.map((s) => [label(s), top.has(s.anatomy)]));
+    const lines = shown.map((s) => {
+      const st = projStyle(s.projection);
+      const col = colorOf(s.anatomy);
+      return { name: label(s), type: 'line', connectNulls: true, symbol: st.symbol, symbolSize: 7, data: pts(s),
+        lineStyle: { width: 1.5, type: st.dash, color: col }, itemStyle: { color: col }, z: 3 };
+    });
+    const bars = shown.map((s) => ({
+      name: label(s), type: 'custom', silent: true, z: 2, tooltip: { show: false }, encode: { x: 0, y: [1, 2] },
+      itemStyle: { color: colorOf(s.anatomy) },  // the legend takes its colour from the first series of the name
+      data: s.cells.filter((c) => c.n >= minN && c.p25 > 0).map((c) => [c.band + (slot.get(s) || 0), c.p25 * f[0], c.p75 * f[0]]),
+      renderItem: (params, api) => {
+        const a = api.coord([api.value(0), api.value(1)]); const b = api.coord([api.value(0), api.value(2)]);
+        const color = colorOf(s.anatomy);
+        return { type: 'group', children: [
+          { type: 'line', shape: { x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, style: { stroke: color, lineWidth: 2, opacity: 0.55 } },
+          { type: 'line', shape: { x1: a[0] - 3, y1: a[1], x2: a[0] + 3, y2: a[1] }, style: { stroke: color, lineWidth: 1.5 } },
+          { type: 'line', shape: { x1: b[0] - 3, y1: b[1], x2: b[0] + 3, y2: b[1] }, style: { stroke: color, lineWidth: 1.5 } }] };
+      } }));
+    const drl = { name: 'DRL', type: 'scatter', symbol: 'rect', symbolSize: [10, 3], itemStyle: { color: th.ref }, z: 4,
+      data: shown.filter((s) => top.has(s.anatomy)).flatMap((s) => s.cells.filter((c) => c.n >= minN && c.drl != null)
+        .map((c) => ({ value: [c.band + (slot.get(s) || 0), c.drl * f[0]], s, c, drl: true }))) };
+    return { ...base, legend: { ...base.legend, data: [...shown.map(label), 'DRL'], selected: { ...selected, DRL: true },
+      selector: [{ type: 'all', title: 'All' }, { type: 'inverse', title: 'Invert' }], selectorPosition: 'start',
+      selectorLabel: { color: th.muted, fontSize: 11 }, selectorItemGap: 4, selectorButtonGap: 8, left: 0, right: 0 },
+      grid: { left: 8, right: 20, top: 56, bottom: nb > 12 ? 78 : 52, containLabel: true },
+      tooltip: { ...base.tooltip, trigger: 'item', formatter: (p) => {
+        const { s, c } = p.data || {};
+        if (!c) return '';
+        return `${esc(label(s))} · ${esc(res.bands[c.band].label)}<br>median ${smart(c.median * f[0])} ${esc(unit)} · P25–P75 ${smart(c.p25 * f[0])}–${smart(c.p75 * f[0])}<br>n ${c.n}${c.drl != null ? ` · DRL ${smart(c.drl * f[0])}` : ''}<br><span style="opacity:.7">${esc(s.prefixes.join(' '))}${c.source === 'name' ? '' : `${s.prefixes.length ? ' · ' : ''}band from the patient's ${kindLabel}${c.source === 'mixed' ? ` (${c.n_patient} of ${c.n})` : ''}`}</span>`;
+      } },
+      xAxis: { type: 'value', min: -0.5, max: nb - 0.5, interval: 1, name: res.kind === 'age' ? 'Age band in the protocol name' : 'Weight band in the protocol name (kg)', nameLocation: 'middle', nameGap: nb > 12 ? 58 : 40,
+        ...base._axis, splitLine: { show: false }, axisTick: { ...base._axis.axisTick, customValues: res.bands.map((_, i) => i) },
+        axisLabel: { ...base._axis.axisLabel, interval: 0, rotate: nb > 12 ? 45 : 0, customValues: res.bands.map((_, i) => i),
+          formatter: (v) => (res.bands[v] ? res.bands[v].label.replace(' kg', '') : '') } },
+      yAxis: { type: 'log', min: logMin, logBase: 10, name: `${unit} (log)`, nameLocation: 'middle', nameGap: 44, ...base._axis,
+        axisLine: { ...base._axis.axisLine, onZero: false } },
+      series: [...bars, ...lines, drl] };
+  };
+  return { title, option, csv, summary: null, unit, height: '460' };
 }
 
 async function buildDrl(cfg, q) {

@@ -1165,6 +1165,14 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         except st.StatsError as e:
             raise HTTPException(400, str(e)) from e
 
+    @app.get("/api/charts/size-bands")
+    def size_bands(device: int, kind: str = "weight", q: str = "",
+                   user: User = Depends(current_user), session: Session = Depends(db)):
+        try:
+            return data.size_bands(session, q, clock(), device, kind)
+        except data.QueryError as e:
+            raise HTTPException(400, str(e)) from e
+
     @app.get("/api/stats/ct/acquisitions")
     def ct_acquisitions(q: str = "", user: User = Depends(current_user),
                         session: Session = Depends(db)):

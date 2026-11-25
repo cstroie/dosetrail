@@ -279,6 +279,11 @@ export function stats(params = {}) {
   return isSample ? serverOnly('Statistics') : remote('/api/stats', params);
 }
 
+/** GET /api/charts/size-bands?device=&kind=weight|age&q= → radiography DAP by the size band in the protocol name */
+export function sizeBands(params = {}) {
+  return isSample ? serverOnly('Dose by size band') : remote('/api/charts/size-bands', params);
+}
+
 /** GET /api/drl/sets → [{ key, name, source, notes, values }] */
 export function drlSets() {
   return isSample ? serverOnly('Reference levels') : remote('/api/drl/sets');

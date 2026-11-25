@@ -47,7 +47,7 @@ code = "RG-CROR"
 match = '\borbit'
 [[rx]]
 code = "RG-CRMS"
-match = 'mastoid'
+match = 'mastoid|petrous|stanca'
 [[rx]]
 code = "RG-CRST"
 match = 'sel+a turc'
@@ -68,7 +68,7 @@ code = "RG-CVTL"
 match = 'toraco ?lomb|thoraco ?lumb'
 [[rx]]
 code = "RG-CVTH"
-match = 'toracal|dorsal|thoracic spine|\btspine\b|\bt spine\b'
+match = 'toracal|dorsal|thoracic spine|\bthor\.? spine|\btspine\b|\bt spine\b'
 [[rx]]
 code = "RG-CVSC"
 match = 'sacr[oau]? ?cocc|\bsacrum\b|\bsacru\b|coccy|cocc'
@@ -77,7 +77,7 @@ code = "RG-PVSI"
 match = 'sacro ?ilia|sacroiliac'
 [[rx]]
 code = "RG-CVLM"
-match = 'lomb|lumbar|\blspine\b|\bl spine\b|\bl ?sacra?t'
+match = 'lomb|lumbar|\blumb\.? spine|\blspine\b|\bl spine\b|\bl ?sacra?t'
 [[rx]]
 code = "RG-THST"
 match = '\bstern'
@@ -155,7 +155,10 @@ code = "RG-MIFM"
 match = 'femur|coaps'
 [[rx]]
 code = "RG-MICL"
-match = 'calcan'
+match = 'calcan|calcai'
+[[rx]]
+code = "RG-MIAP"
+match = 'forefoot|antepicior'
 [[rx]]
 code = "RG-MIDG"
 match = 'deget[e]? picior|\btoes?\b|haluce'
@@ -542,3 +545,11 @@ match = '\bdmsa\b|succimer'
 [[nmh]]
 code = "SCTO"
 match = '\bhdp\b|\bhmdp\b|oxidronat|\bmdp\b|medronat|\bosoas|\bbone\b|schelet|trifazic|trei faze'
+
+# Last resort, tried only when no rule above matched any of the exposure's texts (protocol,
+# anatomy, study description ...): a vague name must not hide a specific one. The Discovery
+# sends "COLOANA" / "SPINE" for every spine exposure and sometimes even for knees: the study
+# description then names the region and wins.
+[[rx_last]]
+code = "RG-CVNS"
+match = 'coloan|\bspine\b|\bspine ?(ap|lat)|orto ?spine'

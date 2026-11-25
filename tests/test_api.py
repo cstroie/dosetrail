@@ -49,9 +49,9 @@ def client(tmp_path_factory):
         s.add(st)
         load_all(s)
         rx = Study(study_uid="1.2.4", accession="A2", modality="DX", device_id=dev.id,
-                   study_datetime=NOW - dt.timedelta(days=2), study_description="Spine",
+                   study_datetime=NOW - dt.timedelta(days=2), study_description="Unknown",
                    n_events=2, source_kind="test")
-        rx.events = [Event(protocol="COLOANA", anatomy="Spine", dap=0.2),
+        rx.events = [Event(protocol="XRAY-UNKNOWN", anatomy="Other", dap=0.2),
                      Event(protocol="W035 Torace a.p. 10kg", view="antero-posterior", dap=0.05)]
         s.add(rx)
         s.add(Study(study_uid="1.2.5", accession="A3", modality="MG", device_id=dev.id,
@@ -306,11 +306,11 @@ def test_classification_review(client):
     summary = {r["family"]: r for r in client.get("/api/classification/summary").json()}
     assert summary["rx"]["studies"] >= 1 and summary["rx"]["classified"] >= 1
     todo = client.get("/api/classification/unclassified?family=rx").json()
-    spine = [x for x in todo if x["texts"]["protocol"] == "COLOANA"]
+    spine = [x for x in todo if x["texts"]["protocol"] == "XRAY-UNKNOWN"]
     assert spine and spine[0]["exposures"] == 1
     codes = {c["code"] for c in client.get("/api/codes/ro-nom-rx").json()}
     assert "RG-CVLM" in codes
-    body = {"family": "rx", "field": "protocol", "text": "COLOANA", "code": "RG-CVLM"}
+    body = {"family": "rx", "field": "protocol", "text": "XRAY-UNKNOWN", "code": "RG-CVLM"}
     assert client.put("/api/classification/mappings", json=body).status_code == 403
 
     login(client, "boss", "boss-pass-123")
@@ -319,9 +319,9 @@ def test_classification_review(client):
     r = client.put("/api/classification/mappings", json=body).json()
     assert r["studies_reclassified"] == 1
     left = client.get("/api/classification/unclassified?family=rx").json()
-    assert not [x for x in left if x["texts"]["protocol"] == "COLOANA"]
+    assert not [x for x in left if x["texts"]["protocol"] == "XRAY-UNKNOWN"]
     m = client.get("/api/classification/mappings").json()
-    assert [(x["text"], x["code"]) for x in m] == [("coloana", "RG-CVLM")]
+    assert [(x["text"], x["code"]) for x in m] == [("xray unknown", "RG-CVLM")]
 
 
 def test_stats_endpoint(client):
@@ -1065,3 +1065,37 @@ def test_protocol_comparison_endpoint(client):
     assert client.get("/api/protocols/compare",
                       params={"region": "CT-CAP", "by": "x"}).status_code == 400
     assert client.get("/protocols.html").status_code == 200
+
+
+def test_size_bands_by_protocol_name(client):
+    url = str(client.app.state.settings.database_url)
+    with make_sessionmaker(make_engine(url))() as s:
+        d = Device(display_name="Ysio UPU", model_name="Ysio", identity_key="k-sizeband", is_local=True)
+        s.add(d)
+        s.flush()
+        n = 0
+        for name, daps in [("W035 Torace a.p. 5-15Kg", [0.01, 0.02, 0.03]), ("T035 Torace a.p. 5-15 Kg", [0.04]),
+                           ("W001a Craniu a.p. 1-6 ani", [0.1, 0.2, 0.3]), ("W008 Sinusuri", [0.5, 0.6, 0.7])]:
+            for dap in daps:
+                n += 1
+                s.add(Study(study_uid=f"9.9.{n}", accession=f"SB{n}", modality="DX", device_id=d.id,
+                            study_datetime=NOW - dt.timedelta(days=1), source_kind="test", n_events=1,
+                            events=[Event(protocol=name, dap=dap)]))
+        s.commit()
+        dev = d.id
+    login(client, "viewer", "viewer-pass-1")
+    w = client.get("/api/charts/size-bands", params={"device": dev, "kind": "weight"}).json()
+    by = {(s["anatomy"], s["projection"]): s for s in w["series"]}
+    assert set(by) == {("Torace", "AP"), ("Sinusuri", "")}  # Craniu states an age, not a weight
+    t = by[("Torace", "AP")]
+    assert t["n"] == 4 and sorted(t["prefixes"]) == ["T035", "W035"]  # the two program sets merge
+    cell = t["cells"][0]
+    assert w["bands"][cell["band"]]["label"] == "5-15 kg" and cell["n"] == 4 and cell["median"] == 0.025
+    assert w["bands"][-1]["label"] == "no band"  # Sinusuri states none, in both views
+    a = client.get("/api/charts/size-bands", params={"device": dev, "kind": "age"}).json()
+    by = {(s["anatomy"], s["projection"]): s for s in a["series"]}
+    assert ("Craniu", "AP") in by and ("Torace", "AP") not in by
+    assert a["bands"][by[("Craniu", "AP")]["cells"][0]["band"]]["label"] == "1-6 y"
+    assert w["n_other_kind"] == 3 and a["n_other_kind"] == 7  # an exam never crosses into the other size type
+    assert client.get("/api/charts/size-bands", params={"device": dev, "kind": "x"}).status_code == 400
+    assert client.get("/api/charts/size-bands", params={"device": 999999}).status_code == 400
