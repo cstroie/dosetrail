@@ -396,6 +396,7 @@ DRL tables are stored as **versioned reference sets** (local, national, European
 - **Roles:** `viewer`, `exporter`, `pid` (view patient identifiers), `importer`, `admin`. They can be combined.
 - **Local accounts:** passwords hashed with scrypt. LDAP/AD is optional later and would be written in-house or kept as a small, optional extra.
 - **Audit log:** study views with identifiers, exports, admin changes and logins.
+- **Shared views:** admins publish chart workspaces and saved study queries for everyone (`shared_view`, `/api/views`) and set the filters DRL, Quality and Alerts open with (`app_setting` `page_default.*`, `/api/page-defaults`). Everyone reads them; only admins write, and every write is audited. Users keep their own workspaces and queries next to the shared ones, on the server (`user_pref`); an admin can promote one of theirs. A user's last-used filters (this browser) win over the page default until "Reset filters". Display preferences (theme, language, units, density, hidden columns) stay in the browser.
 - **Retention policy:** for raw DICOM spool and archive, and optionally for identifiers after N years.
 
 ---

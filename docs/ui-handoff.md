@@ -88,7 +88,7 @@ Requested:
 
 ## Done in the backend session (2026-11-22)
 - **Charts workspace:** server panels in `pages/charts-server.js`: boxplot, median/mean bars, trend, histogram, and median vs DRL. Each panel has its own modality (CT, DX, CR, RF, XA, MG), metric, grouping (exam in any vocabulary, device, age or weight group, projection, protocol, sex, period), second-dimension series, and minimum n. They use the workspace query. The CT-only browser panels are kept and labelled "CT …". New default workspaces include a vs-DRL panel and a DX boxplot. The chart theme gained `ok`.
-  - Open for you: restyle, share workspaces server-side, and possibly retire the browser-side CT panels once you're happy with the server ones.
+  - Open for you: restyle, and possibly retire the browser-side CT panels once you're happy with the server ones. (Sharing workspaces server-side was done 2026-11-25: `/api/views`, see design.md §10.)
 - **Alerts page** (`alerts.html`, the rail's Alerts entry): filters, per-rule counts, paging, and bulk acknowledge with a note.
 - **Study detail** for CT, DX and MG (`pages/study-generic.js`). "Reveal…" now calls the audited identify endpoint.
 - **Admin:** DICOM nodes, Users and Audit log pages, with one shared tab bar (`components/admin-tabs.js`).
