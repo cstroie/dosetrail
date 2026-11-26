@@ -274,9 +274,14 @@ class Evaluator:
                 hit = self._band_hit(s, events)
             elif rule.kind == "pregnant":
                 if s.pregnant:
+                    from .conceptus import estimate
+                    from .ctdose import REGION
+
                     weeks = f", {s.gestation_weeks} weeks" if s.gestation_weeks else ""
+                    est = estimate(s, events, REGION.get(national.get(None) or ""))
                     hit = (float(s.gestation_weeks or 0), None, None,
-                           f"Pregnant patient{weeks}: {s.modality}")
+                           f"Pregnant patient{weeks}: {s.modality}"
+                           + (f" — {est['text']}" if est["text"] else ""))
             elif (rule.kind in ("cumulative", "count") and s.patient_id and s.study_datetime
                   and not self._raised_in_window(rule, s)):
                 total, n = self._window(rule, s)

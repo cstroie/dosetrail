@@ -335,6 +335,18 @@ def _study_row(s: Study, d: Device | None, p: Patient | None, protocol: str | No
     }
 
 
+def _conceptus(session: Session, s: Study, events: list[Event]) -> dict | None:
+    """Conceptus dose screening for a pregnant patient (conceptus.py)."""
+    from ..conceptus import estimate
+    from ..ctdose import study_regions
+
+    region = study_regions(session, [s.id]).get(s.id)
+    est = estimate(s, events, region)
+    mgy = est["mgy"]
+    return {"level": est["level"], "text": est["text"],
+            "mgy": None if mgy is None else [round(x, 2) for x in mgy]}
+
+
 def _effective_dose(session: Session, s: Study) -> dict | None:
     """The CT effective dose by the DLP method (ctdose.py), with what it rests on; None for
     other modalities and where no coefficients were entered."""
@@ -386,6 +398,7 @@ def study(session: Session, study_id: int) -> dict | None:
             "dap_corrected_gycm2": (_r(s.total_dap * f) if s.total_dap is not None and f != 1.0
                                     else None),
             "effective_dose": _effective_dose(session, s),
+            "conceptus": _conceptus(session, s, events) if s.pregnant else None,
             "fluoro_s": _r(s.total_fluoro_time, 1), "acquisitions": len(acq),
             "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": _r(s.psd_mgy, 1),
             "dlp_mgycm": _r(s.total_dlp, 1), "ctdivol_max": _r(s.ctdivol_max, 2),

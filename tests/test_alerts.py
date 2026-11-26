@@ -289,7 +289,9 @@ def test_pregnant_patient(session, world):
                 age_days=30 * 366, pregnant=False)
     alerts.evaluate(session, [ct.id, rx.id, unknown.id, no.id])
     got = _alerts(session, ct)["pregnant"]
-    assert got.severity == "alert" and got.message == "Pregnant patient, 12 weeks: CT"
+    assert got.severity == "alert" and got.message == (
+        "Pregnant patient, 12 weeks: CT — conceptus dose: no estimate (body region unknown): "
+        "check whether the uterus was in the beam")
     for s in (rx, unknown, no):  # radiography is out of the default scope; NULL is not True
         assert "pregnant" not in _alerts(session, s)
     row = next(x for x in alerts.listing(session) if x["rule"] == "pregnant")
