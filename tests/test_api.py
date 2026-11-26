@@ -522,6 +522,20 @@ def test_qa_register_endpoints(client):
     assert client.delete("/api/qa/999").status_code == 404
 
 
+def test_repeats_report_endpoint(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/reports/repeats", params={"year": 2026, "quarter": 4, "q": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["true_rejects"].startswith("not available") and "operators" not in r.json()
+    assert client.get("/api/reports/repeats", params={"operators": True}).status_code == 403
+    c = client.get("/api/reports/repeats", params={"q": "", "format": "csv"})
+    assert c.status_code == 200 and c.content.decode("utf-8-sig").startswith("room,exam")
+    assert client.get("/api/reports/repeats", params={"gap": 500}).status_code == 400
+    login(client, "boss", "boss-pass-123")
+    r = client.get("/api/reports/repeats", params={"operators": True, "q": ""})
+    assert r.status_code == 200 and r.json()["operators"] == []
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})
