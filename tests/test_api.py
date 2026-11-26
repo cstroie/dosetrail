@@ -475,6 +475,20 @@ def test_incident_endpoints(client):
     assert r.status_code == 200 and r.json()["status"] == "open"
 
 
+def test_optimisation_report_endpoint(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/reports/optimisation", params={"change": "2026-10-01", "q": "",
+                                                         "note": "scores unchanged"})
+    assert r.status_code == 200, r.text
+    assert r.json()["image_quality_note"] == "scores unchanged" and r.json()["days"] == 180
+    c = client.get("/api/reports/optimisation", params={"change": "2026-10-01", "q": "",
+                                                         "format": "csv"})
+    assert c.status_code == 200 and c.content.decode("utf-8-sig").startswith("change_date,")
+    assert client.get("/api/reports/optimisation",
+                      params={"change": "2026-10-01", "set": "nope"}).status_code == 400
+    assert client.get("/api/reports/optimisation", params={"days": 5}).status_code == 422
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})

@@ -2828,6 +2828,32 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return _file(lambda fh: scanlength.write_csv(rep, fh), "csv",
                      f"scan-length-{year}-T{quarter}", now)
 
+    @app.get("/api/reports/optimisation")
+    def report_optimisation(request: Request, change: dt.date, days: int = 180,
+                            set: str = "ro-ms838-2025", q: str = "origin:local",
+                            exam: str | None = None, min_n: int = 10, note: str | None = None,
+                            format: str = "json", user: User = Depends(current_user),
+                            session: Session = Depends(db)):
+        """Doses before and after a protocol change, per exam and group, with a significance
+        test, and the reviewer's image-quality note."""
+        from .. import drl
+        from ..reports import optimisation
+
+        if format not in ("json", "csv"):
+            raise HTTPException(400, "format is json|csv")
+        now = clock()
+        try:
+            rep = optimisation.build(session, data.checked_conditions(q, now,
+                                                                      data.overrides(session)),
+                                     change, days=days, set_key=set, min_n=max(min_n, 2),
+                                     exam=exam, note=note)
+        except drl.DRLError as e:
+            raise HTTPException(400, str(e)) from None
+        if format == "json":
+            return rep
+        return _file(lambda fh: optimisation.write_csv(rep, fh), "csv",
+                     f"optimisation-{change:%Y%m%d}", now)
+
     @app.get("/api/reports/insp1255")
     def report_insp1255(request: Request, year: int, quarter: int, q: str = "origin:local",
                         format: str = "json", user: User = Depends(current_user),
