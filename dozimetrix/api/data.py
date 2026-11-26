@@ -12,6 +12,7 @@ from .. import modality_profiles
 from ..db.models import Device, Event, Patient, SizeSource, Study
 from ..hybrid import label as modality_label
 from ..patient_age import format_age
+from ..qa import factor_at
 from .query import conditions, parse
 
 
@@ -364,6 +365,11 @@ def study(session: Session, study_id: int) -> dict | None:
                     "weight_kg": s.weight_kg},
         "totals": {
             "dap_gycm2": _r(s.total_dap), "kar_gy": _r(s.total_rp_dose),
+            # the DAP meter's correction from the QA register (qa.py); None when it is 1
+            "dap_factor": (None if (f := factor_at(session, s.device_id, s.study_datetime)) == 1.0
+                           else f),
+            "dap_corrected_gycm2": (_r(s.total_dap * f) if s.total_dap is not None and f != 1.0
+                                    else None),
             "fluoro_s": _r(s.total_fluoro_time, 1), "acquisitions": len(acq),
             "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": _r(s.psd_mgy, 1),
             "dlp_mgycm": _r(s.total_dlp, 1), "ctdivol_max": _r(s.ctdivol_max, 2),
@@ -845,7 +851,9 @@ def dose_statement(session: Session, study_id: int) -> dict | None:
         if value is not None:
             doses.append({"key": key, "label": label, "value": value, "unit": unit, "note": note})
 
-    add("dap", "DAP", s.total_dap * 1000 if s.total_dap is not None else None, "mGy·cm²")
+    f = factor_at(session, s.device_id, s.study_datetime)  # the DAP meter's calibration
+    add("dap", "DAP", s.total_dap * 1000 * f if s.total_dap is not None else None, "mGy·cm²",
+        f"corrected × {f:g} (calibration)" if f != 1.0 else None)
     add("esak", "ESAK", esd if esd is not None else calc, "mGy",
         None if esd is not None else "calculated")
     add("rp", "Reference point dose (Ka,r)", s.total_rp_dose * 1000 if s.total_rp_dose is not None

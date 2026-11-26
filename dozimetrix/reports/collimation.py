@@ -12,9 +12,11 @@ told apart by their pattern:
   because the factor scales every DAP, whatever the field.
 
 A room is judged on its exam and age groups that have enough values both in the room and in the
-department (≥ 10 and ≥ 20). The kerma is the one the device reports with the exposure: where it is
-calculated from the DAP and a nominal field, the area is not independent of the DAP and the room
-will look normal.
+department (≥ 10 and ≥ 20). A DAP meter calibration factor recorded in the QA register is
+applied to the DAP first, so a room whose meter was calibrated no longer shows as a calibration
+suspect. The kerma is the one the
+device reports with the exposure: where it is calculated from the DAP and a nominal field, the
+area is not independent of the DAP and the room will look normal.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import Classification, Code, CodeSystem, Event, Study
+from ..qa import Factors
 from ..stats import BandLookup, quantile
 
 NATIONAL = "ro-drl-ms838-2025"
@@ -49,15 +52,17 @@ def build(session: Session, conds: list, min_room: int = MIN_ROOM,
     names = device_names(session)
     band = BandLookup(session, "ro-drl-age", "age")
     cells: dict[tuple, list[float]] = defaultdict(list)  # (room, code, band) -> areas
+    factors = Factors(session)  # DAP meter calibration from the QA register (1 without one)
     rows = session.execute(
-        select(Study.device_id, Code.code, Study.age_days, Event.dap, Event.rp_dose)
+        select(Study.device_id, Code.code, Study.age_days, Event.dap, Event.rp_dose,
+               Study.study_datetime)
         .select_from(Event).join(Study, Study.id == Event.study_id)
         .join(Classification, Classification.event_id == Event.id)
         .join(Code, (Code.id == Classification.code_id) & (Code.system_id == system))
         .where(Study.modality.in_(("DX", "CR")), Event.dap > 0, Event.rp_dose > 0, *conds))
-    for device_id, code, age, dap, ka in rows:
+    for device_id, code, age, dap, ka, when in rows:
         b = band(age)
-        area = dap / ka
+        area = dap * factors.at(device_id, when) / ka
         if b is not None and AREA_MIN <= area <= AREA_MAX:
             cells[(device_id, code, b)].append(area)
 

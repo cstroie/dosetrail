@@ -254,6 +254,15 @@ class AckIn(BaseModel):
     note: str | None = None
 
 
+class QAIn(BaseModel):
+    kind: str
+    done_on: dt.date
+    next_due: dt.date | None = None
+    factor: float | None = None
+    result: str | None = Field(None, max_length=255)
+    note: str | None = Field(None, max_length=1024)
+
+
 class IncidentIn(BaseModel):
     alert_id: int | None = None
     study_id: int | None = None
@@ -2043,6 +2052,52 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         rep = digests.build(session, d["q"], start, end, now)
         subject, text, page = digests.render(d["name"], rep)
         return {"subject": subject, "text": text, "html": page, "data": rep}
+
+    @app.get("/api/devices/{device_id}/qa")
+    def device_qa(device_id: int, user: User = Depends(current_user),
+                  session: Session = Depends(db)):
+        """The device's QA and calibration register, newest first."""
+        from .. import qa
+
+        return qa.entries(session, device_id)
+
+    @app.post("/api/devices/{device_id}/qa")
+    def device_qa_add(device_id: int, body: QAIn, request: Request,
+                      user: User = Depends(current_user), session: Session = Depends(db)):
+        from .. import qa
+
+        admin_only(user)
+        try:
+            e = qa.add(session, device_id, user.username, **body.model_dump())
+        except qa.QAError as exc:
+            raise HTTPException(404 if "not found" in str(exc) else 400, str(exc)) from None
+        _audit(session, request, user, "qa", f"device:{device_id}",
+               {"kind": e.kind, "done_on": e.done_on.isoformat(), "factor": e.factor})
+        session.commit()
+        return {"id": e.id}
+
+    @app.delete("/api/qa/{entry_id}")
+    def device_qa_delete(entry_id: int, request: Request, user: User = Depends(current_user),
+                         session: Session = Depends(db)):
+        from .. import qa
+
+        admin_only(user)
+        try:
+            device_id = qa.remove(session, entry_id)
+        except qa.QAError as exc:
+            raise HTTPException(404, str(exc)) from None
+        _audit(session, request, user, "qa.delete", f"device:{device_id}", {"entry": entry_id})
+        session.commit()
+        return {"deleted": entry_id}
+
+    @app.get("/api/qa/due")
+    def qa_due(days: int = 30, user: User = Depends(current_user),
+               session: Session = Depends(db)):
+        """QA tests and calibrations overdue or due within ``days``."""
+        from .. import qa
+
+        return qa.due(session, clock().date(), max(0, min(days, 365)),
+                      names=data.device_names(session))
 
     @app.get("/api/alert-rules")
     def alert_rules(user: User = Depends(current_user), session: Session = Depends(db)):

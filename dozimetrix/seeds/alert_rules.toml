@@ -11,6 +11,7 @@
 # kind = device_drift  : a device's median dose (exam, age group) >= threshold x its usual one
 # kind = device_di   : a room's share of exposures with a deviation index outside -2..+3 >= threshold %
 # kind = protocol_drift : a CT protocol's kV, effective mAs or CTDIvol moved step-wise (threshold = fraction)
+# kind = qa_due     : a QA test or calibration of a device is overdue or due within threshold days
 # kind = drl_sustained : a room's median (exam, age group) >= threshold x DRL, 2 quarters running
 
 [[rule]]
@@ -279,3 +280,14 @@ window_days = 28
 severity = "warn"
 notify = false
 note = "Median per scanner and protocol, in each of the last two weeks, against the 8 weeks before (≥ 10 series before, ≥ 3 a week): effective mAs or CTDIvol off by ≥ 25 %, or the kV by a step (10 kV), the same way in both weeks. Usually an edited protocol or a software update: check who changed it and whether it was intended."
+
+[[rule]]
+key = "qa-due-30d"
+name = "Device: QA test or calibration due"
+kind = "qa_due"
+threshold = 30.0
+unit = "d"
+window_days = 30
+severity = "warn"
+notify = true
+note = "From the QA and calibration register: the latest entry of each kind (DAP meter calibration, constancy, acceptance, annual) has a next-due date that is past or within 30 days. Raised again every 30 days until the next one is recorded."

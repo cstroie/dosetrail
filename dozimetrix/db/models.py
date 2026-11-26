@@ -669,6 +669,27 @@ class Followup(TimestampMixin, Base):
     __table_args__ = (Index("ix_followup_status", "status", "study_datetime"),)
 
 
+class DeviceQA(Base):
+    """One entry of a device's QA and calibration register (qa.py): a DAP meter calibration with
+    its correction factor, a constancy test, an acceptance test, an annual check. ``next_due``
+    drives the reminder (alert kind ``qa_due``)."""
+
+    __tablename__ = "device_qa"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("device.id", ondelete="CASCADE"),
+                                           index=True)
+    # dap_calibration | constancy | acceptance | annual | other
+    kind: Mapped[str] = mapped_column(AsciiId(16))
+    done_on: Mapped[dt.date] = mapped_column(Date)
+    next_due: Mapped[dt.date | None] = mapped_column(Date)
+    # dap_calibration only: true DAP = displayed DAP × factor, from done_on until the next one
+    factor: Mapped[float | None] = mapped_column(Float)
+    result: Mapped[str | None] = mapped_column(Text(255))
+    note: Mapped[str | None] = mapped_column(Text(1024))
+    entered_by: Mapped[str | None] = mapped_column(AsciiId(64))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Incident(TimestampMixin, Base):
     """An investigation of an alert or a study (incidents.py): cause, actions, outcome, and
     whether it is reportable as an unintended or accidental exposure (BSS art. 63)."""

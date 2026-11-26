@@ -47,7 +47,7 @@ UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "m
 SHOWN = {"Gy": (1000.0, "mGy"), "Gy.cm2": (1000.0, "mGy.cm2")}
 BATCH = 1000
 DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained", "device_di",
-                "protocol_drift")
+                "protocol_drift", "qa_due")
 RETIRED_DAYS = 90  # a device silent for longer is retired, not broken (it alerted at day 4)
 SUSTAINED_MIN_N = 20  # as the DRL page: fewer values per room and quarter are not compared
 # device drift: the last two weeks, each against the 12 weeks before them
@@ -420,6 +420,8 @@ def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
         return f"{v:.1f} days", f"≥ {r.threshold:g} d"
     if r.kind == "drl_sustained":
         return f"{v:.2f}× DRL", f"≥ {r.threshold:g}× (2 quarters)"
+    if r.kind == "qa_due":
+        return (f"{-v:.0f} d overdue" if v < 0 else f"in {v:.0f} d"), f"≤ {r.threshold:.0f} d ahead"
     if r.kind == "protocol_drift":
         return f"{v:.0f} parameter{'s' if v > 1 else ''}", f"≥ {r.threshold:.0%} / 10 kV"
     if r.kind == "device_di":
@@ -478,7 +480,7 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
     kinds = {"threshold": None, "drl_ratio": "> DRL", "cumulative": "CUMUL.", "count": "REPEAT",
              "pregnant": "PREGNANT", "device_silent": "SILENT", "device_drift": "DRIFT",
              "drl_sustained": "> DRL ×2Q", "protocol_band": "BAND", "device_di": "DI",
-             "protocol_drift": "PROTOCOL"}
+             "protocol_drift": "PROTOCOL", "qa_due": "QA"}
     out = []
     for a, r, s in session.execute(q):
         kind = kinds.get(r.kind) or {"kar_total": "KA,R", "dap_total": "DAP",
@@ -794,6 +796,38 @@ def _protocol_drift(session: Session, rule: AlertRule, now: dt.datetime) -> list
     return out
 
 
+def _qa_due(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
+    """A QA test or calibration of a local device (qa.py) overdue, or due within ``threshold``
+    days: one alert per device, listing what is due, the worst first (an alert hangs on the
+    device's latest study, so a device has one at a time). Again after ``window_days``
+    (default 30) until the next one is recorded."""
+    from . import qa
+
+    devices = _local_devices(session)
+    quiet = dt.timedelta(days=rule.window_days or 30)
+    per_device: dict[int, list[dict]] = defaultdict(list)
+    for r in qa.due(session, now.date(), int(rule.threshold), devices):
+        if r["device_id"] in devices:
+            per_device[r["device_id"]].append(r)
+    out = []
+    for did, rows in per_device.items():
+        key = f"{devices[did]}: "
+        if session.scalar(
+                select(func.count()).select_from(Alert).join(Study, Study.id == Alert.study_id)
+                .where(Alert.rule_id == rule.id, Study.device_id == did,
+                       Alert.study_datetime > now - quiet, Alert.study_datetime <= now,
+                       Alert.message.startswith(key))):
+            continue
+        sid = _latest_study(session, did, dt.datetime(2000, 1, 1), now, None)
+        items = [f"{qa.LABELS.get(r['kind'], r['kind'])} "
+                 + (f"overdue by {-r['days']} days" if r["overdue"] else f"due in {r['days']} days")
+                 + f" (due {r['next_due']})" for r in rows]
+        out.append({"study_id": sid, "value": float(rows[0]["days"]),
+                    "limit_value": rule.threshold, "unit": "d",
+                    "message": key + "; ".join(items)})
+    return out
+
+
 def _quarter_start(t: dt.datetime) -> dt.datetime:
     return dt.datetime(t.year, 3 * ((t.month - 1) // 3) + 1, 1)
 
@@ -849,7 +883,7 @@ def _sustained(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict
 
 
 DEVICE_CHECKS = {"device_silent": _silent, "device_drift": _drift, "drl_sustained": _sustained,
-                 "device_di": _di, "protocol_drift": _protocol_drift}
+                 "device_di": _di, "protocol_drift": _protocol_drift, "qa_due": _qa_due}
 
 
 def evaluate_devices(session: Session, now: dt.datetime | None = None,

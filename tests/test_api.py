@@ -503,6 +503,25 @@ def test_digest_endpoints_are_admin_only(client):
     assert client.get("/api/digests/none/preview").status_code == 404
 
 
+def test_qa_register_endpoints(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/devices/1/qa").json() == []
+    assert client.get("/api/qa/due").json() == []
+    body = {"kind": "dap_calibration", "done_on": "2026-05-01", "factor": 1.1,
+            "next_due": "2027-05-01"}
+    assert client.post("/api/devices/1/qa", json=body).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    assert client.post("/api/devices/999/qa", json=body).status_code == 404
+    assert client.post("/api/devices/1/qa", json={**body, "factor": 9}).status_code == 400
+    r = client.post("/api/devices/1/qa", json=body)
+    assert r.status_code == 200, r.text
+    got = client.get("/api/devices/1/qa").json()
+    assert got[0]["factor"] == 1.1 and got[0]["entered_by"] == "boss"
+    assert client.get("/api/qa/due", params={"days": 365}).json()[0]["kind"] == "dap_calibration"
+    assert client.delete(f"/api/qa/{r.json()['id']}").status_code == 200
+    assert client.delete("/api/qa/999").status_code == 404
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})
