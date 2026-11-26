@@ -2,7 +2,8 @@
 // factor: true DAP = displayed × factor, from that date until the next calibration), constancy and
 // acceptance tests and annual checks, each with the date the next is due. What is overdue or due
 // within 30 days is listed first and raises the "QA due" alert. Stored doses are never changed:
-// the corrected DAP is shown beside the stored one on the study page and in the dose statement.
+// the corrected DAP is shown beside the stored one on the study page and in the dose statement, and is the
+// one used by statistics, DRL comparisons, exports, DAP alerts and follow-ups.
 
 import '../components/dx-shell.js';
 import { adminTabs } from '../components/admin-tabs.js';
@@ -56,7 +57,7 @@ function draw() {
     h('option', { value: '' }, '— choose —'),
     devs.map((d) => h('option', { value: d.id, selected: d.id === deviceId }, d.display_name)));
   clear(page).append(adminTabs('qa.html'),
-    pageHead('QA and calibration register', { sub: 'Per device: DAP-meter calibrations with their correction factor, constancy, acceptance and annual tests, and when the next is due.' }),
+    pageHead('QA and calibration register', { sub: 'Per device: DAP-meter calibrations with their correction factor (applied to the DAP in statistics, DRL comparisons, exports and alerts from the date done until the next calibration), constancy, acceptance and annual tests, and when the next is due.' }),
     section('Due', { level: 2 }, dueHost), section('Register', { level: 2, actions: sel }, regHost));
   loadDue();
   loadRegister();

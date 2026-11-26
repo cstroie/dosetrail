@@ -33,6 +33,7 @@ from collections import defaultdict
 from sqlalchemy import func, select
 
 from ...db.models import Classification, Code, CodeSystem, Device, Event, Study
+from ...qa import Factors
 from ...stats import BandLookup
 from ..context import Context
 from ..registry import kind
@@ -66,7 +67,9 @@ def _samples(session, conds: list, body: dict) -> list[tuple]:
     cols = (Study.id, Study.device_id, Study.operator_name, Code.code, Study.age_days)
     out: list[tuple] = []
     for src in body["source"]:
-        cols_ = [COLUMNS[c] for c in src["columns"]]
+        factors = Factors(session)  # the DAP meter's calibration (QA register)
+        cols_ = [factors.apply(COLUMNS[c]) if c in ("study.total_dap", "event.dap")
+                 else COLUMNS[c] for c in src["columns"]]
         value = func.coalesce(*cols_) if len(cols_) > 1 else cols_[0]  # one column: as it is
         if src["level"] == "study":
             q = (select(*cols, value)

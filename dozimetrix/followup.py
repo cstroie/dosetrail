@@ -26,6 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .db.models import Device, Followup, Patient, Study
+from .qa import Factors
 
 MODALITIES = ("RF", "XA")
 PSD_MGY, KAR_GY, KAP_GYCM2 = 3000.0, 5.0, 500.0
@@ -34,15 +35,17 @@ STATUSES = ("open", "informed", "checked", "dismissed")
 BATCH = 1000
 
 
-def levels(s: Study) -> str | None:
-    """The levels a study passes, as text with the values; None when it passes none."""
+def levels(s: Study, dap_factor: float = 1.0) -> str | None:
+    """The levels a study passes, as text with the values; None when it passes none. The DAP is
+    the corrected one (``dap_factor``: the DAP meter's calibration, QA register)."""
     hit = []
+    kap = s.total_dap * dap_factor if s.total_dap is not None else None
     if s.psd_mgy is not None and s.psd_mgy >= PSD_MGY:
         hit.append(f"peak skin dose {s.psd_mgy:.0f} mGy ≥ {PSD_MGY:.0f}")
     if s.total_rp_dose is not None and s.total_rp_dose >= KAR_GY:
         hit.append(f"Ka,r {s.total_rp_dose * 1000:.0f} mGy ≥ {KAR_GY * 1000:.0f}")
-    if s.total_dap is not None and s.total_dap >= KAP_GYCM2:
-        hit.append(f"KAP {s.total_dap * 1000:.0f} mGy·cm² ≥ {KAP_GYCM2 * 1000:.0f}")
+    if kap is not None and kap >= KAP_GYCM2:
+        hit.append(f"KAP {kap * 1000:.0f} mGy·cm² ≥ {KAP_GYCM2 * 1000:.0f}")
     return "; ".join(hit) or None
 
 
@@ -51,6 +54,7 @@ def sync(session: Session, study_ids: Iterable[int] | None = None) -> Counter:
     studies when ``study_ids`` is None). Idempotent: an existing record is only refreshed
     (the levels text) while it is open, so a changed estimate is not lost."""
     stats: Counter = Counter()
+    factors = Factors(session)
     ids = None if study_ids is None else sorted(set(study_ids))
     chunks = [None] if ids is None else [ids[i:i + BATCH] for i in range(0, len(ids), BATCH)]
     for chunk in chunks:
@@ -59,12 +63,12 @@ def sync(session: Session, study_ids: Iterable[int] | None = None) -> Counter:
             q = q.where(Study.id.in_(chunk))
         else:
             q = q.where(or_(Study.psd_mgy >= PSD_MGY, Study.total_rp_dose >= KAR_GY,
-                            Study.total_dap >= KAP_GYCM2))
+                            factors.apply(Study.total_dap) >= KAP_GYCM2))
         studies = list(session.scalars(q))
         existing = {f.study_id: f for f in session.scalars(select(Followup).where(
             Followup.study_id.in_([s.id for s in studies])))}
         for s in studies:
-            text = levels(s)
+            text = levels(s, factors.at(s.device_id, s.study_datetime))
             old = existing.get(s.id)
             if old is not None:
                 if text and old.status == "open" and old.levels != text[:255]:

@@ -35,7 +35,8 @@ from .db.models import (
     SizeSource,
     Study,
 )
-from .stats import METRICS
+from .qa import Factors
+from .stats import DAP_METRICS, METRICS
 
 PREFETCH_MIN = 5  # studies in a chunk from which the window rules prefetch
 STUDY_METRICS = {k: m.column for k, m in METRICS.items() if m.level == "study"}
@@ -84,15 +85,23 @@ def _applies(rule: AlertRule, s: Study) -> bool:
                 and (s.age_days is None or s.age_days >= rule.max_age_days))
 
 
-def _metric_value(metric: str | None, s: Study, events: list[Event]) -> tuple:
+def _metric_value(metric: str | None, s: Study, events: list[Event], dap_factor: float = 1.0
+                  ) -> tuple:
     """(value, where): a study metric, or the highest value of a per-event metric over the
-    study's events (localizers left out), with the series it came from."""
+    study's events (localizers left out), with the series it came from. A DAP is times the
+    DAP meter's calibration of the device (QA register)."""
     m = METRICS.get(metric or "")
     if m is None:
         return None, ""
+    k = dap_factor if metric in DAP_METRICS else 1.0
     if m.level == "study":
-        return getattr(s, m.column.key), ""
-    get = EVENT_VALUE.get(metric) or (lambda e: getattr(e, m.column.key))
+        v = getattr(s, m.column.key)
+        return (None if v is None else v * k), ""
+    raw = EVENT_VALUE.get(metric) or (lambda e: getattr(e, m.column.key))
+
+    def get(e):
+        v = raw(e)
+        return None if v is None else v * k
     best = max(((v, e) for e in events if not e.is_localizer
                 for v in (get(e),) if v is not None), default=None, key=lambda x: x[0])
     if best is None:
@@ -108,6 +117,7 @@ class Evaluator:
         self.rules = list(session.scalars(select(AlertRule).where(AlertRule.enabled.is_(True))))
         self.checker = Checker(session) if any(r.kind == "drl_ratio" for r in self.rules) \
             else None
+        self.factors = Factors(session)  # DAP meter calibrations of the QA register
         # per-chunk prefetch for the per-patient window rules (see prefetch)
         self._studies: dict[int, dict[int, list]] = {}  # rule id -> patient -> study rows
         self._alerts: dict[int, dict[int, list]] = {}  # rule id -> patient -> (study id, when)
@@ -146,7 +156,7 @@ class Evaluator:
                 code = national.get(e.id) if s.modality in ("DX", "CR", "MG") \
                     else national.get(None)
                 if code:
-                    sums[code] += e.dap
+                    sums[code] += e.dap * self.factors.at(s.device_id, s.study_datetime)
         for code, dap in sums.items():
             consider(dap, code, "dap", "Gy.cm2")
         for (code, _side), v in mgd.items():
@@ -174,6 +184,11 @@ class Evaluator:
         more = f" (+{len(bad) - 1} more)" if len(bad) > 1 else ""
         return (float(len(bad)), None, None, f"Protocol {name}: patient {why}{more}")
 
+    def _metric_col(self, rule: AlertRule):
+        """The study column a window rule sums: a DAP is the corrected one."""
+        col = STUDY_METRICS.get(rule.metric, Study.n_events)
+        return self.factors.apply(col) if rule.metric in DAP_METRICS else col
+
     def prefetch(self, studies: list[Study]) -> None:
         """Load, per window rule, the studies and alerts of the chunk's patients in one
         query each, instead of two queries per study and rule. Not worth it for a couple
@@ -193,7 +208,7 @@ class Evaluator:
             pats = {s.patient_id for s in todo}
             lo = min(s.study_datetime for s in todo) - w
             hi = max(s.study_datetime for s in todo) + w
-            col = STUDY_METRICS.get(rule.metric, Study.n_events)
+            col = self._metric_col(rule)
             rows: dict[int, list] = {p: [] for p in pats}
             for pid, sid, when, mod, dlp, v in self.session.execute(
                     select(Study.patient_id, Study.id, Study.study_datetime, Study.modality,
@@ -227,7 +242,7 @@ class Evaluator:
                    and (mods is None or hybrid.matches(mod, dlp, mods))]
             return float(sum(v for v in sel if v is not None)), len(sel)
         lo = s.study_datetime - dt.timedelta(days=rule.window_days or 0)
-        q = select(func.count(), func.sum(STUDY_METRICS.get(rule.metric, Study.n_events))) \
+        q = select(func.count(), func.sum(self._metric_col(rule))) \
             .where(Study.patient_id == s.patient_id, Study.study_datetime > lo,
                    Study.study_datetime <= s.study_datetime)
         if rule.modality:
@@ -259,7 +274,8 @@ class Evaluator:
                 continue
             hit = None
             if rule.kind == "threshold":
-                v, where = _metric_value(rule.metric, s, events)
+                v, where = _metric_value(rule.metric, s, events,
+                                         self.factors.at(s.device_id, s.study_datetime))
                 if v is not None and v >= rule.threshold:
                     hit = (v, rule.threshold, rule.unit,
                            f"{METRICS[rule.metric].label} {_fmt(v, rule.unit)} ≥ "
@@ -605,7 +621,7 @@ def _drift_samples(session: Session, lo: dt.datetime, hi: dt.datetime,
     out = []
     study_mods = [m for m in ("CT", "RF", "XA") if not mods or m in mods]
     if study_mods:
-        dose = func.coalesce(Study.total_dlp, Study.total_dap)
+        dose = func.coalesce(Study.total_dlp, Factors(session).apply(Study.total_dap))
         out += session.execute(
             select(Study.device_id, Code.code, Study.age_days, Study.study_datetime, dose,
                    Study.id)
@@ -616,7 +632,8 @@ def _drift_samples(session: Session, lo: dt.datetime, hi: dt.datetime,
     rx_mods = [m for m in ("DX", "CR") if not mods or m in mods]
     if rx_mods:
         out += session.execute(
-            select(Study.device_id, Code.code, Study.age_days, Study.study_datetime, Event.dap,
+            select(Study.device_id, Code.code, Study.age_days, Study.study_datetime,
+                   Factors(session).apply(Event.dap),
                    Study.id)
             .join(Event, Event.study_id == Study.id)
             .join(Classification, Classification.event_id == Event.id)

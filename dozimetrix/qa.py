@@ -6,8 +6,16 @@ The medical physicist records what was done to a device and when the next one is
   (true DAP = displayed × factor). The factor applies to the studies from the date of the
   calibration until the next calibration of the same device; before the first one it is 1. The
   stored DAP is never changed: the corrected value is shown beside it (study page, dose
-  statement) and used by the collimation audit, so a wrong factor is corrected by editing the
-  register, not the data.
+  statement) and **used wherever DAP is compared or aggregated**: statistics and the chart rows
+  (``stats.compute``, ``api.data.group_rows``), the DRL comparison and local DRLs
+  (``drl.collect``), the list and event exports and every spec field ``study.total_dap`` /
+  ``event.dap`` (the INSP and art. 12 returns, the operator report), the collimation audit, the
+  DAP alert thresholds and the high-dose follow-up. A wrong factor is corrected by editing the
+  register, not the data. ``Factors.apply(column)`` does it in SQL (a CASE on device and date;
+  the column unchanged while no calibration exists), ``Factors.at`` in Python. Left as stored on
+  purpose: the study page's own totals and its per-exposure DRL ratios (they sit beside the
+  corrected readout), the RDSR export (it re-writes the stored report) and the plausibility
+  checks of the data-quality page (they judge what the device reported).
 * ``constancy``, ``acceptance``, ``annual``, ``other``: tests, with a result and the date the
   next is due.
 
@@ -23,7 +31,7 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .db.models import Device, DeviceQA
+from .db.models import Device, DeviceQA, Study
 
 KINDS = ("dap_calibration", "constancy", "acceptance", "annual", "other")
 LABELS = {"dap_calibration": "DAP meter calibration", "constancy": "constancy test",
@@ -93,6 +101,35 @@ class Factors:
                 .order_by(DeviceQA.done_on)):
             self._by[phys.get(did, did)].append((done, f))
         self._phys = phys
+
+    @property
+    def empty(self) -> bool:
+        return not self._by
+
+    def sql(self):
+        """The factor as a SQL expression of ``Study.device_id`` and ``Study.study_datetime``
+        (one CASE with a branch per calibration, the latest first), or None when no
+        calibration was recorded: queries are then left as they are."""
+        if not self._by:
+            return None
+        from sqlalchemy import and_, case
+
+        aliases: dict[int, list[int]] = defaultdict(list)
+        for i, p in self._phys.items():
+            aliases[p].append(i)
+        whens = []
+        for phys_id, entries in self._by.items():
+            for done, f in sorted(entries, reverse=True):
+                whens.append((and_(Study.device_id.in_(aliases[phys_id]),
+                                   Study.study_datetime >= dt.datetime.combine(done, dt.time())),
+                              f))
+        return case(*whens, else_=1.0)
+
+    def apply(self, column):
+        """``column`` (a DAP in storage units, on Study or Event, with Study in the query)
+        times the DAP meter's correction; the column itself when there is none."""
+        f = self.sql()
+        return column if f is None else column * f
 
     def at(self, device_id: int | None, when: dt.datetime | dt.date | None) -> float:
         if device_id is None or when is None:

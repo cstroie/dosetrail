@@ -12,7 +12,7 @@ from .. import modality_profiles
 from ..db.models import Device, Event, Patient, SizeSource, Study
 from ..hybrid import label as modality_label
 from ..patient_age import format_age
-from ..qa import factor_at
+from ..qa import Factors, factor_at
 from .query import conditions, parse
 
 
@@ -709,7 +709,8 @@ def group_rows(session: Session, q: str, now: dt.datetime, group: str,
             [d for d, m in ov.items() if m in mods] or [-1])
     per_event = prof["code"] in ("DX", "MG")
     fields = _EVENT_FIELDS if per_event else _STUDY_FIELDS
-    cols = [c for c, _ in fields.values()]
+    factors = Factors(session)  # a DAP is the corrected one (QA register)
+    cols = [factors.apply(c) if k in ("dap", "dap_total") else c for k, (c, _) in fields.items()]
     base = [Study.device_id, Study.weight_kg, Study.age_days, Study.study_datetime,
             Study.study_description, Study.weight_source,
             Event.view if per_event else literal(None)]
@@ -784,7 +785,8 @@ def size_bands(session: Session, q: str, now: dt.datetime, device_ids: list[int]
     ids = [d for d, p in phys.items() if p in device_ids]
     conds = checked_conditions(q, now, overrides(session))  # every filter narrows the device's
     rows = session.execute(
-        select(Event.protocol, Event.dap, Study.id, Event.id, Study.age_days, Study.weight_kg,
+        select(Event.protocol, Factors(session).apply(Event.dap), Study.id, Event.id,
+               Study.age_days, Study.weight_kg,
                Study.weight_source, Event.view, Study.device_id)
         .join(Study, Study.id == Event.study_id)
         .where(Study.device_id.in_(ids), Study.modality.in_(["DX", "CR"]),

@@ -38,6 +38,7 @@ from .db.models import (
     StudyIndication,
 )
 from .patient_age import Band, band_for_age, band_for_weight
+from .qa import Factors
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,8 @@ class Metric:
     unit: str
     label: str
 
+
+DAP_METRICS = frozenset({"dap_total", "dap_fluoro", "dap_acq", "dap"})  # corrected by qa.py
 
 METRICS: dict[str, Metric] = {
     "dlp_total": Metric("study", Study.total_dlp, "mGy.cm", "DLP total"),
@@ -204,10 +207,12 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
         raise StatsError(f"unknown dimension(s) {', '.join(bad)}; one of {', '.join(DIMENSIONS)}")
     m = METRICS[metric]
     on_events = m.level == "event"
+    # a DAP is the corrected one (the DAP meter calibrations of the QA register, qa.py)
+    value_col = Factors(session).apply(m.column) if metric in DAP_METRICS else m.column
     # ref_group: head exams by age, body exams by weight (grid.py); needs the exam code
     need_exam = "exam" in group_by or "ref_group" in group_by or bool(exams)
 
-    cols = [m.column.label("value"), Study.id.label("sid"), Study.study_datetime,
+    cols = [value_col.label("value"), Study.id.label("sid"), Study.study_datetime,
             Study.device_id, Study.modality, Study.age_days,
             (Study.weight_kg if estimated_weights else case(
                 (Study.weight_source == SizeSource.estimated_reference, None),
@@ -245,7 +250,7 @@ def compute(session: Session, conds: list, metric: str, group_by: list[str], *,
         q = join(c, and_(link, c.code_id.in_(codes)))
         q = q.outerjoin(cc, cc.id == c.code_id).add_columns(cc.code.label("exam"),
                                                             cc.meaning.label("exam_meaning"))
-    q = q.where(m.column.is_not(None), *conds).limit(limit_rows)
+    q = q.where(m.column.is_not(None), *conds).limit(limit_rows)  # NULL stays NULL corrected
 
     age = BandLookup(session, age_scheme, "age") if "age_band" in group_by else None
     weight = BandLookup(session, weight_scheme, "weight") if "weight_band" in group_by else None

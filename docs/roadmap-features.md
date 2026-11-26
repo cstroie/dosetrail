@@ -12,9 +12,8 @@ Status (2026-11-26): items 1–11 (A and B) and 12, 13, 15, 16 (from C) are buil
 exists, per item, is in the "Built" notes below. Web pages: Analysis (`analysis.html`: the eight reports, with CSV), and in Admin: Follow-ups,
 Incidents, QA register, Report digests, CT coefficients; the study page shows the effective dose,
 the conceptus screening, the corrected DAP and the centering; the alerts page has an Investigate
-button that opens an incident. Not built: applying the QA correction factor to statistics, DRL and
-exports (it is on the study page, the dose statement and the collimation audit only), a PDF digest,
-organ dose. Unchecked: no CT coefficients are loaded, centering stays off.
+button that opens an incident. The QA correction factor is applied to statistics, DRL comparisons, exports, DAP alerts and
+follow-ups (see `qa.py`). Not built: a PDF digest, organ dose. Unchecked: no CT coefficients are loaded, centering stays off.
 
 ## A. Quick wins: the data is already stored
 
@@ -65,7 +64,7 @@ organ dose. Unchecked: no CT coefficients are loaded, centering stays off.
 11. **QA and calibration register per device.** Record the DAP meter correction factor with its
     date and apply it at read time; reminders when a QA test or calibration is due. (Qaelum QA
     module.) Related to item 4.
-    *Built: table `device_qa`, `qa.py`, `/api/devices/{id}/qa`, alert `qa_due`. The DAP correction factor is applied on the study page, the dose statement and the collimation audit; statistics, DRL and exports still use the stored DAP.*
+    *Built: table `device_qa`, `qa.py`, `/api/devices/{id}/qa`, alert `qa_due`. The DAP correction factor is applied on the study page, the dose statement, the collimation audit, statistics, DRL comparisons, exports, DAP alerts and follow-ups.*
 
 ## C. Bigger items: new data or physics
 

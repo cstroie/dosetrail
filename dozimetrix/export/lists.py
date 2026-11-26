@@ -3,6 +3,8 @@
 * The selection is the typed query language, the same as the study list and the charts.
 * Patients appear as pseudonyms (P-XXXXX-XXXXX). Identifiers (ID, name, birth date) are
   added only on request, and the API allows that only to the ``pid`` role.
+* DAP is corrected by the DAP meter calibration of the QA register (``DAP correction factor``
+  says by how much; 1 when none applies).
 * Units are fixed and written in the headers, UCUM style: DAP Gy.cm2, DLP mGy.cm,
   CTDIvol mGy, Ka,r Gy.
 * Exam codes are the local nomenclator (study level) and, per event, the nomenclator and
@@ -22,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..db.models import Classification, Code, CodeSystem, Device, Event, Patient, Study
 from ..patient_age import format_age
+from ..qa import Factors
 from .xlsx import XlsxWriter
 
 BATCH = 2000
@@ -44,7 +47,14 @@ Col = tuple[str, Callable[[dict], object]]
 _MILLI = {"dap", "rp_dose"}  # stored in Gy·cm² / Gy, exported in mGy·cm² / mGy
 
 
+def _dap(v, r):
+    """A DAP as stored, times the DAP meter's calibration of the device on the date (qa.py)."""
+    return v * r["f"] if v is not None and r["f"] != 1.0 else v
+
+
 def _attr(name: str, nd: int | None) -> Callable[[dict], object]:
+    if name == "dap":
+        return lambda r: _m(_dap(r["e"].dap, r), nd)
     if name in _MILLI:
         return lambda r: _m(getattr(r["e"], name), nd)
     if nd:
@@ -77,9 +87,10 @@ STUDY_COLUMNS: list[Col] = [
     ("Events", lambda r: r["s"].n_events),
     ("DLP total [mGy.cm]", lambda r: _f(r["s"].total_dlp, 3)),
     ("CTDIvol max [mGy]", lambda r: _f(r["s"].ctdivol_max, 3)),
-    ("DAP total [mGy.cm2]", lambda r: _m(r["s"].total_dap)),
-    ("DAP fluoroscopy [mGy.cm2]", lambda r: _m(r["s"].total_fluoro_dap)),
-    ("DAP acquisition [mGy.cm2]", lambda r: _m(r["s"].total_acq_dap)),
+    ("DAP total [mGy.cm2]", lambda r: _m(_dap(r["s"].total_dap, r))),
+    ("DAP fluoroscopy [mGy.cm2]", lambda r: _m(_dap(r["s"].total_fluoro_dap, r))),
+    ("DAP acquisition [mGy.cm2]", lambda r: _m(_dap(r["s"].total_acq_dap, r))),
+    ("DAP correction factor", lambda r: r["f"]),
     ("Ka,r total [mGy]", lambda r: _m(r["s"].total_rp_dose)),
     ("Fluoroscopy time [s]", lambda r: _f(r["s"].total_fluoro_time, 1)),
     ("AGD left [mGy]", lambda r: _f(r["s"].agd_left, 3)),
@@ -120,6 +131,7 @@ EVENT_COLUMNS: list[Col] = [
     ("DRL exam (national)", lambda r: r["ev_drl"].get("ro-drl-ms838-2025")),
     ("DRL exam (European)", lambda r: r["ev_drl"].get("ec-rp185")),
     *[(h, _attr(a, nd)) for h, a, nd in _EV],
+    ("DAP correction factor", lambda r: r["f"]),
 ]
 
 
@@ -163,6 +175,7 @@ def rows(session: Session, conds: list, level: str = "study", include_pid: bool 
     physical = physical or {i: (d.merged_into_id or i) for i, d in devices.items()}
     names = device_names or {i: (devices[p].display_name or devices[p].station_name
                                  or f"Device {p}") for i, p in physical.items()}
+    factors = Factors(session)  # DAP meter calibrations of the QA register
     for i in range(0, len(ids), BATCH):
         chunk = ids[i:i + BATCH]
         studies = session.execute(
@@ -176,7 +189,7 @@ def rows(session: Session, conds: list, level: str = "study", include_pid: bool 
                 events[e.study_id].append(e)
         for s, p in studies:
             d = devices.get(physical.get(s.device_id, s.device_id)) if s.device_id else None
-            base = {"s": s, "p": p, "d": d,
+            base = {"s": s, "p": p, "d": d, "f": factors.at(s.device_id, s.study_datetime),
                     "device": names.get(s.device_id) if s.device_id else None,
                     "origin": None if d is None else ("local" if d.is_local else "external"),
                     "exam": [c for c, _ in study_codes.get(s.id, [])],

@@ -49,6 +49,7 @@ from .db.models import (
     Study,
 )
 from .modality_profiles import group_of
+from .qa import Factors
 from .stats import EXPOSURE_EXAM, BandLookup, describe, own_codes
 
 # quantity -> (event column, local unit, factor to the reference unit by unit)
@@ -223,6 +224,9 @@ def collect(session: Session, conds: list, items: list[Item], *, by_device: bool
     per_breast = set(session.scalars(select(Code.id).where(Code.code.in_(PER_BREAST))))
     for quantity, its in by_q.items():
         col, units_map = QUANTITY[quantity]
+        study_level = col.table is Study.__table__
+        if quantity == "dap":  # the DAP meter's calibration from the QA register (qa.py)
+            col = Factors(session).apply(col)
         code_ids = {it.exam_code_id for it in its}
         schemes = {it.scheme for it in its if it.scheme}
         c = aliased(Classification)
@@ -232,7 +236,7 @@ def collect(session: Session, conds: list, items: list[Item], *, by_device: bool
             else_=Study.weight_kg)
         where = [col.is_not(None), *conds,
                  *([] if include_excluded else [Study.drl_exclusion.is_(None)])]
-        if col.table is Study.__table__:  # one value per study (administered activity)
+        if study_level:  # one value per study (administered activity)
             q = (select(col, Study.id, Study.id, Study.device_id, Study.age_days, weight,
                         c.code_id, None, None, None)
                  .select_from(Study)

@@ -15,10 +15,23 @@ from .registry import field, transform
 
 # ----------------------------------------------------------------------------- study
 
+_DAP_ATTRS = ("total_dap", "total_fluoro_dap", "total_acq_dap")
+
+
+def _calibrated(r, dap):
+    """A DAP times the DAP meter's calibration of the device on the date (QA register, qa.py)."""
+    from ..qa import Factors
+
+    f = r.ctx.state.get("qa_factors")
+    if f is None:
+        f = r.ctx.state["qa_factors"] = Factors(r.ctx.session)
+    return dap * f.at(r.s.device_id, r.s.study_datetime)
+
 
 def _study(name: str, attr: str, unit: str = "", doc: str = ""):
     def fn(r):
-        return getattr(r.s, attr)  # as stored: round with a transform, never in a field
+        v = getattr(r.s, attr)  # as stored: round with a transform, never in a field
+        return _calibrated(r, v) if attr in _DAP_ATTRS and v is not None else v
     fn.__doc__ = doc or f"study.{attr}"
     field(name, unit=unit)(fn)
 
@@ -37,7 +50,7 @@ for _n, _a, _u, _d, _nd in [  # the last column is unused (kept for readability)
     ("study.glandularity_pct", "glandularity_pct", "%", "Breast glandularity, typed in per study", None),
     ("study.total_dlp", "total_dlp", "mGy.cm", "CT: dose-length product of the study", 1),
     ("study.ctdivol_max", "ctdivol_max", "mGy", "CT: the highest CTDIvol of the study", 2),
-    ("study.total_dap", "total_dap", "Gy.cm2", "Dose-area product of the study", 4),
+    ("study.total_dap", "total_dap", "Gy.cm2", "Dose-area product of the study, corrected by the DAP meter's calibration (QA register)", 4),
     ("study.total_rp_dose", "total_rp_dose", "Gy", "Air kerma at the reference point of the study", 4),
     ("study.fluoro_time_s", "total_fluoro_time", "s", "Fluoroscopy time of the study", 1),
     ("study.activity_mbq", "admin_activity_mbq", "MBq", "Administered activity (nuclear medicine)", 1),
@@ -65,13 +78,14 @@ def accession(r):
 
 def _event(name: str, attr: str, unit: str, doc: str):
     def fn(r):
-        return getattr(r.e, attr) if r.e is not None else None
+        v = getattr(r.e, attr) if r.e is not None else None
+        return _calibrated(r, v) if attr == "dap" and v is not None else v
     fn.__doc__ = doc
     field(name, unit=unit)(fn)
 
 
 for _n, _a, _u, _d in [
-    ("event.dap", "dap", "Gy.cm2", "Dose-area product of the irradiation event"),
+    ("event.dap", "dap", "Gy.cm2", "Dose-area product of the irradiation event, corrected by the DAP meter's calibration (QA register)"),
     ("event.agd", "agd", "mGy", "Mean glandular dose of the view (mammography)"),
     ("event.esd", "esd", "mGy", "Entrance dose as the device itself reports it"),
     ("event.esak_calc", "esak_calc", "mGy", "ESAK calculated by the Order 1255/2016 annex 2 method"),
