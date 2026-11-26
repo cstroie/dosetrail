@@ -547,3 +547,37 @@ def test_protocol_band_mismatch(session, world):
     msg = _alerts(session, older)[key].message
     assert msg == "Protocol CT_CAP_N_1_6_ANI: patient 12.0 y outside 1–7 y"
     assert "55 kg outside 15–30 kg" in _alerts(session, heavy)[key].message
+
+
+def test_room_deviation_index(session, world):
+    dev, kid = world
+    day = NOW - dt.timedelta(days=3)
+
+    def room(prefix, di_values):
+        for i, v in enumerate(di_values):
+            s = _study(session, dev, kid, f"{prefix}.{i}", day + dt.timedelta(minutes=i),
+                       modality="DX", age_days=9000)
+            s.events = [Event(protocol="Torace PA", dap=0.1, deviation_index=v)]
+
+    room("di", [0.2] * 30 + [3.8] * 6 + [-2.6] * 4)  # 10 of 40 = 25 %
+    rule = session.scalar(select(AlertRule).filter_by(key="device-di-15pct"))
+    assert alerts.evaluate_devices(session, NOW, ["device_di"])["new"] == 1
+    a = session.scalar(select(Alert).filter_by(rule_id=rule.id))
+    assert a.value == pytest.approx(25.0)
+    assert a.message == ("Angio: 10 of 40 exposures (25 %) with a deviation index outside "
+                         "−2…+3 in 14 days (6 high, 4 low); median DI +0.2")
+    assert alerts.listing(session)[0]["value"] == "25 % outside"
+    # once per room and window; the threshold and the minimum counts are respected
+    assert alerts.evaluate_devices(session, NOW, ["device_di"])["new"] == 0
+    session.delete(a)
+    rule.threshold = 30.0
+    assert alerts.evaluate_devices(session, NOW, ["device_di"])["new"] == 0
+
+
+def test_deviation_index_computed_from_ei_and_target():
+    from dozimetrix.reports.exposure import deviation_index, outside
+
+    assert deviation_index(1.2, 500, 250) == 1.2  # the stored value wins
+    assert deviation_index(None, 500, 250) == pytest.approx(3.01, abs=0.01)
+    assert outside(deviation_index(None, 500, 250)) and not outside(0.0)
+    assert deviation_index(None, None, 250) is None and deviation_index(None, 100, 0) is None

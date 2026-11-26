@@ -46,12 +46,13 @@ UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "m
 # stored in Gy / Gy·cm² (DICOM); written in mGy / mGy·cm², as the web pages show them
 SHOWN = {"Gy": (1000.0, "mGy"), "Gy.cm2": (1000.0, "mGy.cm2")}
 BATCH = 1000
-DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained")
+DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained", "device_di")
 RETIRED_DAYS = 90  # a device silent for longer is retired, not broken (it alerted at day 4)
 SUSTAINED_MIN_N = 20  # as the DRL page: fewer values per room and quarter are not compared
 # device drift: the last two weeks, each against the 12 weeks before them
 DRIFT_WEEK, DRIFT_BASE = dt.timedelta(days=7), dt.timedelta(days=84)
 DRIFT_MIN_WEEK, DRIFT_MIN_BASE = 10, 30
+DI_MIN_N, DI_MIN_OUT = 20, 8  # exposures with a DI in the window; of them outside the limits
 
 
 def _num(v: float) -> str:
@@ -415,6 +416,8 @@ def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
         return f"{v:.1f} days", f"≥ {r.threshold:g} d"
     if r.kind == "drl_sustained":
         return f"{v:.2f}× DRL", f"≥ {r.threshold:g}× (2 quarters)"
+    if r.kind == "device_di":
+        return f"{v:.0f} % outside", f"≥ {r.threshold:g} % (DI −2…+3)"
     if r.kind == "device_drift":
         return f"{v:.2f}×", f"≥ {r.threshold:g}× (2 weeks)"
     if r.kind == "protocol_band":
@@ -660,6 +663,55 @@ def _drift(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
     return out
 
 
+def _di(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
+    """A room whose digital radiography exposures sit outside the deviation index limits
+    (IEC 62494-1: above +3 or below −2) in at least ``threshold`` % of the exposures that have
+    a DI over the last ``window_days`` (default 14): dose creep, a detector or AEC problem, or
+    a wrong target. Needs ≥ 20 exposures with a DI and ≥ 8 outside. Once per room and window."""
+    from .reports.exposure import deviation_index, outside
+
+    devices = _local_devices(session)
+    if not devices:
+        return []
+    window = dt.timedelta(days=rule.window_days or 14)
+    q = (select(Study.device_id, Study.id, Study.study_datetime, Event.deviation_index,
+                Event.exposure_index, Event.target_exposure_index)
+         .join(Event, Event.study_id == Study.id)
+         .where(Study.device_id.in_(list(devices)), Study.study_datetime > now - window,
+                Study.study_datetime <= now, Event.is_localizer.is_not(True),
+                (Event.deviation_index.is_not(None)) | (Event.exposure_index.is_not(None))))
+    mods = _modalities(rule)
+    if mods:
+        q = q.where(Study.modality.in_(mods))
+    rooms: dict[int, list] = defaultdict(list)
+    for did, sid, t, di, ei, target in session.execute(q):
+        v = deviation_index(di, ei, target)
+        if v is not None:
+            rooms[did].append((t, sid, v))
+    out = []
+    for did, rows in sorted(rooms.items()):
+        bad = [r for r in rows if outside(r[2])]
+        if len(rows) < DI_MIN_N or len(bad) < DI_MIN_OUT \
+                or 100.0 * len(bad) / len(rows) < rule.threshold:
+            continue
+        key = devices[did]
+        if session.scalar(
+                select(func.count()).select_from(Alert).join(Study, Study.id == Alert.study_id)
+                .where(Alert.rule_id == rule.id, Study.device_id == did,
+                       Alert.study_datetime > now - window, Alert.study_datetime <= now,
+                       Alert.message.startswith(key + ":"))):
+            continue
+        hi = sum(r[2] > 3.0 for r in bad)
+        med = _median([r[2] for r in rows])
+        share = 100.0 * len(bad) / len(rows)
+        out.append({"study_id": max(rows)[1], "value": share, "limit_value": rule.threshold,
+                    "unit": "%",
+                    "message": f"{key}: {len(bad)} of {len(rows)} exposures ({share:.0f} %) with "
+                               f"a deviation index outside −2…+3 in {window.days} days "
+                               f"({hi} high, {len(bad) - hi} low); median DI {med:+.1f}"})
+    return out
+
+
 def _quarter_start(t: dt.datetime) -> dt.datetime:
     return dt.datetime(t.year, 3 * ((t.month - 1) // 3) + 1, 1)
 
@@ -714,7 +766,8 @@ def _sustained(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict
     return out
 
 
-DEVICE_CHECKS = {"device_silent": _silent, "device_drift": _drift, "drl_sustained": _sustained}
+DEVICE_CHECKS = {"device_silent": _silent, "device_drift": _drift, "drl_sustained": _sustained,
+                 "device_di": _di}
 
 
 def evaluate_devices(session: Session, now: dt.datetime | None = None,

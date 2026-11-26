@@ -9,6 +9,7 @@
 # kind = pregnant   : the study is marked as pregnant
 # kind = device_silent : a busy device sends no study for threshold days
 # kind = device_drift  : a device's median dose (exam, age group) >= threshold x its usual one
+# kind = device_di   : a room's share of exposures with a deviation index outside -2..+3 >= threshold %
 # kind = drl_sustained : a room's median (exam, age group) >= threshold x DRL, 2 quarters running
 
 [[rule]]
@@ -254,3 +255,15 @@ threshold = 0.0
 severity = "warn"
 notify = false
 note = "The protocol name states a band (1-6 ani, 15-30 kg, ADULT, PED) and the patient is outside it by more than half a year (a month for bands in months; 10 % + 1 kg for weight). An adult protocol on a child overdoses; a child protocol on an older child gives noisy images. Weights estimated from age are not used."
+
+[[rule]]
+key = "device-di-15pct"
+name = "Room: deviation index outside −2…+3 in ≥ 15 % of exposures"
+kind = "device_di"
+modality = "DX,CR"
+threshold = 15.0
+unit = "%"
+window_days = 14
+severity = "warn"
+notify = false
+note = "IEC 62494-1: DI above +3 is more than twice the target dose, below −2 gives noisy images. Over the last 14 days, ≥ 20 exposures with a DI and ≥ 8 outside the limits: dose creep, a detector or AEC fault, or a target set wrongly on the console. See the exposure index report per protocol."

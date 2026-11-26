@@ -406,6 +406,16 @@ def test_dose_check_report_endpoint(client):
     assert client.get("/api/reports/dose-check", params={"format": "xml"}).status_code == 400
 
 
+def test_exposure_index_report_endpoint(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/reports/exposure-index", params={"year": 2026, "quarter": 4, "q": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["high"] == 3.0 and r.json()["rows"] == []
+    c = client.get("/api/reports/exposure-index", params={"year": 2026, "quarter": 4, "q": "",
+                                                           "format": "csv"})
+    assert c.status_code == 200 and c.content.decode("utf-8-sig").startswith("room,")
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})
