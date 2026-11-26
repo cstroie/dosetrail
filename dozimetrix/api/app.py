@@ -254,6 +254,25 @@ class AckIn(BaseModel):
     note: str | None = None
 
 
+class IncidentIn(BaseModel):
+    alert_id: int | None = None
+    study_id: int | None = None
+    title: str | None = Field(None, max_length=255)
+
+
+class IncidentPatch(BaseModel):
+    title: str | None = Field(None, max_length=255)
+    cause: str | None = None
+    actions: str | None = None
+    outcome: str | None = None
+    reportable: bool | None = None
+    reportable_basis: str | None = Field(None, max_length=1024)
+    reported_at: dt.datetime | None = None
+    report_reference: str | None = Field(None, max_length=128)
+    note: str | None = None  # appended to the log
+    action: str | None = None  # close | reopen (the reason is in note)
+
+
 class FollowupIn(BaseModel):
     status: str | None = None
     outcome: str | None = Field(None, max_length=255)
@@ -1920,6 +1939,72 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         _audit(session, request, user, "identify", f"followup-letter:{followup_id}")
         session.commit()
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/incidents")
+    def incidents(status: str | None = None, limit: int = 200,
+                  user: User = Depends(current_user), session: Session = Depends(db)):
+        from .. import incidents as inc
+
+        try:
+            return inc.listing(session, status, max(1, min(limit, 1000)))
+        except inc.IncidentError as e:
+            raise HTTPException(400, str(e)) from None
+
+    @app.get("/api/incidents/{incident_id}")
+    def incident_detail(incident_id: int, user: User = Depends(current_user),
+                        session: Session = Depends(db)):
+        from .. import incidents as inc
+
+        out = inc.detail(session, incident_id)
+        if out is None:
+            raise HTTPException(404, "incident not found")
+        return out
+
+    @app.post("/api/incidents")
+    def incident_open(body: IncidentIn, request: Request, user: User = Depends(current_user),
+                      session: Session = Depends(db)):
+        from .. import incidents as inc
+
+        admin_only(user)
+        try:
+            i = inc.open_incident(session, user.username, clock(), alert_id=body.alert_id,
+                                  study_id=body.study_id, title=body.title)
+        except inc.IncidentError as e:
+            raise HTTPException(404 if "not found" in str(e) else 400, str(e)) from None
+        _audit(session, request, user, "incident", f"incident:{i.id}",
+               {"alert_id": i.alert_id, "study_id": i.study_id})
+        session.commit()
+        return {"id": i.id, "status": i.status}
+
+    @app.post("/api/incidents/{incident_id}")
+    def incident_update(incident_id: int, body: IncidentPatch, request: Request,
+                        user: User = Depends(current_user), session: Session = Depends(db)):
+        """Change fields, add a note, close or reopen (action); every change is logged."""
+        from .. import incidents as inc
+
+        admin_only(user)
+        fields = body.model_dump(exclude_unset=True)
+        text, action = fields.pop("note", None), fields.pop("action", None)
+        if action not in (None, "close", "reopen"):
+            raise HTTPException(400, "action is close or reopen")
+        now = clock()
+        try:
+            if action == "reopen":
+                inc.reopen(session, incident_id, user.username, now, text or "")
+                text = None
+            if fields:
+                inc.update(session, incident_id, user.username, now, **fields)
+            if text:
+                inc.note(session, incident_id, user.username, now, text)
+            if action == "close":
+                inc.close(session, incident_id, user.username, now)
+        except inc.IncidentError as e:
+            session.rollback()
+            raise HTTPException(404 if "not found" in str(e) else 400, str(e)) from None
+        _audit(session, request, user, "incident", f"incident:{incident_id}",
+               {"fields": sorted(fields), "action": action})
+        session.commit()
+        return inc.detail(session, incident_id)
 
     @app.get("/api/alert-rules")
     def alert_rules(user: User = Depends(current_user), session: Session = Depends(db)):

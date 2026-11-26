@@ -669,6 +669,48 @@ class Followup(TimestampMixin, Base):
     __table_args__ = (Index("ix_followup_status", "status", "study_datetime"),)
 
 
+class Incident(TimestampMixin, Base):
+    """An investigation of an alert or a study (incidents.py): cause, actions, outcome, and
+    whether it is reportable as an unintended or accidental exposure (BSS art. 63)."""
+
+    __tablename__ = "incident"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(Text(255))
+    alert_id: Mapped[int | None] = mapped_column(ForeignKey("alert.id", ondelete="SET NULL"),
+                                                 index=True)
+    study_id: Mapped[int | None] = mapped_column(ForeignKey("study.id", ondelete="SET NULL"),
+                                                 index=True)
+    status: Mapped[str] = mapped_column(AsciiId(12), default="open")  # open | closed
+    opened_by: Mapped[str | None] = mapped_column(AsciiId(64))
+    closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    cause: Mapped[str | None] = mapped_column(LongText)
+    actions: Mapped[str | None] = mapped_column(LongText)
+    outcome: Mapped[str | None] = mapped_column(LongText)
+    # NULL = not assessed yet; a closed incident has it decided
+    reportable: Mapped[bool | None] = mapped_column(Boolean)
+    reportable_basis: Mapped[str | None] = mapped_column(Text(1024))
+    reported_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    report_reference: Mapped[str | None] = mapped_column(Text(128))
+
+    log: Mapped[list[IncidentLog]] = relationship(back_populates="incident",
+                                                  order_by="IncidentLog.id")
+
+
+class IncidentLog(Base):
+    """The audit trail of an incident: every change of a field and every note, with who and when."""
+
+    __tablename__ = "incident_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    incident_id: Mapped[int] = mapped_column(ForeignKey("incident.id", ondelete="CASCADE"),
+                                             index=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime)
+    username: Mapped[str | None] = mapped_column(AsciiId(64))
+    kind: Mapped[str] = mapped_column(AsciiId(12))  # opened | change | note | closed | reopened
+    text: Mapped[str] = mapped_column(LongText)
+
+    incident: Mapped[Incident] = relationship(back_populates="log")
+
+
 class Alert(Base):
     __tablename__ = "alert"
     id: Mapped[int] = mapped_column(primary_key=True)

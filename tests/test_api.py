@@ -450,6 +450,31 @@ def test_followup_endpoints_and_roles(client):
     assert client.get("/api/followups/999/letter", params={"lang": "xx"}).status_code == 400
 
 
+def test_incident_endpoints(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/incidents").json()["rows"] == []
+    assert client.post("/api/incidents", json={"study_id": 1, "title": "x"}).status_code == 403
+    assert client.get("/api/incidents", params={"status": "weird"}).status_code == 400
+    login(client, "boss", "boss-pass-123")
+    assert client.post("/api/incidents", json={}).status_code == 400
+    assert client.post("/api/incidents", json={"alert_id": 99999}).status_code == 404
+    r = client.post("/api/incidents", json={"study_id": 1, "title": "Dose too high"})
+    assert r.status_code == 200, r.text
+    iid = r.json()["id"]
+    r = client.post(f"/api/incidents/{iid}", json={"cause": "long case", "note": "called"})
+    assert r.status_code == 200 and [e["kind"] for e in r.json()["log"]] == [
+        "opened", "change", "note"]
+    r = client.post(f"/api/incidents/{iid}", json={"action": "close"})
+    assert r.status_code == 400 and "outcome" in r.json()["error"]
+    r = client.post(f"/api/incidents/{iid}", json={"outcome": "none", "reportable": False,
+                                                    "action": "close"})
+    assert r.status_code == 200 and r.json()["status"] == "closed"
+    assert client.get(f"/api/incidents/{iid}").json()["reportable"] is False
+    assert client.get("/api/incidents/99999").status_code == 404
+    r = client.post(f"/api/incidents/{iid}", json={"action": "reopen", "note": "again"})
+    assert r.status_code == 200 and r.json()["status"] == "open"
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})
