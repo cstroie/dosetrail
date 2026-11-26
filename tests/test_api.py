@@ -435,13 +435,29 @@ def test_scan_length_report_endpoint(client):
     assert c.status_code == 200 and c.content.decode("utf-8-sig").startswith("study_id,")
 
 
-def test_followup_endpoints_and_roles(client):
+def test_reports_pages_need_exporter(client):
+    """Analyses and registers (Reports, Quality) are read with the exporter or admin role."""
     login(client, "viewer", "viewer-pass-1")
+    for url in ("/api/followups", "/api/incidents", "/api/incidents/1", "/api/qa/due",
+                "/api/devices/1/qa", "/api/quality", "/api/protocols/compare?region=CT-CAP"):
+        assert client.get(url).status_code == 403, url
+    assert client.get("/api/drl/sets").status_code == 200  # the Reference levels page needs it
+    login(client, "phys", "phys-pass-12")  # pid is not enough
+    assert client.get("/api/followups").status_code == 403
+    login(client, "regist", "regist-pass-12")  # exporter
+    for url in ("/api/followups", "/api/incidents", "/api/qa/due", "/api/devices/1/qa",
+                "/api/quality"):
+        assert client.get(url).status_code == 200, url
+    login(client, "boss", "boss-pass-123")  # admin
+    assert client.get("/api/followups").status_code == 200
+
+
+def test_followup_endpoints_and_roles(client):
+    login(client, "regist", "regist-pass-12")
     r = client.get("/api/followups", params={"status": "pending"})
     assert r.status_code == 200 and r.json()["rows"] == []
     assert client.get("/api/followups", params={"status": "x"}).status_code == 400
     assert client.post("/api/followups/1", json={"status": "informed"}).status_code == 403
-    assert client.get("/api/followups/1/letter").status_code == 403  # names the patient
     login(client, "boss", "boss-pass-123")
     assert client.post("/api/followups/999", json={"status": "informed"}).status_code == 404
     assert client.get("/api/followups/999/letter").status_code == 403  # admin alone: no pid
@@ -451,7 +467,7 @@ def test_followup_endpoints_and_roles(client):
 
 
 def test_incident_endpoints(client):
-    login(client, "viewer", "viewer-pass-1")
+    login(client, "regist", "regist-pass-12")
     assert client.get("/api/incidents").json()["rows"] == []
     assert client.post("/api/incidents", json={"study_id": 1, "title": "x"}).status_code == 403
     assert client.get("/api/incidents", params={"status": "weird"}).status_code == 400
@@ -504,7 +520,7 @@ def test_digest_endpoints_are_admin_only(client):
 
 
 def test_qa_register_endpoints(client):
-    login(client, "viewer", "viewer-pass-1")
+    login(client, "regist", "regist-pass-12")
     assert client.get("/api/devices/1/qa").json() == []
     assert client.get("/api/qa/due").json() == []
     body = {"kind": "dap_calibration", "done_on": "2026-05-01", "factor": 1.1,
@@ -720,7 +736,7 @@ def test_survey_export_endpoint(client):
 
 
 def test_quality_endpoint_and_study_findings(client):
-    login(client, "viewer", "viewer-pass-1")
+    login(client, "regist", "regist-pass-12")
     r = client.get("/api/quality", params={"q": ""}).json()
     assert r["studies"] >= 1 and "ct_dlp_mismatch" in r["rules"]
     sid = client.get("/api/studies", params={"q": "modality:XA"}).json()["rows"][0]["id"]
@@ -1237,7 +1253,7 @@ def test_his_waiting_breakdown(client):
 
 
 def test_protocol_comparison_endpoint(client):
-    login(client, "viewer", "viewer-pass-1")
+    login(client, "regist", "regist-pass-12")
     r = client.get("/api/protocols/compare", params={"region": "CT-CAP", "min_n": 1})
     assert r.status_code == 200
     body = r.json()

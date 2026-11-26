@@ -432,6 +432,13 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(403, "the admin role is required")
         return user
 
+    def reports_user(user: User = Depends(current_user)) -> User:
+        """The pages under Reports and Quality (analyses, registers): the exporter or the admin
+        role, the same rule as for downloading reports; writes stay admin only."""
+        if not user.role_set() & {"exporter", "admin"}:
+            raise HTTPException(403, "the exporter role is required")
+        return user
+
     def admin_write(session: Session, request: Request, user: User, action: str,
                     target: str, fn):
         try:
@@ -882,7 +889,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                           q: str = "origin:local", start: dt.date | None = None,
                           end: dt.date | None = None, grid: str = "icrp",
                           by: str = "protocol", by_device: bool = True, min_n: int = 10,
-                          estimated: bool = False, user: User = Depends(current_user),
+                          estimated: bool = False, user: User = Depends(reports_user),
                           session: Session = Depends(db)):
         """The protocols of one CT region side by side, per ICRP 135 patient group:
         distributions of dose and technique, dose rank; see protocols.py."""
@@ -1213,7 +1220,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/api/quality")
     def quality_report(q: str = "origin:local date:90d", limit: int = 200,
-                       user: User = Depends(current_user), session: Session = Depends(db)):
+                       user: User = Depends(reports_user), session: Session = Depends(db)):
         from .. import quality
 
         def compute():
@@ -1908,7 +1915,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/api/followups")
     def followups(status: str | None = None, limit: int = 200,
-                  user: User = Depends(current_user), session: Session = Depends(db)):
+                  user: User = Depends(reports_user), session: Session = Depends(db)):
         """High-dose follow-ups (fluoroscopy / interventional): pending = open or informed."""
         from .. import followup
 
@@ -1954,7 +1961,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
 
     @app.get("/api/incidents")
     def incidents(status: str | None = None, limit: int = 200,
-                  user: User = Depends(current_user), session: Session = Depends(db)):
+                  user: User = Depends(reports_user), session: Session = Depends(db)):
         from .. import incidents as inc
 
         try:
@@ -1963,7 +1970,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             raise HTTPException(400, str(e)) from None
 
     @app.get("/api/incidents/{incident_id}")
-    def incident_detail(incident_id: int, user: User = Depends(current_user),
+    def incident_detail(incident_id: int, user: User = Depends(reports_user),
                         session: Session = Depends(db)):
         from .. import incidents as inc
 
@@ -2057,7 +2064,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return {"subject": subject, "text": text, "html": page, "data": rep}
 
     @app.get("/api/devices/{device_id}/qa")
-    def device_qa(device_id: int, user: User = Depends(current_user),
+    def device_qa(device_id: int, user: User = Depends(reports_user),
                   session: Session = Depends(db)):
         """The device's QA and calibration register, newest first."""
         from .. import qa
@@ -2094,7 +2101,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return {"deleted": entry_id}
 
     @app.get("/api/qa/due")
-    def qa_due(days: int = 30, user: User = Depends(current_user),
+    def qa_due(days: int = 30, user: User = Depends(reports_user),
                session: Session = Depends(db)):
         """QA tests and calibrations overdue or due within ``days``."""
         from .. import qa

@@ -141,6 +141,12 @@ export async function me() {
   return isSample ? null : remote('/api/me');
 }
 
+/** True for an admin, and with the sample data (no accounts): the pages show their write controls. */
+export async function isAdmin() {
+  const u = await me().catch(() => null);
+  return !u || u.roles.includes('admin');
+}
+
 /** POST /api/logout, then the login page. */
 export async function logout() {
   await fetch(new URL('/api/logout', MODE).href, { method: 'POST' }).catch(() => {});

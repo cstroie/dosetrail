@@ -5,8 +5,8 @@ import { prefs } from './prefs.js';
 
 const STRINGS = {
   en: {
-    'nav.overview': 'Overview', 'nav.studies': 'Studies', 'nav.charts': 'Charts', 'nav.drl': 'Reference levels', 'nav.reports': 'Reports', 'nav.analysis': 'Analysis', 'nav.alerts': 'Alerts', 'nav.admin': 'Admin',
-    'nav.overview.short': 'Overview', 'nav.studies.short': 'Studies', 'nav.charts.short': 'Charts', 'nav.drl.short': 'DRL', 'nav.reports.short': 'Reports', 'nav.analysis.short': 'Analysis', 'nav.alerts.short': 'Alerts', 'nav.admin.short': 'Admin',
+    'nav.overview': 'Overview', 'nav.studies': 'Studies', 'nav.charts': 'Charts', 'nav.drl': 'Reference levels', 'nav.reports': 'Reports', 'nav.quality': 'Quality', 'nav.analysis': 'Analysis', 'nav.alerts': 'Alerts', 'nav.admin': 'Admin',
+    'nav.overview.short': 'Overview', 'nav.studies.short': 'Studies', 'nav.charts.short': 'Charts', 'nav.drl.short': 'DRL', 'nav.reports.short': 'Reports', 'nav.quality.short': 'Quality', 'nav.analysis.short': 'Analysis', 'nav.alerts.short': 'Alerts', 'nav.admin.short': 'Admin',
     'shell.search': 'Search or type a command…',
     'shell.modality': 'Modality', 'shell.origin': 'Origin', 'shell.all': 'All',
     'shell.local': 'Local', 'shell.external': 'External', 'shell.both': 'Local + external',
@@ -121,8 +121,8 @@ const STRINGS = {
     'rep.survey.hint': 'Patients < 18 y, local devices. Month only, keyed codes, no name / CNP / birth date. CT one row per series; checks DLP ±10 % and phantom.',
   },
   ro: {
-    'nav.overview': 'Sinteză', 'nav.studies': 'Studii', 'nav.charts': 'Grafice', 'nav.drl': 'Niveluri de referință', 'nav.reports': 'Rapoarte', 'nav.analysis': 'Analize', 'nav.alerts': 'Alerte', 'nav.admin': 'Administrare',
-    'nav.overview.short': 'Sinteză', 'nav.studies.short': 'Studii', 'nav.charts.short': 'Grafice', 'nav.drl.short': 'NRD', 'nav.reports.short': 'Rapoarte', 'nav.analysis.short': 'Analize', 'nav.alerts.short': 'Alerte', 'nav.admin.short': 'Admin.',
+    'nav.overview': 'Sinteză', 'nav.studies': 'Studii', 'nav.charts': 'Grafice', 'nav.drl': 'Niveluri de referință', 'nav.reports': 'Rapoarte', 'nav.quality': 'Calitate', 'nav.analysis': 'Analize', 'nav.alerts': 'Alerte', 'nav.admin': 'Administrare',
+    'nav.overview.short': 'Sinteză', 'nav.studies.short': 'Studii', 'nav.charts.short': 'Grafice', 'nav.drl.short': 'NRD', 'nav.reports.short': 'Rapoarte', 'nav.quality.short': 'Calitate', 'nav.analysis.short': 'Analize', 'nav.alerts.short': 'Alerte', 'nav.admin.short': 'Admin.',
     'shell.search': 'Caută sau scrie o comandă…',
     'shell.modality': 'Modalitate', 'shell.origin': 'Proveniență', 'shell.all': 'Toate',
     'shell.local': 'Local', 'shell.external': 'Extern', 'shell.both': 'Local + extern',

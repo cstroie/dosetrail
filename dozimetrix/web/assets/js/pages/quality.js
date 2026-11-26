@@ -3,15 +3,16 @@
 
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
-import { adminTabs } from '../components/admin-tabs.js';
+import { reportTabs } from '../components/admin-tabs.js';
 import '../components/dx-query-bar.js';
 import { h, clear, append, section } from '../core/dom.js';
 import { num } from '../core/format.js';
-import { quality, studyHref, importSizes } from '../core/api.js';
+import { isAdmin, quality, studyHref, importSizes } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { adminDefaults, defaultsActions, keepOwn } from '../core/page-defaults.js';
 
 const page = document.getElementById('page');
+const admin = await isAdmin();
 const defaults = await adminDefaults('quality');
 const DEFAULT_Q = defaults.value.q || 'origin:local date:90d';
 if (prefs.get('quality.q') === DEFAULT_Q) prefs.set('quality.q', undefined);  // the same as the default: not the user's own
@@ -29,10 +30,10 @@ function render() {
   const qb = h('dx-query-bar', { value: q });
   qb.addEventListener('query-change', (e) => { q = e.detail; keepOwn('quality.q', q, DEFAULT_Q); load(); });
   clear(page).append(
-    adminTabs('quality.html'),
+    reportTabs('quality.html'),
     h('div', { class: 'row', style: { 'align-items': 'flex-start' } }, h('div', { style: { flex: '1 1 600px' } }, qb),
       ...defaultsActions('quality', { admin: defaults.admin, prefKeys: ['quality.q'], current: () => ({ q }) })),
-    h('div', { id: 'qa' }), sizesPanel());
+    h('div', { id: 'qa' }), admin ? sizesPanel() : null);
   load();
 }
 

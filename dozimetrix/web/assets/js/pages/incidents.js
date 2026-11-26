@@ -1,18 +1,19 @@
-// Incidents (admin): the investigation of an alert or a study: cause, actions, outcome, and the
+// Incidents (Quality; the admin edits): the investigation of an alert or a study: cause, actions, outcome, and the
 // decision whether it is reportable as an unintended or accidental exposure (BSS art. 63). Every
 // change and note is logged with who and when; closing needs the outcome and that decision.
 // Open one from an alert (the Investigate button on the alerts page) or here by study number.
 
 import '../components/dx-shell.js';
-import { adminTabs } from '../components/admin-tabs.js';
+import { qualityTabs } from '../components/admin-tabs.js';
 import { h, clear, section, toast, pageHead } from '../core/dom.js';
 import { promptDialog } from '../core/confirm.js';
-import { incidents, incident, openIncident, updateIncident } from '../core/api.js';
+import { isAdmin, incidents, incident, openIncident, updateIncident } from '../core/api.js';
 import { dataTable, kpiRow, tag, when, field } from '../core/tables.js';
 
 const page = document.getElementById('page');
 const list = h('div', { style: { display: 'grid', gap: 'var(--sp-3)' } });
 const detail = h('div', {});
+const admin = await isAdmin();  // opening and editing incidents is for the admin
 const params = new URLSearchParams(location.search);
 let status = params.get('status') || 'open';
 
@@ -47,7 +48,7 @@ async function show(id) {
   try { i = await incident(id); } catch (e) { clear(detail).append(h('p', { class: 'error' }, e.message)); return; }
   const closed = i.status === 'closed';
   const text = (key, label, rows = 3) => field(label, h('textarea', { class: 'input', rows, disabled: closed, style: { width: '100%' }, 'data-k': key }, i[key] || ''));
-  const reportable = h('select', { class: 'input', disabled: closed, 'data-k': 'reportable' },
+  const reportable = h('select', { class: 'input', disabled: closed || !admin, 'data-k': 'reportable' },
     [['', 'not decided'], ['true', 'yes: reportable'], ['false', 'no']].map(([v, l]) => h('option', { value: v, selected: v === (i.reportable === null ? '' : String(i.reportable)) }, l)));
   const root = h('div', { class: 'panel', style: { padding: 'var(--sp-3)', display: 'grid', gap: 'var(--sp-2)' } },
     h('div', { class: 'row' }, h('strong', {}, `Incident #${i.id}`), tag(i.status, closed ? 'ok' : 'warn'),
@@ -59,7 +60,7 @@ async function show(id) {
       field('Basis of the decision', h('input', { class: 'input', type: 'text', maxlength: 1024, value: i.reportable_basis || '', disabled: closed, 'data-k': 'reportable_basis', style: { 'min-width': '24em' } })),
       field('Reported on', h('input', { class: 'input', type: 'datetime-local', value: (i.reported_at || '').slice(0, 16), disabled: closed, 'data-k': 'reported_at' })),
       field('Report reference', h('input', { class: 'input', type: 'text', maxlength: 128, value: i.report_reference || '', disabled: closed, 'data-k': 'report_reference' }))),
-    h('div', { class: 'row', style: { gap: 'var(--sp-2)' } },
+    !admin ? null : h('div', { class: 'row', style: { gap: 'var(--sp-2)' } },
       closed ? h('button', { class: 'btn', type: 'button', onclick: async () => { const why = await promptDialog('Why is it reopened?', { title: 'Reopen' }); if (why) save({ action: 'reopen', note: why }); } }, 'Reopen')
         : [h('button', { class: 'btn primary', type: 'button', onclick: () => save({}) }, 'Save'),
           h('button', { class: 'btn', type: 'button', onclick: () => save({ action: 'close' }) }, 'Save and close')],
@@ -83,11 +84,11 @@ async function show(id) {
   detail.scrollIntoView?.({ behavior: 'smooth' });
 }
 
-clear(page).append(adminTabs('incidents.html'),
+clear(page).append(qualityTabs('incidents.html'),
   pageHead('Incidents', { sub: 'Investigation of alerts: cause, actions, outcome and the decision on whether it is reportable. An audit trail for the medical physicist and for an inspection.' },
     h('select', { class: 'input', 'aria-label': 'Show', onchange: (e) => { status = e.target.value; loadList(); } },
       [['open', 'Open'], ['closed', 'Closed'], ['', 'All']].map(([v, l]) => h('option', { value: v, selected: v === status }, l)))),
-  newForm(), list, detail);
+  admin ? newForm() : null, list, detail);
 loadList();
 const first = Number(params.get('id'));
 if (first) show(first);

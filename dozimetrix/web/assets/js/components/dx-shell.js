@@ -17,6 +17,7 @@ const NAV = [
   ['charts', 'charts.html', 'charts'],
   ['drl', 'drl.html', 'drl'],
   ['reports', 'reports.html', 'reports'],
+  ['quality', 'followups.html', 'quality'],
   ['analysis', 'analysis.html', 'charts'],
   ['alerts', 'alerts.html', 'alerts'],
 ];  // Admin lives in the account menu, for admins only
@@ -45,6 +46,9 @@ class DtShell extends HTMLElement {
       NAV.map(([key, href, ic]) => h('a', { href, 'aria-current': key === page ? 'page' : false, title: t(`nav.${key}`) },
         key === 'alerts' ? h('span', { class: 'dot', 'aria-hidden': 'true' }) : null,
         icon(ic, 20), t(`nav.${key}.short`))));
+
+    // Quality (registers) is for the exporter and admin roles, as on the server
+    me().then((u) => { if (u && !u.roles.some((r) => r === 'exporter' || r === 'admin')) rail.querySelector('a[href="followups.html"]')?.remove(); }).catch(() => {});
 
     this._sub = h('span', { class: 'muted' });
     const crumb = h('span', { class: 'crumb' }, this.getAttribute('crumb') || t(`nav.${page}`) || '', this._sub);

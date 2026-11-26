@@ -1,13 +1,13 @@
-// High-dose follow-up (admin): patients of fluoroscopy and interventional studies that passed a
+// High-dose follow-up (Quality; the admin edits): patients of fluoroscopy and interventional studies that passed a
 // substantial dose level (peak skin dose 3 Gy, Ka,r 5 Gy, KAP 500 Gy·cm²): tell the patient, check
 // the skin 2–4 weeks later, record the outcome. Created automatically (followup.py); here the
 // physicist moves each one along. The patient letter names the patient (pid role, audit-logged).
 
 import '../components/dx-shell.js';
-import { adminTabs } from '../components/admin-tabs.js';
+import { qualityTabs } from '../components/admin-tabs.js';
 import { h, clear, toast, pageHead } from '../core/dom.js';
 import { promptDialog } from '../core/confirm.js';
-import { followups, updateFollowup, followupLetterHref } from '../core/api.js';
+import { isAdmin, followups, updateFollowup, followupLetterHref } from '../core/api.js';
 import { dataTable, kpiRow, tag, when } from '../core/tables.js';
 
 const page = document.getElementById('page');
@@ -27,13 +27,14 @@ async function dismiss(r) {
   if (note) act(r.id, { status: 'dismissed', note });
 }
 
+const admin = await isAdmin();  // moving a follow-up along is for the admin; the letter needs pid (server)
 const STATUS = { open: ['to inform', 'alert'], informed: ['informed', 'warn'], checked: ['checked', 'ok'], dismissed: ['dismissed', ''] };
 
 function actions(r) {
   const b = (label, fn, cls = '') => h('button', { class: `btn xs ${cls}`.trim(), type: 'button', onclick: fn }, label);
   return h('span', { class: 'row', style: { gap: '4px', 'flex-wrap': 'wrap' } },
-    r.status === 'open' ? b('Informed', () => act(r.id, { status: 'informed' })) : null,
-    r.status === 'open' || r.status === 'informed' ? [b('Skin checked…', () => check(r)), b('No follow-up…', () => dismiss(r), 'ghost')] : null,
+    !admin ? null : r.status === 'open' ? b('Informed', () => act(r.id, { status: 'informed' })) : null,
+    admin && (r.status === 'open' || r.status === 'informed') ? [b('Skin checked…', () => check(r)), b('No follow-up…', () => dismiss(r), 'ghost')] : null,
     h('a', { class: 'btn xs ghost', href: followupLetterHref(r.id, 'ro'), target: '_blank', rel: 'noopener' }, 'Letter RO'),
     h('a', { class: 'btn xs ghost', href: followupLetterHref(r.id, 'en'), target: '_blank', rel: 'noopener' }, 'EN'));
 }
@@ -55,7 +56,7 @@ async function load() {
       { get: actions, label: '' }], r.rows, 'No follow-ups in this view.'));
 }
 
-clear(page).append(adminTabs('followups.html'),
+clear(page).append(qualityTabs('followups.html'),
   pageHead('High-dose follow-up', { sub: 'Fluoroscopy and interventional patients above a substantial radiation dose level: inform, check the skin after 2–4 weeks, record the outcome.' },
     h('select', { class: 'input', 'aria-label': 'Show', onchange: (e) => { status = e.target.value; load(); } },
       [['pending', 'To act on'], ['open', 'To inform'], ['informed', 'Informed'], ['checked', 'Checked'], ['dismissed', 'Dismissed'], ['', 'All']].map(([v, l]) => h('option', { value: v, selected: v === status }, l)))),

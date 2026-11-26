@@ -23,7 +23,7 @@ from ..security import hash_password
 
 ROLES = ("viewer", "exporter", "pid", "importer", "admin")
 ROLE_HELP = {"viewer": "see studies, statistics and reports (pseudonyms)",
-             "exporter": "download exports and reports",
+             "exporter": "download exports and reports; open the Reports and Quality pages",
              "pid": "see patient identifiers (each reveal is logged)",
              "importer": "import files and run query/retrieve",
              "admin": "devices, DICOM nodes, mappings, rules, users"}

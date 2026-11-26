@@ -4,7 +4,7 @@
 // columns are there for a radiologist to judge. Server logic: dozimetrix/protocols.py.
 
 import '../components/dx-shell.js';
-import { adminTabs } from '../components/admin-tabs.js';
+import { reportTabs } from '../components/admin-tabs.js';
 import { h, clear, section } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { codes, protocolsCompare } from '../core/api.js';
@@ -75,7 +75,7 @@ async function run() {
 }
 
 async function render() {
-  clear(page).append(adminTabs('protocols.html'),
+  clear(page).append(reportTabs('protocols.html'),
     section('Compare protocols', { level: 1, sub:
       'All the protocols that scanned one region, whatever they are called, side by side: dose, technique and distribution, per patient group (ICRP 135: head by age, body by weight). A protocol name that states a group (CT_CAP_N_1_6_ANI) places a patient whose age or weight is missing. Head series on the 32 cm phantom are kept apart from the 16 cm ones. Bolus-tracking monitoring and aborted scans are left out.' },
       h('div', { class: 'toolbar', id: 'bar' }),

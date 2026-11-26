@@ -1,9 +1,9 @@
-// DRL sets (admin): the reference sets and their values. The values come from the bundled
+// DRL sets (Reports): the reference sets and their values. The values come from the bundled
 // seed files (dozimetrix/seeds/drl/*.csv) and are reloaded by `dozimetrix seed`, so they are
 // shown read-only here. The comparison with local doses is on the "Reference levels" page.
 
 import '../components/dx-shell.js';
-import { adminTabs } from '../components/admin-tabs.js';
+import { reportTabs } from '../components/admin-tabs.js';
 import { h, clear } from '../core/dom.js';
 import { drlSets, drlSet } from '../core/api.js';
 import { shownUnit } from '../core/format.js';
@@ -14,7 +14,7 @@ const APPLIES = { series: 'per series', study: 'per study', exposure: 'per expos
 const fmt = (v) => (v >= 100 ? Math.round(v).toString() : Number(v.toPrecision(3)).toString());
 
 async function render() {
-  clear(page).append(adminTabs('drl-sets.html'));
+  clear(page).append(reportTabs('drl-sets.html'));
   let sets;
   try { sets = await drlSets(); } catch (e) { page.append(h('p', { class: 'error' }, e.message)); return; }
   if (!sets.length) { page.append(h('p', { class: 'muted' }, 'No reference sets. Run "dozimetrix seed".')); return; }
