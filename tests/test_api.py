@@ -395,6 +395,17 @@ def test_operators_report_is_admin_only(client):
                                                         "quarter": 5}).status_code == 400
 
 
+def test_dose_check_report_endpoint(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/reports/dose-check", params={"year": 2026, "quarter": 4, "q": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["start"] == "2026-10-01" and r.json()["notifications"] == 0
+    c = client.get("/api/reports/dose-check", params={"year": 2026, "quarter": 4, "q": "",
+                                                       "format": "csv"})
+    assert c.status_code == 200 and c.content.decode("utf-8-sig").startswith("protocol,")
+    assert client.get("/api/reports/dose-check", params={"format": "xml"}).status_code == 400
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})

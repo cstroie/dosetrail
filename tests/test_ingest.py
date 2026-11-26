@@ -32,6 +32,16 @@ def test_ct_rdsr_values_and_units():
 
 def test_dose_check_alert_only_when_raised():
     assert parse(f.ct_rdsr(alert_raised=True)).events[1]["dose_check_alert"]
+    # CT Dose Check notification (TID 10015): configured value, forward estimate, reason
+    ev = parse(f.ct_rdsr(notification={"notify_dlp": 1000, "fwd_dlp": 1350.5,
+                                       "reason": "trauma"})).events[1]
+    assert ev["dose_check_notification"] and not ev["dose_check_alert"]
+    assert ev["extra_json"]["dose_check"] == {"notify_dlp": 1000.0, "fwd_dlp": 1350.5,
+                                              "reason": "trauma"}
+    # a configured value alone is a setting, not a notification
+    quiet = parse(f.ct_rdsr(notification={"notify_dlp": 1000})).events[1]
+    assert not quiet["dose_check_notification"]
+    assert "dose_check" not in parse(f.ct_rdsr()).events[1]["extra_json"]
 
 
 def test_dose_report_inside_secondary_capture_is_recognised():

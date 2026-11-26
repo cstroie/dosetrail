@@ -291,6 +291,8 @@ class Event(Base):
     is_localizer: Mapped[bool] = mapped_column(Boolean, default=False)
     is_principal: Mapped[bool | None] = mapped_column(Boolean)
     dose_check_alert: Mapped[bool | None] = mapped_column(Boolean)
+    # a CT Dose Check notification was raised (details in extra_json["dose_check"])
+    dose_check_notification: Mapped[bool | None] = mapped_column(Boolean)
 
     # source parameters (all modalities)
     kvp: Mapped[float | None] = mapped_column(Float)

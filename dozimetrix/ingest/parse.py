@@ -427,6 +427,39 @@ def _ct_type(node: Node) -> str | None:
     return (c[2].lower() if c and c[2] else None)
 
 
+def _dose_check(acq: Node) -> dict | None:
+    """CT Dose Check details of an acquisition (NEMA XR-25, TID 10015): the configured notification
+    and alert values, the forward estimates and the operator's reason for proceeding. ``notified``
+    is true when a notification was raised (a forward estimate or a reason is recorded under the
+    notification details), as ``dose_check_alert`` is for an alert. None when the acquisition
+    carries none of it."""
+    alert, note = acq.find("113900"), acq.find("113908")
+    if alert is None and note is None:
+        return None
+    out: dict = {}
+
+    def put(key: str, node: Node | None, code: str, unit: str) -> None:
+        v = node.num(code, unit) if node is not None else None
+        if v is not None:
+            out[key] = round(v, 2)
+
+    put("alert_dlp", alert, "113903", "mGy.cm")
+    put("alert_ctdivol", alert, "113904", "mGy")
+    put("alert_fwd_dlp", alert, "113905", "mGy.cm")
+    put("alert_fwd_ctdivol", alert, "113906", "mGy")
+    put("notify_dlp", note, "113911", "mGy.cm")
+    put("notify_ctdivol", note, "113912", "mGy")
+    put("fwd_dlp", note, "113913", "mGy.cm")
+    put("fwd_ctdivol", note, "113914", "mGy")
+    reason = (alert.text("113907") if alert is not None else None) \
+        or (note.text("113907") if note is not None else None)
+    if reason:
+        out["reason"] = reason[:255]
+    out["notified"] = bool(note is not None and (note.find("113913") or note.find("113914")
+                                                 or note.find("113907")))
+    return out
+
+
 def parse_ct(ds, root: Node) -> ParsedObject:
     study, patient, device = _header(ds)
     _observer(root, device)
@@ -443,6 +476,7 @@ def parse_ct(ds, root: Node) -> ParsedObject:
         alert = acq.find("113900")
         alert_on = bool(alert and (alert.find("113905") or alert.find("113906")
                                    or alert.find("113907")))
+        dose_check = _dose_check(acq)
         src = acq.find_all("113831", deep=True)
         kvs = [s.num("113733", "kV") for s in src if s.num("113733", "kV") is not None]
         mas = [s.num("113734", "mA") for s in src if s.num("113734", "mA") is not None]
@@ -465,7 +499,9 @@ def parse_ct(ds, root: Node) -> ParsedObject:
             "ssde": acq.num("113930", "mGy"), "wed_mm": acq.num("113980", "mm"),
             "is_localizer": etype == "localizer",
             "dose_check_alert": alert_on,
-            "extra_json": {"source": "rdsr"},
+            "dose_check_notification": bool(dose_check and dose_check.pop("notified", False)),
+            "extra_json": {"source": "rdsr", **({"dose_check": dose_check} if dose_check
+                                                else {})},
         })
     return ParsedObject("ct_rdsr", str(ds.SOPInstanceUID), str(ds.SOPClassUID),
                         study=study, patient=patient, device=device, events=events)

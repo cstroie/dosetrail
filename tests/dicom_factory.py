@@ -67,7 +67,7 @@ def header(ds, *, study_uid, sop_uid, modality, patient_id="P1", birth="20180101
 
 
 def ct_rdsr(study_uid="1.2.3.100", sop_uid="1.2.3.100.1", events=None, sop_class=RDSR,
-            dlp_unit="mGy.cm", alert_raised=False, observer_uid="9.9.9", staff=(),
+            dlp_unit="mGy.cm", alert_raised=False, notification=None, observer_uid="9.9.9", staff=(),
             phantom=("113690", "IEC Head Dosimetry Phantom", "DCM")):
     """``staff``: (name, role code) person participants, in the first acquisition."""
     ds = header(Dataset(), study_uid=study_uid, sop_uid=sop_uid,
@@ -96,6 +96,19 @@ def ct_rdsr(study_uid="1.2.3.100", sop_uid="1.2.3.100.1", events=None, sop_class
             dose_children.append(item("CONTAINER", ("113900", "Dose Check Alert Details"),
                                       children=[item("TEXT", ("113907", "Reason for "
                                                               "proceeding"), "clinical")]))
+        if notification:  # {"notify_dlp": .., "fwd_dlp": .., "reason": ..} (TID 10015)
+            kids = []
+            if "notify_dlp" in notification:
+                kids.append(item("NUM", ("113911", "DLP Notification Value"),
+                                 notification["notify_dlp"], "mGy.cm"))
+            if "fwd_dlp" in notification:
+                kids.append(item("NUM", ("113913", "DLP Forward Estimate"),
+                                 notification["fwd_dlp"], "mGy.cm"))
+            if "reason" in notification:
+                kids.append(item("TEXT", ("113907", "Reason for proceeding"),
+                                 notification["reason"]))
+            dose_children.append(item("CONTAINER", ("113908", "Dose Check Notification "
+                                                    "Details"), children=kids))
         acqs.append(item("CONTAINER", ("113819", "CT Acquisition"), children=[
             item("TEXT", ("125203", "Acquisition Protocol"), proto),
             item("CODE", ("123014", "Target Region"), ("T-D1100", "Head", "SRT")),
