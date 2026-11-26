@@ -424,6 +424,12 @@ export function renderStudy(page, s, { revealButton, ackAlert }) {
     readout('kV · mAs', range(ev, 'kvp') || '—', 'kV', `mAs ${range(ev, 'mas', 1) || '—'} · total ${num(sumOf(ev, 'mas'), 1)}`, { sm: true }),
     readout('Exposure index', range(ev, 'exposure_index') || '—', '', dis.length ? `DI ${range(ev, 'deviation_index', 1)}${diOut ? ` · ${diOut} outside ±3` : ''}` : 'no deviation index', { hot: diOut > 0 }),
   ];
+  // estimates beside the reported values: the CT effective dose (population estimate), the conceptus
+  // screening of a pregnant patient, the DAP corrected by the QA register's calibration, centering
+  if (T.effective_dose) ro.push(readout('Effective dose (est.)', num(T.effective_dose.msv, 2), 'mSv', `DLP × k, ${T.effective_dose.region.replace('_', '/')}${T.effective_dose.complete ? '' : ' (partly)'}: ${T.effective_dose.note}`));
+  if (T.conceptus) ro.push(readout('Conceptus dose (screening)', T.conceptus.mgy ? num(T.conceptus.mgy[1], 1) : '—', T.conceptus.mgy ? 'mGy' : '', T.conceptus.text, { hot: T.conceptus.level === 'document' || T.conceptus.level === 'physicist' }));
+  if (T.dap_corrected_gycm2 != null) ro.push(readout('DAP corrected', dap(T.dap_corrected_gycm2, 3), dapUnit(), `× ${T.dap_factor}: DAP meter calibration (QA register)`));
+  if (T.centering) ro.push(readout('Centering', `${T.centering.vertical_mm > 0 ? '+' : ''}${num(T.centering.vertical_mm, 0)}`, 'mm', `vertical (+ lower), lateral ${num(T.centering.lateral_mm, 0)} mm${T.centering.method === 'image_center' ? ' · isocentre assumed' : ''}`, { hot: Math.abs(T.centering.vertical_mm) > 20 }));
   // which events this page lists: CT series; NM/PET administrations; MG views; DX/CR exposures
   const kind = ct ? 'ct' : ['PT', 'NM'].includes(s.modality) ? 'nm' : s.modality === 'MG' ? 'mg' : 'rx';
   const KIND = { ct: ['CT series', 'series', 'grid.ct-series', ctColumns], nm: ['Administrations', 'administrations', 'grid.nm-admin', nmColumns],

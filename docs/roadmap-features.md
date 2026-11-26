@@ -9,10 +9,12 @@ alerts, skin dose maps, SSDE from RDSR, operator reports, national reports, the 
 aggregator.
 
 Status (2026-11-26): items 1–11 (A and B) and 12, 13, 15, 16 (from C) are built, one commit each; 14 and 17–19 are not. What
-exists, per item, is in the "Built" notes below. None of it is deployed yet: the migrations
-(`f1b7c3d9a2e4`, `a3d5e7f9b1c2`, `b5e7a9c1d3f4`, `c7f9b1d3e5a6`, `d9a1c3e5b7f8`, `e2b4d6f8a0c1`) have to be applied and the
-receiver restarted. No web pages were built for the new reports, follow-ups, incidents, QA
-register or digests: they are API and CLI only, for the design session to pick up.
+exists, per item, is in the "Built" notes below. Web pages: Analysis (`analysis.html`: the eight reports, with CSV), and in Admin: Follow-ups,
+Incidents, QA register, Report digests, CT coefficients; the study page shows the effective dose,
+the conceptus screening, the corrected DAP and the centering; the alerts page has an Investigate
+button that opens an incident. Not built: applying the QA correction factor to statistics, DRL and
+exports (it is on the study page, the dose statement and the collimation audit only), a PDF digest,
+organ dose. Unchecked: no CT coefficients are loaded, centering stays off.
 
 ## A. Quick wins: the data is already stored
 

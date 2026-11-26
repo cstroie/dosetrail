@@ -174,7 +174,7 @@ async function render() {
     body.append(h('tr', {},
       h('td', {}, enabled), h('td', { title: r.note || '' }, h('div', {}, r.name), h('div', { class: 'muted small' }, r.note || '')),
       h('td', {}, KIND[r.kind] || r.kind), h('td', {}, scope || 'all'),
-      h('td', {}, r.kind === 'pregnant' ? h('span', { class: 'muted' }, '—') : [threshold, ' ', h('span', { class: 'muted small' }, (r.unit && su.unit) || (r.kind === 'drl_ratio' ? '× DRL' : r.kind === 'count' ? 'studies' : r.kind === 'device_drift' ? '× usual' : r.kind === 'drl_sustained' ? '× DRL' : ''))]),
+      h('td', {}, (r.kind === 'pregnant' || r.kind === 'protocol_band') ? h('span', { class: 'muted' }, '—') : [threshold, ' ', h('span', { class: 'muted small' }, (r.unit && su.unit) || (r.kind === 'drl_ratio' ? '× DRL' : r.kind === 'count' ? 'studies' : r.kind === 'device_drift' ? '× usual' : r.kind === 'protocol_drift' ? '(0.25 = 25 %)' : r.kind === 'drl_sustained' ? '× DRL' : ''))]),
       h('td', {}, severity), h('td', {}, notifyBox), h('td', {}, save, r.custom ? [' ', h('button', { class: 'btn xs ghost danger', type: 'button', onclick: async () => {
         if (!(await confirmDialog(`Delete “${r.name}” and the alerts it raised? This cannot be undone. To keep the history, switch the rule off instead.`, { title: 'Delete rule', label: 'Delete', danger: true }))) return;
         try { const d = await deleteAlertRule(r.id); toast(`Deleted ${d.deleted} (${d.alerts_removed} alerts)`); render(); } catch (e) { toast(e.message); }

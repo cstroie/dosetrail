@@ -347,6 +347,20 @@ def _conceptus(session: Session, s: Study, events: list[Event]) -> dict | None:
             "mgy": None if mgy is None else [round(x, 2) for x in mgy]}
 
 
+def _centering(session: Session, s: Study) -> dict | None:
+    """The patient's position against the CT isocentre (centering.py), when it was measured."""
+    if s.modality not in ("CT", "PT"):
+        return None
+    from ..db.models import CtCentering
+
+    c = session.scalar(select(CtCentering).where(CtCentering.study_id == s.id,
+                                                 CtCentering.measured.is_(True)))
+    if c is None:
+        return None
+    return {"vertical_mm": _r(c.offset_y_mm, 1), "lateral_mm": _r(c.offset_x_mm, 1),
+            "method": c.method}
+
+
 def _effective_dose(session: Session, s: Study) -> dict | None:
     """The CT effective dose by the DLP method (ctdose.py), with what it rests on; None for
     other modalities and where no coefficients were entered."""
@@ -398,6 +412,7 @@ def study(session: Session, study_id: int) -> dict | None:
             "dap_corrected_gycm2": (_r(s.total_dap * f) if s.total_dap is not None and f != 1.0
                                     else None),
             "effective_dose": _effective_dose(session, s),
+            "centering": _centering(session, s),
             "conceptus": _conceptus(session, s, events) if s.pregnant else None,
             "fluoro_s": _r(s.total_fluoro_time, 1), "acquisitions": len(acq),
             "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": _r(s.psd_mgy, 1),

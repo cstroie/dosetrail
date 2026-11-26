@@ -61,7 +61,10 @@ PAGES = {"": "index.html", "index.html": "index.html", "studies.html": "studies.
          "protocols.html": "protocols.html",
          "indications.html": "indications.html", "survey-central.html": "survey-central.html",
          "dose-statement.html": "dose-statement.html", "settings.html": "settings.html",
-         "maintenance.html": "maintenance.html"}
+         "maintenance.html": "maintenance.html",
+         "analysis.html": "analysis.html", "followups.html": "followups.html",
+         "incidents.html": "incidents.html", "qa.html": "qa.html",
+         "digests.html": "digests.html", "kfactors.html": "kfactors.html"}
 OLD_PAGES = {"dicom.html": "integration.html"}
 LIVE_TOPICS = {"pulse", "services", "dicom", "his", "studies", "alerts", "maintenance"}
 LIVE_TOPIC_EVERY_S = {"studies": 15, "alerts": 60}  # list pages: scarce updates are enough
@@ -2099,6 +2102,37 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         return qa.due(session, clock().date(), max(0, min(days, 365)),
                       names=data.device_names(session))
 
+    @app.get("/api/ct-kfactors")
+    def ct_kfactors(user: User = Depends(current_user), session: Session = Depends(db)):
+        """The DLP to effective dose coefficients entered for CT (none ship), with their source."""
+        from .. import ctdose
+        from ..db.models import CtKFactor
+
+        return {"regions": list(ctdose.REGIONS),
+                "rows": [{"region": c.region, "age_to_years": c.age_to_years,
+                          "phantom_cm": c.phantom_cm, "k": c.k, "source": c.source}
+                         for c in session.scalars(select(CtKFactor).order_by(
+                             CtKFactor.region, CtKFactor.phantom_cm, CtKFactor.age_to_years))]}
+
+    @app.put("/api/ct-kfactors")
+    def ct_kfactors_put(request: Request, rows: list[dict] = Body(...),
+                        user: User = Depends(current_user), session: Session = Depends(db)):
+        """Replace the coefficients (an empty list removes them); admin, audited."""
+        from .. import ctdose
+
+        admin_only(user)
+        try:
+            parsed = [(str(r.get("region") or "").strip(),
+                       None if r.get("age_to_years") in (None, "") else float(r["age_to_years"]),
+                       int(r.get("phantom_cm")), float(r.get("k")), str(r.get("source") or ""))
+                      for r in rows]
+            n = ctdose.set_rows(session, parsed)
+        except (ValueError, TypeError) as e:  # CtDoseError is a ValueError
+            raise HTTPException(400, str(e)) from None
+        _audit(session, request, user, "config", "ct-kfactors", {"rows": n})
+        session.commit()
+        return {"rows": n}
+
     @app.get("/api/alert-rules")
     def alert_rules(user: User = Depends(current_user), session: Session = Depends(db)):
         from ..db.models import AlertRule
@@ -2429,7 +2463,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                 raise HTTPException(400, f"{k} cannot be empty")
         if "name" in patch:
             patch["name"] = _rule_name(patch["name"])
-        if patch.get("threshold") is not None and r.kind != "pregnant" \
+        if patch.get("threshold") is not None and r.kind not in ("pregnant", "protocol_band") \
                 and patch["threshold"] <= 0:
             raise HTTPException(400, "the threshold must be greater than zero")
         for k in ("window_days", "max_age_days"):

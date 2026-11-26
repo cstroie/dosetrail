@@ -17,6 +17,7 @@ const NAV = [
   ['charts', 'charts.html', 'charts'],
   ['drl', 'drl.html', 'drl'],
   ['reports', 'reports.html', 'reports'],
+  ['analysis', 'analysis.html', 'charts'],
   ['alerts', 'alerts.html', 'alerts'],
 ];  // Admin lives in the account menu, for admins only
 

@@ -5,7 +5,7 @@
 import '../components/dx-shell.js';
 import { h, clear, append, toast } from '../core/dom.js';
 import { num, smart, dap, dapUnit, mgy } from '../core/format.js';
-import { alertList, alertStudies, alertSummary, ackAlerts, studyHref, modalities } from '../core/api.js';
+import { alertList, alertStudies, alertSummary, ackAlerts, studyHref, modalities, openIncident } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { adminDefaults, defaultsActions } from '../core/page-defaults.js';
 import { live } from '../core/live.js';
@@ -69,6 +69,11 @@ async function toggleStudies(tr, a) {
   } catch (e) { cell.replaceChildren(h('span', { class: 'error' }, e.message)); }
 }
 
+// An incident record for the alert (cause, actions, outcome, reportable?): admin; the page that holds it opens.
+async function investigate(a) {
+  try { const r = await openIncident({ alert_id: a.id }); location.href = `incidents.html?id=${r.id}`; } catch (e) { toast(e.message); }
+}
+
 function draw(sum, rows) {
   const ackBar = h('div', { class: 'toolbar' });
   const note = h('input', { class: 'input', placeholder: 'note (e.g. reviewed with the radiologist, justified)', style: { flex: '1 1 320px' } });
@@ -100,7 +105,8 @@ function draw(sum, rows) {
     h('td', { class: 'mono small' }, (a.time || '').replace('T', ' ')),
     h('td', {}, h('span', { class: `tag ${a.level}` }, a.kind)),
     h('td', {}, h('a', { href: studyHref({ id: a.study_id }) }, a.title), h('div', { class: 'muted small' }, a.rule_name),
-      a.kind === 'REPEAT' || a.kind === 'CUMUL.' ? h('button', { class: 'btn ghost xs', type: 'button', onclick: (e) => toggleStudies(e.target.closest('tr'), a) }, 'All exposures ▾') : null),
+      a.kind === 'REPEAT' || a.kind === 'CUMUL.' ? h('button', { class: 'btn ghost xs', type: 'button', onclick: (e) => toggleStudies(e.target.closest('tr'), a) }, 'All exposures ▾') : null,
+      a.status === 'open' ? h('button', { class: 'btn ghost xs', type: 'button', title: 'Open an incident record for this alert (admin)', onclick: () => investigate(a) }, 'Investigate') : null),
     h('td', { class: 'mono' }, a.modality || ''),
     h('td', { class: 'r' }, h('span', { class: 'mono' }, a.value), h('div', { class: 'muted small' }, a.limit)),
     h('td', {}, a.status === 'open' ? h('span', { class: 'tag warn' }, 'open')

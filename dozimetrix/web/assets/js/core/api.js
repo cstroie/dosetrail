@@ -626,3 +626,45 @@ export const ackAlerts = (ids, note) => send('POST', '/api/alerts/ack', { ids, n
 export function skinDose(id) {
   return isSample ? serverOnly('Skin dose map') : remote(`/api/studies/${id}/skin`);
 }
+
+/* ---------------- analysis reports, follow-ups, incidents, QA register, digests ---------------- */
+/** GET /api/reports/{name}?year=&quarter=&quarters=&q=… → the report; name is one of ANALYSIS */
+export const ANALYSIS = ['dose-check', 'exposure-index', 'collimation', 'scan-length', 'repeats',
+  'effective-dose', 'centering', 'optimisation'];
+export function analysisReport(name, params = {}) {
+  return isSample ? serverOnly('Analysis reports') : remote(`/api/reports/${name}`, params);
+}
+export function analysisUrl(name, params = {}) {
+  if (isSample) return null;
+  const u = new URL(`/api/reports/${name}`, MODE);
+  for (const [k, v] of Object.entries({ ...params, format: 'csv' })) if (v != null && v !== '') u.searchParams.set(k, String(v));
+  return u.href;
+}
+
+/** GET /api/followups?status=pending|open|informed|checked|dismissed · POST /api/followups/{id} (admin)
+ *  · the patient letter is a page: GET /api/followups/{id}/letter?lang=ro|en (pid role) */
+export const followups = (status) => (isSample ? serverOnly('Follow-ups') : remote('/api/followups', { status }));
+export const updateFollowup = (id, patch) => send('POST', `/api/followups/${id}`, patch);
+export const followupLetterHref = (id, lang = 'ro') => (isSample ? null : new URL(`/api/followups/${id}/letter?lang=${lang}`, MODE).href);
+
+/** GET /api/incidents?status= · GET /api/incidents/{id} · POST /api/incidents {alert_id|study_id, title} (admin)
+ *  · POST /api/incidents/{id} {fields…, note, action: close|reopen} */
+export const incidents = (status) => (isSample ? serverOnly('Incidents') : remote('/api/incidents', { status }));
+export const incident = (id) => remote(`/api/incidents/${id}`);
+export const openIncident = (body) => send('POST', '/api/incidents', body);
+export const updateIncident = (id, body) => send('POST', `/api/incidents/${id}`, body);
+
+/** GET /api/qa/due?days= · GET/POST /api/devices/{id}/qa · DELETE /api/qa/{id} (admin) */
+export const qaDue = (days = 30) => (isSample ? serverOnly('QA register') : remote('/api/qa/due', { days }));
+export const deviceQA = (deviceId) => remote(`/api/devices/${deviceId}/qa`);
+export const addDeviceQA = (deviceId, body) => send('POST', `/api/devices/${deviceId}/qa`, body);
+export const deleteQA = (id) => send('DELETE', `/api/qa/${id}`);
+
+/** GET/PUT /api/digests (admin) · GET /api/digests/{id}/preview */
+export const digests = () => (isSample ? serverOnly('Report digests') : remote('/api/digests'));
+export const saveDigests = (items) => send('PUT', '/api/digests', items);
+export const digestPreview = (id) => remote(`/api/digests/${encodeURIComponent(id)}/preview`);
+
+/** GET/PUT /api/ct-kfactors (PUT admin): the DLP to effective dose coefficients of CT */
+export const ctKFactors = () => (isSample ? serverOnly('CT coefficients') : remote('/api/ct-kfactors'));
+export const saveCtKFactors = (rows) => send('PUT', '/api/ct-kfactors', rows);

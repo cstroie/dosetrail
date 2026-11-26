@@ -554,6 +554,23 @@ def test_centering_report_endpoint(client):
     assert c.status_code == 200 and c.content.decode("utf-8-sig").startswith("room,method")
 
 
+def test_ct_kfactor_endpoints_and_new_pages(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/ct-kfactors").json()["rows"] == []
+    row = {"region": "head", "age_to_years": None, "phantom_cm": 16, "k": 0.002, "source": "test"}
+    assert client.put("/api/ct-kfactors", json=[row]).status_code == 403
+    for page in ("analysis", "followups", "incidents", "qa", "digests", "kfactors"):
+        r = client.get(f"/{page}.html")
+        assert r.status_code == 200 and f"pages/{page}.js" in r.text, page
+    login(client, "boss", "boss-pass-123")
+    assert client.put("/api/ct-kfactors", json=[{**row, "region": "knee"}]).status_code == 400
+    assert client.put("/api/ct-kfactors", json=[{**row, "phantom_cm": "x"}]).status_code == 400
+    assert client.put("/api/ct-kfactors", json=[row]).json() == {"rows": 1}
+    got = client.get("/api/ct-kfactors").json()
+    assert got["rows"][0]["k"] == 0.002 and "trunk" in got["regions"]
+    assert client.put("/api/ct-kfactors", json=[]).json() == {"rows": 0}
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})
