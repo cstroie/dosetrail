@@ -8,9 +8,9 @@ Already covered, so not listed: DRL comparison and local DRLs, cumulative and pe
 alerts, skin dose maps, SSDE from RDSR, operator reports, national reports, the survey
 aggregator.
 
-Status (2026-11-26): items 1–11 (A and B) are built, one commit each; C is not started. What
+Status (2026-11-26): items 1–11 (A and B) and 12, 13, 15, 16 (from C) are built, one commit each; 14 and 17–19 are not. What
 exists, per item, is in the "Built" notes below. None of it is deployed yet: the migrations
-(`f1b7c3d9a2e4`, `a3d5e7f9b1c2`, `b5e7a9c1d3f4`, `c7f9b1d3e5a6`) have to be applied and the
+(`f1b7c3d9a2e4`, `a3d5e7f9b1c2`, `b5e7a9c1d3f4`, `c7f9b1d3e5a6`, `d9a1c3e5b7f8`, `e2b4d6f8a0c1`) have to be applied and the
 receiver restarted. No web pages were built for the new reports, follow-ups, incidents, QA
 register or digests: they are API and CLI only, for the design session to pick up.
 
@@ -70,16 +70,20 @@ register or digests: they are API and CLI only, for the design session to pick u
 12. **CT effective dose and organ dose.** Simple version: DLP × k-factor by region and age
     (ICRP 103, paediatric k-factors). Commercial version: Monte Carlo organ dose per patient size
     (Radimetrics, DoseWatch). k-factors are cheap; Monte Carlo is not.
+    *Built: `ctdose.py`, `ct_kfactor`, CLI `ct-kfactor`, study page, `/api/reports/effective-dose`. No coefficients ship: load a published set (`docs/examples/ct-kfactors-brady2012.csv` is a candidate to verify). A series whose phantom has no coefficient gets no estimate. Organ dose (Monte Carlo) not built.*
 13. **Conceptus dose estimate.** For CT or fluoroscopy of a pregnant patient. Builds on the
     existing `pregnant` alert kind.
+    *Built: `conceptus.py`; the `pregnant` alert and the study page carry a low/central/high screening range for CT with the uterus in the beam (normalised fetal dose x series CTDIvol); fluoroscopy gets no number (the physicist records an estimate in an incident). Factors from a search summary: verify. Synthetic tests only.*
 14. **SSDE from images.** Water-equivalent diameter from the localizer or axial images, so SSDE
     covers every scanner, not only RDSR Dw cases (Radimetrics). Needs image retrieval (C-GET of
     the localizer), which is heavy on the PACS.
 15. **Patient centering in CT.** Isocentre offset from the localizer; off-centre patients get
     wrong tube current modulation. Needs images too.
+    *Built, **unverified**: `centering.py`, `ct_centering`, `/api/reports/centering`, CLI `centering FILE`. Off by default (`[ingest] measure_centering`); tested only on a synthetic phantom; no PACS retrieval added. Check it on a phantom placed off the isocentre before turning it on.*
 16. **Reject and repeat analysis.** True reject data needs DR consoles that export rejects (IHE
     "Rejected for Quality Reasons" KOS) or console logs. A proxy is repeated views of the same
     projection within one study.
+    *Built as a proxy: `reports/repeats.py`, `/api/reports/repeats`. Possible repeats (same exam, projection, laterality, protocol within 10 minutes), compared between rooms; no rejected-image notes are received, so true rejects are not available.*
 17. **MR SAR monitoring.** MR headers carry SAR and dB/dt; relevant for children and implants
     (DoseWatch, Qaelum). New scope: not ionising radiation.
 18. **Contrast media tracking.** Injector data (Bayer, Bracco). Probably out of scope.
