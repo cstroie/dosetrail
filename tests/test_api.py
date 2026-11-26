@@ -489,6 +489,20 @@ def test_optimisation_report_endpoint(client):
     assert client.get("/api/reports/optimisation", params={"days": 5}).status_code == 422
 
 
+def test_digest_endpoints_are_admin_only(client):
+    login(client, "viewer", "viewer-pass-1")
+    assert client.get("/api/digests").status_code == 403
+    assert client.put("/api/digests", json=[]).status_code == 403
+    login(client, "boss", "boss-pass-123")
+    assert client.get("/api/digests").json() == []
+    assert client.put("/api/digests", json=[{"name": "x", "to": ["bad"]}]).status_code == 400
+    r = client.put("/api/digests", json=[{"name": "CT dept", "to": ["a@example.org"], "q": ""}])
+    assert r.status_code == 200 and r.json()[0]["id"] == "ct-dept"
+    p = client.get("/api/digests/ct-dept/preview")
+    assert p.status_code == 200 and p.json()["subject"].startswith("[Dozimetrix] CT dept:")
+    assert client.get("/api/digests/none/preview").status_code == 404
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})

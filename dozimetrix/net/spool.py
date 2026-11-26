@@ -98,6 +98,7 @@ class SpoolWorker(threading.Thread):
         self._sender: threading.Thread | None = None  # the notification run in flight
         self.run_device_alerts = device_alerts  # the live receiver: hourly device rules
         self._last_devices = 0.0
+        self._last_digests = float("-inf")
         self._last_repair = float("-inf")
         self.stop_event = threading.Event()
         self.stats: dict[str, int] = {}
@@ -109,6 +110,7 @@ class SpoolWorker(threading.Thread):
             try:
                 if not self.drain():
                     self.device_alerts()
+                    self.digests()
                     self.repair_derived()
                     self.prune()
                     self.dispatch()
@@ -119,6 +121,27 @@ class SpoolWorker(threading.Thread):
 
     def stop(self) -> None:
         self.stop_event.set()
+
+    def digests(self, every: float = 3600.0) -> None:
+        """Scheduled report digests (digests.py): the month's mail, at most every ``every`` s."""
+        import time
+
+        if not self.run_device_alerts or time.monotonic() - self._last_digests < every:
+            return
+        self._last_digests = time.monotonic()
+        from .. import digests, notify
+
+        try:
+            with self.maker() as session:
+                if digests.load(session):
+                    cfg = self.notify if isinstance(self.notify, notify.NotifySettings) \
+                        else notify.load_settings(session, self.notify, self.secret)
+                    sent = digests.run_due(session, cfg)
+                    session.commit()
+                    if sent:
+                        log.info("digests: %s", sent)
+        except Exception:  # noqa: BLE001 – never stops the import
+            log.exception("digests failed")
 
     def device_alerts(self, every: float = 3600.0) -> None:
         """Device rules (silent device, dose drift), at most every ``every`` seconds."""

@@ -2006,6 +2006,44 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
         session.commit()
         return inc.detail(session, incident_id)
 
+    @app.get("/api/digests")
+    def digests_get(user: User = Depends(current_user), session: Session = Depends(db)):
+        from .. import digests
+
+        admin_only(user)
+        return digests.load(session)
+
+    @app.put("/api/digests")
+    def digests_put(request: Request, items: list[dict] = Body(...),
+                    user: User = Depends(current_user), session: Session = Depends(db)):
+        """Replace the monthly digest schedules: name, recipients (to), study query (q)."""
+        from .. import digests
+
+        admin_only(user)
+        try:
+            out = digests.save(session, items)
+        except digests.DigestError as e:
+            raise HTTPException(400, str(e)) from None
+        _audit(session, request, user, "digests", "digests", {"n": len(out)})
+        session.commit()
+        return out
+
+    @app.get("/api/digests/{digest_id}/preview")
+    def digest_preview(digest_id: str, user: User = Depends(current_user),
+                       session: Session = Depends(db)):
+        """The last month's digest as it would be mailed (nothing is sent)."""
+        from .. import digests
+
+        admin_only(user)
+        d = next((x for x in digests.load(session) if x["id"] == digest_id), None)
+        if d is None:
+            raise HTTPException(404, "digest not found")
+        now = clock()
+        start, end = digests.previous_month(now)
+        rep = digests.build(session, d["q"], start, end, now)
+        subject, text, page = digests.render(d["name"], rep)
+        return {"subject": subject, "text": text, "html": page, "data": rep}
+
     @app.get("/api/alert-rules")
     def alert_rules(user: User = Depends(current_user), session: Session = Depends(db)):
         from ..db.models import AlertRule

@@ -720,6 +720,38 @@ def _cmd_alerts(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_digests(args: argparse.Namespace) -> int:
+    import datetime as dt
+
+    from . import digests, notify
+    from .db.session import make_engine, make_sessionmaker
+
+    s = load_settings()
+    with make_sessionmaker(make_engine(args.url or s.database_url))() as session:
+        items = digests.load(session)
+        if args.action == "list":
+            for d in items:
+                print(f"{d['id']:20} {'on ' if d['enabled'] else 'off'} {d['name']} → "
+                      f"{', '.join(d['to'])} [{d['q'] or 'all'}] "
+                      f"last: {d.get('last_period') or '—'}")
+            return 0
+        now = dt.datetime.now()
+        if args.action == "preview":
+            for d in items:
+                if args.only and d["id"] != args.only:
+                    continue
+                start, end = digests.previous_month(now)
+                _, text, _ = digests.render(d["name"], digests.build(session, d["q"], start, end,
+                                                                     now))
+                print(text, "\n")
+            return 0
+        cfg = notify.load_settings(session, s.notify, _secret())
+        out = digests.run_due(session, cfg, now, force=args.force, only=args.only)
+        session.commit()
+        print(out or "nothing due")
+        return 1 if any(v.startswith("failed") for v in out.values()) else 0
+
+
 def _run_job(args: argparse.Namespace, name: str, days: int | None, run) -> int:
     """Run a maintenance job under the shared lock and record its state (Admin → Maintenance
     shows it); exit 75 when another job is running."""
@@ -1462,6 +1494,13 @@ def build_parser() -> argparse.ArgumentParser:
     al.add_argument("--until", help="evaluate studies before this date (YYYY-MM-DD)")
     al.add_argument("--url")
     al.set_defaults(func=_cmd_alerts)
+
+    dg = sub.add_parser("digests", help="monthly report digests: list, preview, run (send)")
+    dg.add_argument("action", choices=["list", "preview", "run"])
+    dg.add_argument("--only", help="only this digest id")
+    dg.add_argument("--force", action="store_true", help="send now, even if the month went out")
+    dg.add_argument("--url")
+    dg.set_defaults(func=_cmd_digests)
 
     cl = sub.add_parser("classify", help="assign standard exam codes and DRL codes to studies")
     cl.add_argument("--study", type=int, action="append", help="only this study id (repeatable)")
