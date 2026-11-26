@@ -70,7 +70,7 @@ def build(session: Session, conds: list, *, gap_min: float = GAP_MIN, min_n: int
     cell: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])  # (room, exam) -> n, repeats
     dept: dict[str, list[int]] = defaultdict(lambda: [0, 0])  # exam -> n, repeats
     ops: dict[tuple, list[int]] = defaultdict(lambda: [0, 0])  # (operator, exam)
-    for sid, ex in studies.items():
+    for ex in studies.values():
         ex.sort(key=lambda x: (x[4] is None, x[4], x[5]))
         last: dict[tuple, object] = {}
         for code, view, lat, text, when, _eid, device_id, operator in ex:
