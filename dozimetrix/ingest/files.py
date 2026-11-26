@@ -10,6 +10,7 @@ from pydicom import config as dicom_config
 from pydicom.errors import InvalidDicomError
 from sqlalchemy.orm import Session
 
+from .. import centering
 from . import dosepage
 from .parse import parse
 from .store import Result, Store
@@ -35,7 +36,7 @@ def read(path: Path):
     except InvalidDicomError:
         ds = pydicom.dcmread(path, stop_before_pixels=True, force=True)
         force = True
-    if dosepage.wants_pixels(ds):
+    if dosepage.wants_pixels(ds) or centering.wants_pixels(ds):
         ds = pydicom.dcmread(path, force=force)
     return ds
 

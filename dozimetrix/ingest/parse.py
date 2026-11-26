@@ -64,6 +64,7 @@ class ParsedObject:
     patient: dict = field(default_factory=dict)
     device: dict = field(default_factory=dict)
     events: list[dict] = field(default_factory=list)
+    centering: dict | None = None  # the patient's position in the gantry, from the pixels
 
 
 # ---------------------------------------------------------------------------- helpers
@@ -232,6 +233,17 @@ def _patient_characteristics(root: Node, study: dict) -> None:
 
 
 def parse(ds) -> ParsedObject:
+    obj = _parse(ds)
+    if "PixelData" in ds and str(ds.get("SOPClassUID", "")) in CT_IMAGE_SOP:
+        from .. import centering  # opt-in, see centering.py: only the pixels it asked for exist
+
+        if centering.wants_pixels(ds):
+            obj.centering = {**centering.measure(ds), "study_uid": _s(ds.get("StudyInstanceUID")),
+                             "series_uid": _s(ds.get("SeriesInstanceUID"))}
+    return obj
+
+
+def _parse(ds) -> ParsedObject:
     sop_class = str(ds.get("SOPClassUID", ""))
     sop_uid = str(ds.get("SOPInstanceUID", ""))
     if ds.get("ContentSequence") and ds.get("ConceptNameCodeSequence"):

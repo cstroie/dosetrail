@@ -432,6 +432,25 @@ def _cmd_ct_kfactor(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_centering(args: argparse.Namespace) -> int:
+    """Measure the centering of CT image files (no database): to check the method on a known
+    case, e.g. a phantom placed off the isocentre, before turning the measurement on."""
+    import pydicom
+
+    from . import centering
+
+    for path in args.files:
+        ds = pydicom.dcmread(path, force=True)
+        m = centering.measure(ds)
+        if m["measured"]:
+            print(f"{path}: lateral {m['offset_x_mm']:+.1f} mm (+ left), vertical "
+                  f"{m['offset_y_mm']:+.1f} mm (+ lower), body {m['body_w_mm']:.0f} × "
+                  f"{m['body_h_mm']:.0f} mm, isocentre from {m['method']}")
+        else:
+            print(f"{path}: not measured: {m['reason']}")
+    return 0
+
+
 def _cmd_art12(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
@@ -1462,6 +1481,10 @@ def build_parser() -> argparse.ArgumentParser:
     kf.add_argument("--file", help="CSV: region,age_to_years (empty = adult),phantom_cm,k,source")
     kf.add_argument("--url")
     kf.set_defaults(func=_cmd_ct_kfactor)
+
+    ce = sub.add_parser("centering", help="measure the patient centering of CT image files")
+    ce.add_argument("files", nargs="+")
+    ce.set_defaults(func=_cmd_centering)
 
     a12 = sub.add_parser("art12", help="annual DRL return, Order 1255/2016 art. 12: 20 patients "
                                        "per examination and device, Feb-Mar (zip of xlsx)")

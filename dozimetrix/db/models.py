@@ -645,6 +645,24 @@ class AlertRule(TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(Text(1024))
 
 
+class CtCentering(Base):
+    """Where the patient lay against the CT isocentre, from one axial image (centering.py).
+    Offsets in mm: x + toward the patient's left, y + posterior (the patient lies lower)."""
+
+    __tablename__ = "ct_centering"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    study_id: Mapped[int] = mapped_column(ForeignKey("study.id", ondelete="CASCADE"), unique=True)
+    series_uid: Mapped[str | None] = mapped_column(AsciiId(64))
+    measured: Mapped[bool] = mapped_column(Boolean)
+    reason: Mapped[str | None] = mapped_column(Text(255))  # when not measured
+    offset_x_mm: Mapped[float | None] = mapped_column(Float)
+    offset_y_mm: Mapped[float | None] = mapped_column(Float)
+    body_w_mm: Mapped[float | None] = mapped_column(Float)
+    body_h_mm: Mapped[float | None] = mapped_column(Float)
+    method: Mapped[str | None] = mapped_column(AsciiId(24))  # data_collection_center | image_center
+    measured_at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class CtKFactor(Base):
     """DLP to effective dose conversion coefficient (mSv per mGy·cm) of a CT region, up to an
     age, for the DLP of one CTDI phantom. No values ship with the program: they come from a

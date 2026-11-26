@@ -56,6 +56,7 @@ class Settings:
     specs_dir: Path = field(default_factory=lambda: _config_dir() / "specs")
     plugins_dir: Path = field(default_factory=lambda: _config_dir() / "plugins")
     source: Path | None = None
+    measure_centering: bool = False  # [ingest] measure_centering (centering.py)
     notify: dict = field(default_factory=dict)  # [notify] table, see dozimetrix/notify.py
 
 
@@ -129,6 +130,7 @@ def load_settings() -> Settings:
                 s.specs_dir = Path(sp["dir"]).expanduser()
             if "plugins_dir" in sp:
                 s.plugins_dir = Path(sp["plugins_dir"]).expanduser()
+            s.measure_centering = bool(raw.get("ingest", {}).get("measure_centering", False))
             s.notify = dict(raw.get("notify", {}))
             s.source = path
             break

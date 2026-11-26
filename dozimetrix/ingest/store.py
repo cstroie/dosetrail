@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from .. import demographics
 from ..db.models import (
     AgePrecision,
+    CtCentering,
     Device,
     Event,
     HisLookup,
@@ -177,7 +178,37 @@ class Store:
 
     # ------------------------------------------------------------------ main entry
 
+    def _centering(self, obj: ParsedObject) -> None:
+        """Keep the centering measured from an axial image on its study (one per study; a
+        measurement replaces a failed attempt, not an earlier measurement). Never fails the
+        import."""
+        c = obj.centering or {}
+        study = self.session.scalar(select(Study).filter_by(study_uid=c.get("study_uid") or ""))
+        if study is None:
+            self.stats["centering_no_study"] += 1
+            return
+        old = self.session.scalar(select(CtCentering).filter_by(study_id=study.id))
+        if old is not None and (old.measured or not c.get("measured")):
+            return
+        row = old or CtCentering(study_id=study.id)
+        row.series_uid, row.measured = c.get("series_uid"), bool(c.get("measured"))
+        row.reason = (c.get("reason") or "")[:255] or None
+        for k in ("offset_x_mm", "offset_y_mm", "body_w_mm", "body_h_mm", "method"):
+            setattr(row, k, c.get(k))
+        self.session.add(row)
+        self.session.flush()
+        self.stats["centering_measured" if row.measured else "centering_failed"] += 1
+
     def store(self, obj: ParsedObject) -> Result:
+        if obj.centering is not None:
+            try:
+                with self.session.begin_nested():
+                    self._centering(obj)
+            except Exception:  # noqa: BLE001 – a side measurement must not fail the import
+                self.stats["centering_error"] += 1
+        return self._store(obj)
+
+    def _store(self, obj: ParsedObject) -> Result:
         seen = self.session.scalar(select(IngestedObject)
                                    .filter_by(sop_instance_uid=obj.sop_instance_uid[:64]))
         # an object ignored before may be usable now (a parser learnt it, e.g. the OCR of a
