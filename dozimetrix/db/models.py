@@ -645,6 +645,23 @@ class AlertRule(TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(Text(1024))
 
 
+class CtKFactor(Base):
+    """DLP to effective dose conversion coefficient (mSv per mGy·cm) of a CT region, up to an
+    age, for the DLP of one CTDI phantom. No values ship with the program: they come from a
+    published set the physicist chooses and names in ``source`` (ctdose.py)."""
+
+    __tablename__ = "ct_kfactor"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    region: Mapped[str] = mapped_column(AsciiId(16))  # head neck chest abdomen_pelvis trunk
+    age_to_years: Mapped[float | None] = mapped_column(Float)  # None: adult (no upper age)
+    phantom_cm: Mapped[int] = mapped_column(SmallInteger)  # 16 | 32: the DLP it applies to
+    k: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(Text(255))
+
+    __table_args__ = (UniqueConstraint("region", "age_to_years", "phantom_cm",
+                                       name="uq_ct_kfactor"),)
+
+
 class Followup(TimestampMixin, Base):
     """Follow-up of a patient who received a substantial radiation dose in fluoroscopy or
     interventional work (followup.py): told, skin checked after 2-4 weeks, outcome. One per

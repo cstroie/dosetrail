@@ -384,6 +384,54 @@ def _cmd_effective_dose(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_ct_kfactor(args: argparse.Namespace) -> int:
+    import csv
+    import getpass
+
+    from . import ctdose
+    from .db.models import AuditLog, CtKFactor
+    from .db.session import make_engine, make_sessionmaker
+
+    engine = make_engine(args.url or load_settings().database_url)
+    with make_sessionmaker(engine)() as session:
+        if args.action == "show":
+            from sqlalchemy import select
+
+            for c in session.scalars(select(CtKFactor).order_by(
+                    CtKFactor.region, CtKFactor.phantom_cm, CtKFactor.age_to_years)):
+                age = "adult" if c.age_to_years is None else f"to {c.age_to_years:g} y"
+                print(f"{c.region} ({age}, {c.phantom_cm} cm): {c.k:g} mSv/(mGy·cm)  [{c.source}]")
+            return 0
+        rows = []
+        if args.action == "set":
+            if not args.file:
+                print("set needs --file: region,age_to_years,phantom_cm,k,source", file=sys.stderr)
+                return 2
+            with open(args.file, newline="", encoding="utf-8") as fh:
+                for n, r in enumerate(csv.reader(fh), 1):
+                    if not any(c.strip() for c in r):
+                        continue
+                    try:
+                        rows.append((r[0].strip(), float(r[1]) if r[1].strip() else None,
+                                     int(r[2]), float(r[3]), r[4].strip()))
+                    except (ValueError, IndexError):
+                        if n > 1:  # only the first line may be a header
+                            print(f"{args.file}, line {n}: not "
+                                  f"'region,age_to_years,phantom_cm,k,source': {r}",
+                                  file=sys.stderr)
+                            return 2
+        try:
+            n = ctdose.set_rows(session, rows)
+        except ctdose.CtDoseError as e:
+            print(e, file=sys.stderr)
+            return 2
+        session.add(AuditLog(username=f"cli:{getpass.getuser()}", action="config",
+                             target=f"ct-kfactor:{args.action}", detail={"rows": n}))
+        session.commit()
+        print(f"{n} coefficients" if n else "coefficients removed")
+    return 0
+
+
 def _cmd_art12(args: argparse.Namespace) -> int:
     import datetime as dt
     import getpass
@@ -1408,6 +1456,12 @@ def build_parser() -> argparse.ArgumentParser:
                                    "msv_per_mbq,source")
     ed.add_argument("--url")
     ed.set_defaults(func=_cmd_effective_dose)
+
+    kf = sub.add_parser("ct-kfactor", help="DLP to effective dose coefficients of CT (none ship)")
+    kf.add_argument("action", choices=["set", "show", "clear"])
+    kf.add_argument("--file", help="CSV: region,age_to_years (empty = adult),phantom_cm,k,source")
+    kf.add_argument("--url")
+    kf.set_defaults(func=_cmd_ct_kfactor)
 
     a12 = sub.add_parser("art12", help="annual DRL return, Order 1255/2016 art. 12: 20 patients "
                                        "per examination and device, Feb-Mar (zip of xlsx)")

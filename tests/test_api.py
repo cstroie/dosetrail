@@ -536,6 +536,15 @@ def test_repeats_report_endpoint(client):
     assert r.status_code == 200 and r.json()["operators"] == []
 
 
+def test_effective_dose_report_endpoint(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/reports/effective-dose", params={"year": 2026, "quarter": 4, "q": ""})
+    assert r.status_code == 200, r.text
+    assert r.json()["coefficients"] is False and r.json()["groups"] == []
+    c = client.get("/api/reports/effective-dose", params={"q": "", "format": "csv"})
+    assert c.status_code == 200 and c.content.decode("utf-8-sig").startswith("exam,")
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})

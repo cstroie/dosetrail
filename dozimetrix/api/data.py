@@ -335,6 +335,21 @@ def _study_row(s: Study, d: Device | None, p: Patient | None, protocol: str | No
     }
 
 
+def _effective_dose(session: Session, s: Study) -> dict | None:
+    """The CT effective dose by the DLP method (ctdose.py), with what it rests on; None for
+    other modalities and where no coefficients were entered."""
+    if s.modality not in ("CT", "PT"):
+        return None
+    from ..ctdose import for_study
+
+    est = for_study(session, s.id)
+    if est is None or est["msv"] is None:
+        return None
+    return {"msv": _r(est["msv"], 2), "region": est["region"], "complete": est["complete"],
+            "sources": est["sources"],
+            "note": "population estimate (DLP × k); not for an individual patient"}
+
+
 def study(session: Session, study_id: int) -> dict | None:
     row = session.execute(_base().where(Study.id == study_id)).first()
     if row is None:
@@ -370,6 +385,7 @@ def study(session: Session, study_id: int) -> dict | None:
                            else f),
             "dap_corrected_gycm2": (_r(s.total_dap * f) if s.total_dap is not None and f != 1.0
                                     else None),
+            "effective_dose": _effective_dose(session, s),
             "fluoro_s": _r(s.total_fluoro_time, 1), "acquisitions": len(acq),
             "fluoro_events": len(fluoro), "frames": None, "peak_skin_mgy": _r(s.psd_mgy, 1),
             "dlp_mgycm": _r(s.total_dlp, 1), "ctdivol_max": _r(s.ctdivol_max, 2),
