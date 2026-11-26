@@ -477,7 +477,8 @@ def listing(session: Session, status: str | None = "open", limit: int = 50,
                       for d in session.scalars(select(Device))}
     kinds = {"threshold": None, "drl_ratio": "> DRL", "cumulative": "CUMUL.", "count": "REPEAT",
              "pregnant": "PREGNANT", "device_silent": "SILENT", "device_drift": "DRIFT",
-             "drl_sustained": "> DRL ×2Q"}
+             "drl_sustained": "> DRL ×2Q", "protocol_band": "BAND", "device_di": "DI",
+             "protocol_drift": "PROTOCOL"}
     out = []
     for a, r, s in session.execute(q):
         kind = kinds.get(r.kind) or {"kar_total": "KA,R", "dap_total": "DAP",
