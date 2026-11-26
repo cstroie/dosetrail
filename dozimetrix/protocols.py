@@ -86,6 +86,62 @@ def name_band(protocol: str | None) -> tuple[str, float] | None:
     return None
 
 
+_ADULT_WORDS = {"adult", "adulti", "adulta"}
+_CHILD_WORDS = {"ped", "pediatric", "pediatrie", "copil", "copii", "child", "paed", "paediatric"}
+
+
+def name_range(protocol: str | None) -> tuple[str, float, float] | None:
+    """The range a protocol name states, as ("age", lo_days, hi_days) or ("weight", lo_kg,
+    hi_kg): ``1_6_ANI`` is 1 up to the end of the 6th year; ``ADULT`` is 18 years and over,
+    a child word is under 18. None when the name states none."""
+    t = normalise(protocol)
+    if not t:
+        return None
+    if m := _AGE_Y.search(t):
+        lo, hi = int(m[1]), int(m[2])
+        if lo <= hi:
+            return "age", lo * DAYS_PER_YEAR, (hi + 1) * DAYS_PER_YEAR
+    if m := _AGE_M.search(t):
+        lo, hi = int(m[1]), int(m[2])
+        if lo <= hi:
+            return "age", lo * DAYS_PER_YEAR / 12, (hi + 1) * DAYS_PER_YEAR / 12
+    if m := _WEIGHT.search(t):
+        lo, hi = int(m[1]), int(m[2])
+        if lo <= hi:
+            return "weight", float(lo), float(hi)
+    words = set(t.split())
+    if words & _ADULT_WORDS:
+        return "age", 18 * DAYS_PER_YEAR, 130 * DAYS_PER_YEAR
+    if words & _CHILD_WORDS:
+        return "age", 0.0, 18 * DAYS_PER_YEAR
+    return None
+
+
+def band_mismatch(protocol: str | None, age_days: float | None, weight_kg: float | None,
+                  weight_known: bool = True) -> str | None:
+    """Why the patient does not fit the band the protocol name states, or None when they fit
+    (or the name or the patient data say nothing). A small margin (half a year, a month for
+    ranges in months, 10 % + 1 kg) keeps birthdays and rounded weights out."""
+    r = name_range(protocol)
+    if r is None:
+        return None
+    kind, lo, hi = r
+    if kind == "age":
+        if age_days is None:
+            return None
+        months = hi - lo < DAYS_PER_YEAR * 1.01
+        tol = DAYS_PER_YEAR / 12 if months else DAYS_PER_YEAR / 2
+        if lo - tol <= age_days < hi + tol:
+            return None
+        unit, div = ("y", DAYS_PER_YEAR)
+        return f"{age_days / div:.1f} {unit} outside {lo / div:.3g}–{hi / div:.3g} {unit}"
+    if weight_kg is None or not weight_known:
+        return None
+    if lo * 0.9 - 1 <= weight_kg <= hi * 1.1 + 1:
+        return None
+    return f"{weight_kg:.0f} kg outside {lo:.0f}–{hi:.0f} kg"
+
+
 def family(protocol: str | None) -> str:
     """The protocol name without contrast / phase / band words and numbers: variants of one
     protocol (``CER_NATIV``, ``CER K``) share it."""

@@ -5,6 +5,7 @@
 # kind = drl_ratio  : exam dose >= threshold x national DRL (exam and age group)
 # kind = cumulative : patient's sum of metric over window_days >= threshold
 # kind = count      : patient's number of studies (modality) over window_days >= threshold
+# kind = protocol_band : a series' protocol name states an age or weight band the patient is not in
 # kind = pregnant   : the study is marked as pregnant
 # kind = device_silent : a busy device sends no study for threshold days
 # kind = device_drift  : a device's median dose (exam, age group) >= threshold x its usual one
@@ -243,3 +244,13 @@ threshold = 1.0
 severity = "warn"
 notify = false
 note = "ICRP 135: a room whose median is above the DRL needs an optimisation review; two complete quarters running rule out a one-off. Per room, national exam code and age group, ≥ 20 values a quarter, computed as on the DRL page. Raised once per quarter while it lasts. Set metric to a local set's key to compare against it instead."
+
+[[rule]]
+key = "protocol-band-mismatch"
+name = "Protocol band does not match the patient (age or weight)"
+kind = "protocol_band"
+modality = "CT"
+threshold = 0.0
+severity = "warn"
+notify = false
+note = "The protocol name states a band (1-6 ani, 15-30 kg, ADULT, PED) and the patient is outside it by more than half a year (a month for bands in months; 10 % + 1 kg for weight). An adult protocol on a child overdoses; a child protocol on an older child gives noisy images. Weights estimated from age are not used."

@@ -513,3 +513,37 @@ def test_modality_filter_is_the_study_lists(session, world):
     assert hit("CR") == {cr.id}
     assert hit("RF") == {rf.id}
     assert hit("CT,RF") == {ct.id, rf.id}
+
+
+def test_protocol_band_mismatch(session, world):
+    dev, kid = world
+    other = Patient(pseudo_id="P-AL9", sex="F")
+    session.add(other)
+    session.flush()
+
+    def ct(uid, pat, age_years, protocol, **kw):
+        s = _study(session, dev, pat, uid, NOW - dt.timedelta(days=int(age_years * 10)),
+                   modality="CT", age_days=int(age_years * 365.25), **kw)
+        s.events = [Event(protocol=protocol, ctdivol=5.0, dlp=100.0),
+                    Event(protocol="Topogram", is_localizer=True)]
+        return s
+
+    fits = ct("pb.1", kid, 3.0, "CT_CAP_N_1_6_ANI")
+    edge = ct("pb.2", other, 7.3, "CT_CAP_N_1_6_ANI")  # within the half-year margin
+    older = ct("pb.3", kid, 12.0, "CT_CAP_N_1_6_ANI")
+    adult_on_child = ct("pb.4", other, 5.0, "Abdomen ADULT")
+    child_on_adult = ct("pb.5", kid, 40.0, "CT PED torace")
+    nameless = ct("pb.6", other, 12.0, "Head Routine")
+    heavy = ct("pb.7", kid, 9.0, "CT_ABD_15_30KG", weight_kg=55.0, weight_source="measured")
+    guessed = ct("pb.8", other, 9.0, "CT_ABD_15_30KG", weight_kg=55.0,
+                 weight_source="estimated_reference")
+    alerts.evaluate(session, [s.id for s in (fits, edge, older, adult_on_child, child_on_adult,
+                                             nameless, heavy, guessed)])
+    key = "protocol-band-mismatch"
+    for s in (fits, edge, nameless, guessed):
+        assert key not in _alerts(session, s)
+    for s in (older, adult_on_child, child_on_adult, heavy):
+        assert key in _alerts(session, s)
+    msg = _alerts(session, older)[key].message
+    assert msg == "Protocol CT_CAP_N_1_6_ANI: patient 12.0 y outside 1–7 y"
+    assert "55 kg outside 15–30 kg" in _alerts(session, heavy)[key].message

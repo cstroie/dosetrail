@@ -32,6 +32,7 @@ from .db.models import (
     CodeSystem,
     Device,
     Event,
+    SizeSource,
     Study,
 )
 from .stats import METRICS
@@ -149,6 +150,25 @@ class Evaluator:
             consider(s.admin_activity_mbq, national.get(None), "activity", "MBq")
         return best
 
+    def _band_hit(self, s: Study, events: list[Event]) -> tuple | None:
+        """A series whose protocol name states an age or weight band the patient is not in
+        (an adult protocol on a child, a 1–6 y protocol on a 12 y old)."""
+        from .protocols import band_mismatch
+
+        weight_known = s.weight_source != SizeSource.estimated_reference
+        bad: dict[str, str] = {}
+        for e in events:
+            if e.is_localizer or not e.protocol or e.protocol in bad:
+                continue
+            why = band_mismatch(e.protocol, s.age_days, s.weight_kg, weight_known)
+            if why:
+                bad[e.protocol] = why
+        if not bad:
+            return None
+        name, why = next(iter(bad.items()))
+        more = f" (+{len(bad) - 1} more)" if len(bad) > 1 else ""
+        return (float(len(bad)), None, None, f"Protocol {name}: patient {why}{more}")
+
     def prefetch(self, studies: list[Study]) -> None:
         """Load, per window rule, the studies and alerts of the chunk's patients in one
         query each, instead of two queries per study and rule. Not worth it for a couple
@@ -245,6 +265,8 @@ class Evaluator:
                     ratio, v, ref, unit, code = r
                     hit = (v, ref * rule.threshold, unit,
                            f"{code}: {_fmt(v, unit)} = {ratio:.1f} × DRL {_fmt(ref, unit)}")
+            elif rule.kind == "protocol_band":
+                hit = self._band_hit(s, events)
             elif rule.kind == "pregnant":
                 if s.pregnant:
                     weeks = f", {s.gestation_weeks} weeks" if s.gestation_weeks else ""
@@ -395,6 +417,8 @@ def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
         return f"{v:.2f}× DRL", f"≥ {r.threshold:g}× (2 quarters)"
     if r.kind == "device_drift":
         return f"{v:.2f}×", f"≥ {r.threshold:g}× (2 weeks)"
+    if r.kind == "protocol_band":
+        return f"{v:.0f} protocol{'s' if v > 1 else ''}", "band ≠ patient"
     if r.kind == "pregnant":
         return (f"{v:.0f} weeks" if v else "pregnant"), "—"
     return _fmt(v, a.unit), f"≥ {_fmt(a.limit_value or r.threshold, a.unit)}"
