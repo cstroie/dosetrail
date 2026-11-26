@@ -435,6 +435,21 @@ def test_scan_length_report_endpoint(client):
     assert c.status_code == 200 and c.content.decode("utf-8-sig").startswith("study_id,")
 
 
+def test_followup_endpoints_and_roles(client):
+    login(client, "viewer", "viewer-pass-1")
+    r = client.get("/api/followups", params={"status": "pending"})
+    assert r.status_code == 200 and r.json()["rows"] == []
+    assert client.get("/api/followups", params={"status": "x"}).status_code == 400
+    assert client.post("/api/followups/1", json={"status": "informed"}).status_code == 403
+    assert client.get("/api/followups/1/letter").status_code == 403  # names the patient
+    login(client, "boss", "boss-pass-123")
+    assert client.post("/api/followups/999", json={"status": "informed"}).status_code == 404
+    assert client.get("/api/followups/999/letter").status_code == 403  # admin alone: no pid
+    login(client, "phys", "phys-pass-12")
+    assert client.get("/api/followups/999/letter").status_code == 404
+    assert client.get("/api/followups/999/letter", params={"lang": "xx"}).status_code == 400
+
+
 def test_insp1255_report_endpoint(client):
     login(client, "boss", "boss-pass-123")
     r = client.get("/api/reports/insp1255", params={"year": 2026, "quarter": 4, "q": ""})

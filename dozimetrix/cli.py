@@ -693,6 +693,11 @@ def _cmd_alerts(args: argparse.Namespace) -> int:
                                                 progress=print)
             session.commit()
             print("devices:", ", ".join(f"{k}: {v}" for k, v in sorted(dev.items())) or "—")
+            from . import followup
+
+            fu = followup.sync(session)  # high-dose fluoroscopy follow-ups of the history
+            session.commit()
+            print("follow-ups:", ", ".join(f"{k}: {v}" for k, v in sorted(fu.items())) or "—")
         elif args.action == "notify":
             stats = notify.dispatch(session, cfg)
             session.commit()

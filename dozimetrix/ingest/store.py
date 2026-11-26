@@ -380,7 +380,7 @@ def derive(session: Session, study_ids: list[int], helpers: Helpers | None = Non
     """Values derived from weight, age and doses: weight estimates, DRL exclusions, skin
     dose, alerts. Run after anything changes them (ingest, HIS enrichment). ``helpers``
     reuses prebuilt lookup tables when called per object."""
-    from .. import alerts, growth, indications, rxgroup, skindose, ssde
+    from .. import alerts, followup, growth, indications, rxgroup, skindose, ssde
 
     growth.estimate_weights(session, study_ids)
     ssde.update(session, study_ids)
@@ -392,6 +392,7 @@ def derive(session: Session, study_ids: list[int], helpers: Helpers | None = Non
         rxgroup.update(session, study_ids, describer=helpers.describer if helpers else None)
     skindose.update_psd(session, study_ids)
     alerts.evaluate(session, study_ids, evaluator=helpers.evaluator if helpers else None)
+    followup.sync(session, study_ids)
 
 
 # Factory defaults that name no station (Toshiba writes ID_STATION on every scanner).

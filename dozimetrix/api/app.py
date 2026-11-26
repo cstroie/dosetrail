@@ -254,6 +254,13 @@ class AckIn(BaseModel):
     note: str | None = None
 
 
+class FollowupIn(BaseModel):
+    status: str | None = None
+    outcome: str | None = Field(None, max_length=255)
+    note: str | None = Field(None, max_length=1024)
+    check_due: dt.date | None = None
+
+
 class AckManyIn(BaseModel):
     ids: list[int]
     note: str | None = None
@@ -1867,6 +1874,52 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
                {"study_id": a.study_id, "note": a.ack_note})
         session.commit()
         return {"id": a.id, "status": a.status, "ack_by": a.ack_by}
+
+    @app.get("/api/followups")
+    def followups(status: str | None = None, limit: int = 200,
+                  user: User = Depends(current_user), session: Session = Depends(db)):
+        """High-dose follow-ups (fluoroscopy / interventional): pending = open or informed."""
+        from .. import followup
+
+        if status not in (None, "pending", *followup.STATUSES):
+            raise HTTPException(400, "status is pending, " + ", ".join(followup.STATUSES))
+        return followup.listing(session, status, clock().date(), max(1, min(limit, 1000)),
+                                names=data.device_names(session))
+
+    @app.post("/api/followups/{followup_id}")
+    def followup_update(followup_id: int, body: FollowupIn, request: Request,
+                        user: User = Depends(current_user), session: Session = Depends(db)):
+        from .. import followup
+
+        admin_only(user)
+        try:
+            f = followup.update(session, followup_id, user.username, clock(),
+                                status=body.status, outcome=body.outcome, note=body.note,
+                                check_due=body.check_due)
+        except followup.FollowupError as e:
+            raise HTTPException(404 if "not found" in str(e) else 400, str(e)) from None
+        _audit(session, request, user, "followup", f"followup:{followup_id}",
+               {"study_id": f.study_id, "status": f.status, "outcome": f.outcome})
+        session.commit()
+        return {"id": f.id, "status": f.status}
+
+    @app.get("/api/followups/{followup_id}/letter", response_class=HTMLResponse)
+    def followup_letter(followup_id: int, request: Request, lang: str = "ro",
+                        user: User = Depends(current_user), session: Session = Depends(db)):
+        """The patient letter, ready to print. It names the patient: pid role, audited."""
+        from .. import followup
+
+        if "pid" not in user.role_set():
+            raise HTTPException(403, "the pid role is required to see patient identifiers")
+        try:
+            page = followup.letter(session, followup_id, lang)
+        except followup.FollowupError as e:
+            raise HTTPException(400, str(e)) from None
+        if page is None:
+            raise HTTPException(404, "follow-up not found")
+        _audit(session, request, user, "identify", f"followup-letter:{followup_id}")
+        session.commit()
+        return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/alert-rules")
     def alert_rules(user: User = Depends(current_user), session: Session = Depends(db)):

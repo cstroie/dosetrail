@@ -645,6 +645,30 @@ class AlertRule(TimestampMixin, Base):
     note: Mapped[str | None] = mapped_column(Text(1024))
 
 
+class Followup(TimestampMixin, Base):
+    """Follow-up of a patient who received a substantial radiation dose in fluoroscopy or
+    interventional work (followup.py): told, skin checked after 2-4 weeks, outcome. One per
+    study, created when the study passes a trigger level."""
+
+    __tablename__ = "followup"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    study_id: Mapped[int] = mapped_column(ForeignKey("study.id", ondelete="CASCADE"),
+                                          unique=True)
+    study_datetime: Mapped[dt.datetime | None] = mapped_column(DateTime, index=True)
+    levels: Mapped[str] = mapped_column(Text(255))  # which levels were passed, with the values
+    # open (to inform and check) | informed | checked | dismissed (no follow-up needed)
+    status: Mapped[str] = mapped_column(AsciiId(12), default="open")
+    informed_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    informed_by: Mapped[str | None] = mapped_column(AsciiId(64))
+    check_due: Mapped[dt.date | None] = mapped_column(Date)  # the earliest date of the skin check
+    checked_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+    outcome: Mapped[str | None] = mapped_column(Text(255))  # e.g. no skin effect, erythema
+    note: Mapped[str | None] = mapped_column(Text(1024))
+    updated_by: Mapped[str | None] = mapped_column(AsciiId(64))
+
+    __table_args__ = (Index("ix_followup_status", "status", "study_datetime"),)
+
+
 class Alert(Base):
     __tablename__ = "alert"
     id: Mapped[int] = mapped_column(primary_key=True)
