@@ -8,29 +8,39 @@ Already covered, so not listed: DRL comparison and local DRLs, cumulative and pe
 alerts, skin dose maps, SSDE from RDSR, operator reports, national reports, the survey
 aggregator.
 
-Status: proposed. None of these is scheduled yet.
+Status (2026-11-26): items 1–11 (A and B) are built, one commit each; C is not started. What
+exists, per item, is in the "Built" notes below. None of it is deployed yet: the migrations
+(`f1b7c3d9a2e4`, `a3d5e7f9b1c2`, `b5e7a9c1d3f4`, `c7f9b1d3e5a6`) have to be applied and the
+receiver restarted. No web pages were built for the new reports, follow-ups, incidents, QA
+register or digests: they are API and CLI only, for the design session to pick up.
 
 ## A. Quick wins: the data is already stored
 
 1. **Paediatric protocol mismatch alert.** Most protocol names carry an age or weight band
    (`… 1-6 ani`, `CT_CAP_N_1_6_ANI`). Alert when the band doesn't match the patient: an adult
    protocol on a child, or a child protocol on an older child. Qaelum and teamplay flag this.
+    *Built: alert kind `protocol_band` (rule `protocol-band-mismatch`, CT).*
 2. **CT Dose Check report (NEMA XR-25).** `ingest/parse.py` already reads the RDSR notification
    and alert values (113900). Report which events went past them, how often per protocol, and
    the reason the operator gave. (DoseWatch, Radimetrics.)
+    *Built: `reports/dosecheck.py`, `/api/reports/dose-check`; new `event.dose_check_notification`; the details are in `extra_json["dose_check"]`. Existing events need an RDSR refetch to fill them.*
 3. **Exposure index / deviation index (IEC 62494).** EI is only a chart metric today. Add a
    target EI per protocol, the DI distribution per room and protocol, and an alert on repeated
    DI > +3 or < −2 (dose creep, detector problems).
+    *Built: `reports/exposure.py`, `/api/reports/exposure-index`, device rule `device_di`. The target EI is the one the detector reports per exposure (shown per protocol, flagged when it varies); a site-set target table was not built.*
 4. **Collimation audit for radiography.** Where a room reports both DAP and air kerma, DAP ÷ kerma
    gives the exposed field area. Compare it with the anatomy and the detector size. This
    separates over-collimation from a DAP calibration error, e.g. a room whose DAP is several
    times its peers' at similar kV and mAs.
+    *Built: `reports/collimation.py`, `/api/reports/collimation`. The detector size is not stored, so the field area is compared with the department's median for the same exam and age group, not with the detector.*
 5. **CT scan length and overranging.** Compare the scanned length with the exam region (a head
    scan running into the neck, an abdomen scan extended into the chest). Show scan length
    outliers per protocol. (DoseWatch.)
+    *Built: `reports/scanlength.py`, `/api/reports/scan-length`. Length outliers only: real overranging (extra rotations) is not in the dose report.*
 6. **Protocol drift detection.** Alert when a protocol's typical kV, reference mAs or CTDIvol
    changes step-wise from one week to the next: usually an edited protocol or a software update.
    Builds on `protocols.py`. (teamplay protocol management.)
+    *Built: device rule `protocol_drift` (rule `protocol-drift-25pct`).*
 
 ## B. Workflow: mostly new tables and pages, little new data
 
@@ -38,17 +48,22 @@ Status: proposed. None of these is scheduled yet.
    patient, flag the record, check the skin after 2–4 weeks. Typical triggers are the SIR/NCRP
    levels (PSD 3 Gy, reference-point kerma 5 Gy, KAP 500 Gy·cm²). Track it with a status and a
    printable patient letter.
+    *Built: table `followup`, `followup.py`, `/api/followups` (+ letter, Romanian or English).*
 8. **Investigation and incident records.** An alert becomes a case: cause, actions, outcome, and
    whether it is reportable as an unintended or accidental exposure (BSS Art. 63, to the national
    regulator). Gives the medical physicist an audit trail. (DoseWatch, Qaelum, Radimetrics.)
+    *Built: tables `incident`, `incident_log`, `incidents.py`, `/api/incidents`.*
 9. **Before/after comparison of an optimisation.** Pick the date of a protocol change and compare
    doses before and after, by band, with a significance test and an image-quality note. Fits the
    annual local DRL review. (teamplay.)
+    *Built: `reports/optimisation.py`, `/api/reports/optimisation` (Mann-Whitney U; the image-quality note is free text carried in the report).*
 10. **Scheduled report emails.** For example a monthly PDF per department head: top outliers,
     values above DRL, open alerts, device status. Uses the existing SMTP and ntfy notifiers.
+    *Built: `digests.py`, `/api/digests`, CLI `digests`. HTML + text mail, no PDF (no dependency).*
 11. **QA and calibration register per device.** Record the DAP meter correction factor with its
     date and apply it at read time; reminders when a QA test or calibration is due. (Qaelum QA
     module.) Related to item 4.
+    *Built: table `device_qa`, `qa.py`, `/api/devices/{id}/qa`, alert `qa_due`. The DAP correction factor is applied on the study page, the dose statement and the collimation audit; statistics, DRL and exports still use the stored DAP.*
 
 ## C. Bigger items: new data or physics
 
