@@ -581,3 +581,42 @@ def test_deviation_index_computed_from_ei_and_target():
     assert deviation_index(None, 500, 250) == pytest.approx(3.01, abs=0.01)
     assert outside(deviation_index(None, 500, 250)) and not outside(0.0)
     assert deviation_index(None, None, 250) is None and deviation_index(None, 100, 0) is None
+
+
+def test_ct_protocol_drift(session, world):
+    dev, kid = world
+    n = 0
+
+    def series(days_ago, count, kv, ma, ctdi, protocol="CT_CAP_N_1_6_ANI"):
+        nonlocal n
+        for i in range(count):
+            n += 1
+            when = NOW - dt.timedelta(days=days_ago, hours=i)
+            s = _study(session, dev, kid, f"pd.{n}", when, modality="CT", age_days=900)
+            s.events = [Event(protocol="Topogram", is_localizer=True),
+                        Event(protocol=protocol, kvp=kv, ma=ma, rotation_time_s=0.5, pitch=1.0,
+                              ctdivol=ctdi, dlp=ctdi * 15, scan_length_mm=150.0)]
+
+    series(40, 12, 100.0, 100.0, 5.0)  # the 8 weeks before
+    series(10, 5, 100.0, 100.0, 5.0, protocol="CT_ABD")  # a protocol that does not change
+    series(2, 4, 100.0, 100.0, 5.0, protocol="CT_ABD")
+    series(9, 4, 100.0, 100.0, 5.0, protocol="CT_ABD")
+    series(2, 4, 120.0, 100.0, 7.0)  # the last two weeks: kV 100 → 120, CTDIvol +40 %
+    series(9, 4, 120.0, 100.0, 7.0)
+    series(40, 12, 100.0, 100.0, 5.0, protocol="CT_ABD")
+    rule = session.scalar(select(AlertRule).filter_by(key="protocol-drift-25pct"))
+    assert alerts.evaluate_devices(session, NOW, ["protocol_drift"])["new"] == 1
+    a = session.scalar(select(Alert).filter_by(rule_id=rule.id))
+    assert a.message.startswith("ct cap · Angio: kV 100 → 120; CTDIvol 5 → 7 (+40%)")
+    assert "eff. mAs" not in a.message and a.value == 2.0
+    assert alerts.listing(session)[0]["value"] == "2 parameters"
+    # once per scanner and protocol; a one-week change is not a step
+    assert alerts.evaluate_devices(session, NOW + dt.timedelta(days=3),
+                                   ["protocol_drift"])["new"] == 0
+    session.delete(a)
+    week2 = select(Study).where(Study.study_datetime < NOW - dt.timedelta(days=8),
+                                Study.study_datetime > NOW - dt.timedelta(days=12))
+    for s in session.scalars(week2):
+        session.delete(s)
+    session.flush()
+    assert alerts.evaluate_devices(session, NOW, ["protocol_drift"])["new"] == 0

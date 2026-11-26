@@ -11,7 +11,7 @@ import { alertRules, updateAlertRule, createAlertRule, deleteAlertRule, alertRul
 import { shownUnit } from '../core/format.js';
 
 const page = document.getElementById('page');
-const KIND = { threshold: 'Threshold', drl_ratio: '× national DRL', cumulative: 'Cumulative / patient', count: 'Studies / patient', pregnant: 'Pregnant patient', protocol_band: 'Protocol band ≠ patient', device_silent: 'Silent device', device_drift: 'Device dose drift', device_di: 'Room deviation index', drl_sustained: 'Room above DRL, 2 quarters' };
+const KIND = { threshold: 'Threshold', drl_ratio: '× national DRL', cumulative: 'Cumulative / patient', count: 'Studies / patient', pregnant: 'Pregnant patient', protocol_band: 'Protocol band ≠ patient', device_silent: 'Silent device', device_drift: 'Device dose drift', device_di: 'Room deviation index', protocol_drift: 'CT protocol drift', drl_sustained: 'Room above DRL, 2 quarters' };
 
 // The kinds a rule can be added for here (device rules are seeded: they need extra settings)
 const NEW_KINDS = ['threshold', 'cumulative', 'count', 'drl_ratio', 'pregnant'];

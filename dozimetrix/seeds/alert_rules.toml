@@ -10,6 +10,7 @@
 # kind = device_silent : a busy device sends no study for threshold days
 # kind = device_drift  : a device's median dose (exam, age group) >= threshold x its usual one
 # kind = device_di   : a room's share of exposures with a deviation index outside -2..+3 >= threshold %
+# kind = protocol_drift : a CT protocol's kV, effective mAs or CTDIvol moved step-wise (threshold = fraction)
 # kind = drl_sustained : a room's median (exam, age group) >= threshold x DRL, 2 quarters running
 
 [[rule]]
@@ -267,3 +268,14 @@ window_days = 14
 severity = "warn"
 notify = false
 note = "IEC 62494-1: DI above +3 is more than twice the target dose, below −2 gives noisy images. Over the last 14 days, ≥ 20 exposures with a DI and ≥ 8 outside the limits: dose creep, a detector or AEC fault, or a target set wrongly on the console. See the exposure index report per protocol."
+
+[[rule]]
+key = "protocol-drift-25pct"
+name = "CT protocol: kV, effective mAs or CTDIvol changed step-wise"
+kind = "protocol_drift"
+modality = "CT"
+threshold = 0.25
+window_days = 28
+severity = "warn"
+notify = false
+note = "Median per scanner and protocol, in each of the last two weeks, against the 8 weeks before (≥ 10 series before, ≥ 3 a week): effective mAs or CTDIvol off by ≥ 25 %, or the kV by a step (10 kV), the same way in both weeks. Usually an edited protocol or a software update: check who changed it and whether it was intended."

@@ -19,7 +19,7 @@ import datetime as dt
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -46,12 +46,16 @@ UNITS = {"Gy": "Gy", "Gy.cm2": "Gy·cm²", "mGy": "mGy", "mGy.cm": "mGy·cm", "m
 # stored in Gy / Gy·cm² (DICOM); written in mGy / mGy·cm², as the web pages show them
 SHOWN = {"Gy": (1000.0, "mGy"), "Gy.cm2": (1000.0, "mGy.cm2")}
 BATCH = 1000
-DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained", "device_di")
+DEVICE_KINDS = ("device_silent", "device_drift", "drl_sustained", "device_di",
+                "protocol_drift")
 RETIRED_DAYS = 90  # a device silent for longer is retired, not broken (it alerted at day 4)
 SUSTAINED_MIN_N = 20  # as the DRL page: fewer values per room and quarter are not compared
 # device drift: the last two weeks, each against the 12 weeks before them
 DRIFT_WEEK, DRIFT_BASE = dt.timedelta(days=7), dt.timedelta(days=84)
 DRIFT_MIN_WEEK, DRIFT_MIN_BASE = 10, 30
+PD_MIN_BASE, PD_MIN_WEEK = 10, 3  # protocol drift: series in the base period / in each week
+PD_BASE = dt.timedelta(days=56)
+PD_KV_STEP = 10.0  # a median kV that moves by a step (the usual 80 / 100 / 120 / 140)
 DI_MIN_N, DI_MIN_OUT = 20, 8  # exposures with a DI in the window; of them outside the limits
 
 
@@ -416,6 +420,8 @@ def _value_limit(a: Alert, r: AlertRule) -> tuple[str, str]:
         return f"{v:.1f} days", f"≥ {r.threshold:g} d"
     if r.kind == "drl_sustained":
         return f"{v:.2f}× DRL", f"≥ {r.threshold:g}× (2 quarters)"
+    if r.kind == "protocol_drift":
+        return f"{v:.0f} parameter{'s' if v > 1 else ''}", f"≥ {r.threshold:.0%} / 10 kV"
     if r.kind == "device_di":
         return f"{v:.0f} % outside", f"≥ {r.threshold:g} % (DI −2…+3)"
     if r.kind == "device_drift":
@@ -712,6 +718,81 @@ def _di(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
     return out
 
 
+def _protocol_drift(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict]:
+    """A CT protocol on a scanner whose kV, effective mAs or CTDIvol changed step-wise: the
+    median in each of the last two weeks differs from the median of the 8 weeks before by
+    ≥ ``threshold`` (a fraction: 0.25 = 25 %) for the effective mAs and CTDIvol, or by a step
+    (10 kV) for the kV, in the same direction. Usually an edited protocol or a software update.
+    ≥ 10 series before and ≥ 3 in each week. Once per scanner and protocol per ``window_days``
+    (default 28)."""
+    from .protocols import _NOT_DIAGNOSTIC, MIN_SCAN_MM, family
+
+    devices = _local_devices(session)
+    if not devices:
+        return []
+    w1, w2, w0 = now - DRIFT_WEEK, now - 2 * DRIFT_WEEK, now - 2 * DRIFT_WEEK - PD_BASE
+    q = (select(Study.device_id, Study.id, Study.study_datetime, Event.protocol, Event.kvp,
+                Event.ma, Event.rotation_time_s, Event.pitch, Event.ctdivol)
+         .join(Event, Event.study_id == Study.id)
+         .where(Study.device_id.in_(list(devices)), Study.modality.in_(("CT", "PT")),
+                Study.study_datetime > w0, Study.study_datetime <= now,
+                Event.is_localizer.is_not(True), Event.protocol.is_not(None),
+                or_(Event.event_type.is_(None), Event.event_type != "stationary"),
+                or_(Event.scan_length_mm.is_(None), Event.scan_length_mm >= MIN_SCAN_MM)))
+    mods = _modalities(rule)
+    if mods:
+        q = q.where(Study.modality.in_(mods))
+    groups: dict[tuple, dict[str, list]] = defaultdict(lambda: defaultdict(list))
+    for did, sid, t, protocol, kv, ma, rot, pitch, ctdi in session.execute(q):
+        name = family(protocol)
+        if not name or _NOT_DIAGNOSTIC.search(protocol.lower()):
+            continue
+        emas = ma * rot / pitch if ma and rot and pitch else None
+        part = "w1" if t > w1 else "w2" if t > w2 else "base"
+        groups[(did, name)][part].append((t, sid, kv, emas, ctdi))
+    quiet = dt.timedelta(days=rule.window_days or 28)
+    out = []
+    for (did, name), g in sorted(groups.items()):
+        if len(g["base"]) < PD_MIN_BASE or min(len(g["w1"]), len(g["w2"])) < PD_MIN_WEEK:
+            continue
+        changes = []
+        for idx, label, step in ((2, "kV", PD_KV_STEP), (3, "eff. mAs", None),
+                                 (4, "CTDIvol", None)):
+            base = [r[idx] for r in g["base"] if r[idx] is not None]
+            a = [r[idx] for r in g["w1"] if r[idx] is not None]
+            b = [r[idx] for r in g["w2"] if r[idx] is not None]
+            if len(base) < PD_MIN_BASE or len(a) < PD_MIN_WEEK or len(b) < PD_MIN_WEEK:
+                continue
+            m0, m1, m2 = _median(base), _median(a), _median(b)
+            if not m0:
+                continue
+            if step is not None:
+                d1, d2 = m1 - m0, m2 - m0
+                hit = abs(d1) >= step and abs(d2) >= step and d1 * d2 > 0
+                text = f"{label} {m0:.0f} → {m1:.0f}"
+            else:
+                d1, d2 = m1 / m0 - 1, m2 / m0 - 1
+                hit = abs(d1) >= rule.threshold and abs(d2) >= rule.threshold and d1 * d2 > 0
+                text = f"{label} {_num(m0)} → {_num(m1)} ({d1:+.0%})"
+            if hit:
+                changes.append(text)
+        if not changes:
+            continue
+        key = f"{name} · {devices[did]}"
+        if session.scalar(
+                select(func.count()).select_from(Alert).join(Study, Study.id == Alert.study_id)
+                .where(Alert.rule_id == rule.id, Study.device_id == did,
+                       Alert.study_datetime > now - quiet, Alert.study_datetime <= now,
+                       Alert.message.startswith(key + ":"))):
+            continue
+        out.append({"study_id": max(g["w1"])[1], "value": float(len(changes)),
+                    "limit_value": rule.threshold, "unit": None,
+                    "message": f"{key}: {'; '.join(changes)} over the last 2 weeks "
+                               f"({len(g['w1'])} + {len(g['w2'])} series), against the 8 weeks "
+                               f"before ({len(g['base'])})"})
+    return out
+
+
 def _quarter_start(t: dt.datetime) -> dt.datetime:
     return dt.datetime(t.year, 3 * ((t.month - 1) // 3) + 1, 1)
 
@@ -767,7 +848,7 @@ def _sustained(session: Session, rule: AlertRule, now: dt.datetime) -> list[dict
 
 
 DEVICE_CHECKS = {"device_silent": _silent, "device_drift": _drift, "drl_sustained": _sustained,
-                 "device_di": _di}
+                 "device_di": _di, "protocol_drift": _protocol_drift}
 
 
 def evaluate_devices(session: Session, now: dt.datetime | None = None,
