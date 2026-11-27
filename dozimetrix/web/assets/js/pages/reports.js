@@ -3,7 +3,7 @@
 // can be pasted into the INSP workbook.
 
 import '../components/dx-shell.js';
-import { reportTabs } from '../components/admin-tabs.js';
+import { registerTabs } from '../components/admin-tabs.js';
 import { confirmDialog } from '../core/confirm.js';
 import { h, clear, append, section as block, toast } from '../core/dom.js';  // `section` is a local name here
 import { num, smart, shown, shownUnit } from '../core/format.js';
@@ -103,7 +103,7 @@ function render() {
       h('p', { class: 'muted small' }, t('rep.central'), h('a', { href: 'survey-central.html' }, t('rep.central.link')))],
   };
   const title = targets.find((x) => x.id === state.target)?.label || '';
-  clear(page).append(reportTabs('reports.html'), h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, t('rep.target')), targetSel),
+  clear(page).append(registerTabs('reports.html'), h('div', { class: 'toolbar' }, h('span', { class: 'muted' }, t('rep.target')), targetSel),
     block(title, { level: 1 }, ...sections[section]()));
   reload();
 }

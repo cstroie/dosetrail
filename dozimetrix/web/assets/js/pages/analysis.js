@@ -9,6 +9,7 @@ import { h, clear, section, pageHead } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { analysisReport, analysisUrl } from '../core/api.js';
 import { dataTable, kpiRow, tag, field } from '../core/tables.js';
+import { analysisTabs, doseTabs } from '../components/admin-tabs.js';
 
 const page = document.getElementById('page');
 const pct = (v) => (v == null ? null : `${num(v, 1)} %`);
@@ -51,7 +52,7 @@ const REPORTS = {
   },
   repeats: {
     title: 'Possible repeats', about: 'A proxy for the reject rate, not the rate. An exposure of the same exam, projection, laterality and protocol as an earlier one in its study, within the gap, is counted. It includes legitimate duplicates and misses a retake under another protocol; no rejected-image notes are received, so true rejects are not available. Compare rooms and exams, do not quote the figure.',
-    extra: (state) => [field('Operators', Object.assign(h('input', { type: 'checkbox' }), { checked: !!state.operators, onchange: (e) => { state.operators = e.target.checked || undefined; } }), 'admin only')],
+    extra: (state) => [h('label', { class: 'chk', title: 'Per operator (admin only)', style: { 'padding-bottom': '6px' } }, Object.assign(h('input', { type: 'checkbox' }), { checked: !!state.operators, onchange: (e) => { state.operators = e.target.checked || undefined; } }), ' per operator')],
     render: (r) => [
       kpiRow([['Exposures', r.exposures], ['Possible repeats', r.repeats], ['Rate', pct(r.rate_pct)], ['Rooms flagged', r.flagged]]),
       block('Rooms and exams', dataTable([{ key: 'device', label: 'Room' }, { key: 'exam', label: 'Exam' }, { key: 'exposures', label: 'Exposures', right: true }, { key: 'repeats', label: 'Repeats', right: true }, { key: 'rate_pct', label: 'Rate', right: true, fmt: pct }, { key: 'department_pct', label: 'Department', right: true, fmt: pct }, { key: 'ratio', label: 'Ratio', right: true }, { get: (x) => (x.flagged ? tag('flagged', 'warn') : null), label: '' }], r.rooms)),
@@ -119,9 +120,7 @@ async function run() {
 
 function controls() {
   const def = REPORTS[state.name];
-  const sel = h('select', { class: 'input', 'aria-label': 'Report', onchange: (e) => { state.name = e.target.value; draw(); } },
-    Object.entries(REPORTS).map(([k, v]) => h('option', { value: k, selected: k === state.name }, v.title)));
-  const q = h('input', { class: 'input', type: 'text', value: state.q, style: { 'min-width': '16em' }, onchange: (e) => { state.q = e.target.value; } });
+  const q = h('input', { class: 'input', type: 'text', value: state.q, placeholder: 'a study query', title: 'A study query, as on Studies', style: { 'min-width': '16em' }, onchange: (e) => { state.q = e.target.value; } });
   const year = h('input', { class: 'input num-input', type: 'number', min: 2000, max: 2100, value: state.year, placeholder: 'auto', onchange: (e) => { state.year = e.target.value; } });
   const quarter = h('select', { class: 'input', onchange: (e) => { state.quarter = e.target.value; } },
     ['', 1, 2, 3, 4].map((v) => h('option', { value: v, selected: String(v) === String(state.quarter) }, v === '' ? 'last complete' : `Q${v}`)));
@@ -131,15 +130,37 @@ function controls() {
   const form = def.form ? [
     field('Change date', h('input', { class: 'input', type: 'date', value: state.change, onchange: (e) => { state.change = e.target.value; } })),
     field('Days each side', h('input', { class: 'input num-input', type: 'number', min: 7, max: 1500, value: state.days, onchange: (e) => { state.days = e.target.value; } })),
-    field('Image-quality note', h('input', { class: 'input', type: 'text', maxlength: 1000, value: state.note, style: { 'min-width': '22em' }, onchange: (e) => { state.note = e.target.value; } }), 'reader scores, noise, feedback'),
+    field('Image-quality note', h('input', { class: 'input', type: 'text', maxlength: 1000, value: state.note, placeholder: 'reader scores, noise, feedback', style: { 'min-width': '22em' }, onchange: (e) => { state.note = e.target.value; } }), null),
   ] : [field('Period', h('span', { class: 'row' }, year, quarter, quarters))];
   return h('div', { class: 'row', style: { 'align-items': 'flex-end', gap: 'var(--sp-3)', 'flex-wrap': 'wrap' } },
-    field('Report', sel), field('Studies', q, 'a study query'), ...form, ...(def.extra ? def.extra(state) : []), go);
+    field('Studies', q), ...form, ...(def.extra ? def.extra(state) : []), go);
+}
+
+// The reports are tabs; switching keeps the query and period. Before / after belongs to Doses
+// (it compares doses around a protocol change), so there the Doses bar and rail entry show.
+function tabs() {
+  const href = `analysis.html?r=${state.name}`;
+  const dose = !!REPORTS[state.name].form;
+  const shell = document.querySelector('dx-shell');
+  shell?.querySelectorAll('nav.rail a').forEach((a) => {
+    const on = a.getAttribute('href') === (dose ? 'drl.html' : 'analysis.html');
+    a.setAttribute('aria-current', on ? 'page' : 'false');
+  });
+  shell?.setSub?.(dose ? 'Before / after' : REPORTS[state.name].title);
+  const bar = dose ? doseTabs(href) : analysisTabs(href);
+  bar.addEventListener('click', (e) => {
+    const a = e.target.closest('a');
+    const k = a && new URL(a.href).pathname.endsWith('analysis.html') && new URL(a.href).searchParams.get('r');
+    if (!k || !REPORTS[k] || !!REPORTS[k].form !== dose) return;
+    e.preventDefault(); state.name = k; draw();
+  });
+  return bar;
 }
 
 function draw() {
   clear(page).append(
-    pageHead('Analysis', { sub: REPORTS[state.name].about }),
+    tabs(),
+    pageHead(REPORTS[state.name].title, { sub: REPORTS[state.name].about }),
     controls(), out);
   run();
 }

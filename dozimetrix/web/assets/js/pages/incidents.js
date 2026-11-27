@@ -4,7 +4,7 @@
 // Open one from an alert (the Investigate button on the alerts page) or here by study number.
 
 import '../components/dx-shell.js';
-import { qualityTabs } from '../components/admin-tabs.js';
+import { registerTabs } from '../components/admin-tabs.js';
 import { h, clear, section, toast, pageHead } from '../core/dom.js';
 import { promptDialog } from '../core/confirm.js';
 import { isAdmin, incidents, incident, openIncident, updateIncident } from '../core/api.js';
@@ -84,7 +84,7 @@ async function show(id) {
   detail.scrollIntoView?.({ behavior: 'smooth' });
 }
 
-clear(page).append(qualityTabs('incidents.html'),
+clear(page).append(registerTabs('incidents.html'),
   pageHead('Incidents', { sub: 'Investigation of alerts: cause, actions, outcome and the decision on whether it is reportable. An audit trail for the medical physicist and for an inspection.' },
     h('select', { class: 'input', 'aria-label': 'Show', onchange: (e) => { status = e.target.value; loadList(); } },
       [['open', 'Open'], ['closed', 'Closed'], ['', 'All']].map(([v, l]) => h('option', { value: v, selected: v === status }, l)))),

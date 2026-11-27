@@ -77,7 +77,9 @@ def reference_sets(session: Session) -> list[dict]:
         out.append({"key": rs.key, "name": rs.name, "source": rs.source, "notes": rs.notes,
                     "valid_from": rs.valid_from.isoformat() if rs.valid_from else None,
                     "values": len(rs.values)})
-    return out
+    # European first, then national (Romania), then local; by key within each
+    rank = lambda k: 0 if k.startswith(("ec-", "eu-")) else 1 if k.startswith("ro-") else 2  # noqa: E731
+    return sorted(out, key=lambda s: (rank(s["key"]), s["key"]))
 
 
 def reference_values(session: Session, set_key: str) -> dict:

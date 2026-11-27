@@ -4,7 +4,7 @@
 // physicist moves each one along. The patient letter names the patient (pid role, audit-logged).
 
 import '../components/dx-shell.js';
-import { qualityTabs } from '../components/admin-tabs.js';
+import { registerTabs } from '../components/admin-tabs.js';
 import { h, clear, toast, pageHead } from '../core/dom.js';
 import { promptDialog } from '../core/confirm.js';
 import { isAdmin, followups, updateFollowup, followupLetterHref } from '../core/api.js';
@@ -56,7 +56,7 @@ async function load() {
       { get: actions, label: '' }], r.rows, 'No follow-ups in this view.'));
 }
 
-clear(page).append(qualityTabs('followups.html'),
+clear(page).append(registerTabs('followups.html'),
   pageHead('High-dose follow-up', { sub: 'Fluoroscopy and interventional patients above a substantial radiation dose level: inform, check the skin after 2–4 weeks, record the outcome.' },
     h('select', { class: 'input', 'aria-label': 'Show', onchange: (e) => { status = e.target.value; load(); } },
       [['pending', 'To act on'], ['open', 'To inform'], ['informed', 'Informed'], ['checked', 'Checked'], ['dismissed', 'Dismissed'], ['', 'All']].map(([v, l]) => h('option', { value: v, selected: v === status }, l)))),

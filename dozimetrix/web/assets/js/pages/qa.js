@@ -6,7 +6,7 @@
 // one used by statistics, DRL comparisons, exports, DAP alerts and follow-ups.
 
 import '../components/dx-shell.js';
-import { qualityTabs } from '../components/admin-tabs.js';
+import { registerTabs } from '../components/admin-tabs.js';
 import { h, clear, section, toast, pageHead } from '../core/dom.js';
 import { confirmDialog } from '../core/confirm.js';
 import { isAdmin, qaDue, deviceQA, addDeviceQA, deleteQA, physicalDevices } from '../core/api.js';
@@ -57,7 +57,7 @@ function draw() {
   const sel = h('select', { class: 'input', 'aria-label': 'Device', onchange: (e) => { deviceId = Number(e.target.value) || null; loadRegister(); } },
     h('option', { value: '' }, '— choose —'),
     devs.map((d) => h('option', { value: d.id, selected: d.id === deviceId }, d.display_name)));
-  clear(page).append(qualityTabs('qa.html'),
+  clear(page).append(registerTabs('qa.html'),
     pageHead('QA and calibration register', { sub: 'Per device: DAP-meter calibrations with their correction factor (applied to the DAP in statistics, DRL comparisons, exports and alerts from the date done until the next calibration), constancy, acceptance and annual tests, and when the next is due.' }),
     section('Due', { level: 2 }, dueHost), section('Register', { level: 2, actions: sel }, regHost));
   loadDue();

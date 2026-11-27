@@ -19,7 +19,9 @@ export function dataTable(cols, rows, empty = 'Nothing to show.') {
 
 /** A row of figures: [[code, value, note]]. */
 export function kpiRow(items) {
-  return h('div', { class: 'kpis drl-kpis' }, items.map(([code, v, m]) => h('div', { class: 'kpi' },
+  // one or two tiles: tile-sized, not stretched (set here too, for browsers without CSS :has())
+  const few = items.length <= 2 ? { 'grid-template-columns': `repeat(${items.length || 1}, minmax(min(14em, 40vw), 20em))`, width: 'fit-content', 'max-width': '100%' } : null;
+  return h('div', { class: 'kpis drl-kpis', style: few }, items.map(([code, v, m]) => h('div', { class: 'kpi' },
     h('span', { class: 'code' }, code), h('span', { class: 'v' }, typeof v === 'number' ? num(v) : String(v ?? '—')),
     h('span', { class: 'm' }, m || ''))));
 }

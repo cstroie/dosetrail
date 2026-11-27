@@ -3,7 +3,7 @@
 
 import { confirmDialog } from '../core/confirm.js';
 import '../components/dx-shell.js';
-import { reportTabs } from '../components/admin-tabs.js';
+import { analysisTabs } from '../components/admin-tabs.js';
 import '../components/dx-query-bar.js';
 import { h, clear, append, section } from '../core/dom.js';
 import { num } from '../core/format.js';
@@ -30,7 +30,7 @@ function render() {
   const qb = h('dx-query-bar', { value: q });
   qb.addEventListener('query-change', (e) => { q = e.detail; keepOwn('quality.q', q, DEFAULT_Q); load(); });
   clear(page).append(
-    reportTabs('quality.html'),
+    analysisTabs('quality.html'),
     h('div', { class: 'row', style: { 'align-items': 'flex-start' } }, h('div', { style: { flex: '1 1 600px' } }, qb),
       ...defaultsActions('quality', { admin: defaults.admin, prefKeys: ['quality.q'], current: () => ({ q }) })),
     h('div', { id: 'qa' }), admin ? sizesPanel() : null);
@@ -85,8 +85,8 @@ function sizesPanel() {
         h('tbody', {}, r.issues.map((i) => h('tr', {}, h('td', {}, String(i.row)), h('td', {}, i.outcome.replaceAll('_', ' ')), h('td', {}, i.detail)))))) : '');
   };
   return section('Import weight, height, indication (CSV)', {},
-    h('div', { class: 'panel' },
-      h('p', { class: 'muted small' }, 'Columns: a key (study_uid, accession, or patient_id + date [+ modality]), then weight_kg and/or height_m / height_cm (optionally source: measured, chart_same_day, chart_72h, imported, or measured_at), and/or indication (the request text) / indication_code. A weight or height replaces only a lower-ranked source, and only when plausible for age and sex.'),
+    h('div', { class: 'panel', style: { padding: 'var(--sp-3)', display: 'grid', gap: 'var(--sp-2)' } },
+      h('p', { class: 'muted small', style: { margin: 0 } }, 'Columns: a key (study_uid, accession, or patient_id + date [+ modality]), then weight_kg and/or height_m / height_cm (optionally source: measured, chart_same_day, chart_72h, imported, or measured_at), and/or indication (the request text) / indication_code. A weight or height replaces only a lower-ranked source, and only when plausible for age and sex.'),
       h('div', { class: 'row' }, file,
         h('button', { class: 'btn', onclick: () => run(false) }, 'Check'),
         h('button', { class: 'btn primary', onclick: async () => { if (await confirmDialog('Write these weights / heights?', { title: 'Write weights and heights', label: 'Write' })) run(true); } }, 'Apply')),

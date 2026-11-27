@@ -9,6 +9,7 @@ import { scopeWarnings } from '../core/query.js';
 import { num, smart, shown, shownUnit } from '../core/format.js';
 import { drlSets, drlCompare, drlDownloadUrl } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
+import { doseTabs } from '../components/admin-tabs.js';
 import { adminDefaults, defaultsActions, keepOwn } from '../core/page-defaults.js';
 
 const page = document.getElementById('page');
@@ -68,7 +69,7 @@ async function render() {
   try {
     sets = await drlSets();
   } catch (e) {
-    page.append(h('p', { class: 'empty' }, e.message));
+    page.append(doseTabs('drl.html'), h('p', { class: 'empty' }, e.message));
     return;
   }
   const setSel = h('select', { class: 'input', 'aria-label': 'Reference set', onchange: (e) => { state.set = e.target.value; keepOwn('drl.set', state.set, D.set); load(); } },
@@ -91,6 +92,7 @@ async function render() {
     toast('Export started: the file downloads when the server has written it');
   };
   page.append(
+    doseTabs('drl.html'),
     h('div', { class: 'toolbar' }, setSel, h('span', { class: 'seg' }, byBtns), h('label', { class: 'chk' }, 'min n ', minN),
       h('label', { class: 'chk', title: 'Weight bands (RP 185 body exams): also use weights estimated from the growth charts (median for age and sex)' },
         h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; load(); } }), ' estimated weights'), empty,

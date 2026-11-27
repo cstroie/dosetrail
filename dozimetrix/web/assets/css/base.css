@@ -39,7 +39,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: flex; flex-direction: column; align-items: center; gap: var(--sp-1);
   padding: 10px 0;
 }
-.rail .logo { color: var(--accent); margin-bottom: var(--sp-2); }
+.rail .logo, .rail a.logo { color: var(--accent); margin-bottom: var(--sp-2); }
+.rail a.logo:hover, .rail a.logo[aria-current="page"] { background: none; }
+.rail a.logo[aria-current="page"]::before { display: none; }
 .rail a {
   width: 56px; padding: 7px 0; position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 2px;

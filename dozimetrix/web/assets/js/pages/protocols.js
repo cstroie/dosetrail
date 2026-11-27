@@ -4,7 +4,7 @@
 // columns are there for a radiologist to judge. Server logic: dozimetrix/protocols.py.
 
 import '../components/dx-shell.js';
-import { reportTabs } from '../components/admin-tabs.js';
+import { doseTabs } from '../components/admin-tabs.js';
 import { h, clear, section } from '../core/dom.js';
 import { num } from '../core/format.js';
 import { codes, protocolsCompare } from '../core/api.js';
@@ -18,7 +18,9 @@ const state = {
   min_n: 10, estimated: false, q: 'origin:local', start: iso(yearAgo), end: iso(today),
 };
 const d1 = (v) => (v == null ? '—' : num(v, v >= 100 ? 0 : v >= 10 ? 1 : 2));
-const field = (label, input) => h('label', { class: 'row', style: { gap: '6px' } }, h('span', { class: 'muted small' }, label), input);
+// label above the control, so every control of the bar sits on one baseline
+const field = (label, ...input) => h('label', { class: 'field' }, label, input.length > 1 ? h('span', { class: 'row', style: { gap: '6px' } }, ...input) : input[0]);
+const CHK = { class: 'row', style: { height: '30px', 'align-items': 'center', gap: '6px' } };
 const select = (key, options, onchange) => h('select', { class: 'input', onchange: (e) => { state[key] = e.target.value; onchange?.(); } },
   options.map(([value, label]) => h('option', { value, selected: String(state[key]) === String(value) }, label)));
 
@@ -75,10 +77,10 @@ async function run() {
 }
 
 async function render() {
-  clear(page).append(reportTabs('protocols.html'),
+  clear(page).append(doseTabs('protocols.html'),
     section('Compare protocols', { level: 1, sub:
       'All the protocols that scanned one region, whatever they are called, side by side: dose, technique and distribution, per patient group (ICRP 135: head by age, body by weight). A protocol name that states a group (CT_CAP_N_1_6_ANI) places a patient whose age or weight is missing. Head series on the 32 cm phantom are kept apart from the 16 cm ones. Bolus-tracking monitoring and aborted scans are left out.' },
-      h('div', { class: 'toolbar', id: 'bar' }),
+      h('div', { class: 'toolbar', id: 'bar', style: { 'align-items': 'flex-end', gap: 'var(--sp-3)' } }),
       h('div', { id: 'result' })));
   let list = [];
   try {
@@ -90,13 +92,13 @@ async function render() {
   const inp = (k, attrs) => h('input', { class: 'input', value: state[k], ...attrs, onchange: (e) => { state[k] = attrs.type === 'number' ? Number(e.target.value) : e.target.value; } });
   document.getElementById('bar').append(
     field('Region', regionSel),
-    field('From', inp('start', { type: 'date' })), field('to', inp('end', { type: 'date' })),
+    field('Period', inp('start', { type: 'date' }), '–', inp('end', { type: 'date' })),
     field('Selection', inp('q', { class: 'w-160', type: 'text' })),
     field('Groups', select('grid', [['icrp', 'ICRP 135 (head age, body weight)'], ['national', 'National age groups']])),
     field('Protocols', select('by', [['protocol', 'Each name'], ['family', 'Merge contrast / phase / group variants']])),
-    h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: state.by_device, onchange: (e) => { state.by_device = e.target.checked; } }), 'Per room'),
+    h('label', CHK, h('input', { type: 'checkbox', checked: state.by_device, onchange: (e) => { state.by_device = e.target.checked; } }), 'Per room'),
     field('Min. series', inp('min_n', { class: 'w-70', type: 'number', min: 1 })),
-    h('label', { class: 'row', title: 'Body groups by weight: include weights estimated from the growth charts' }, h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; } }), 'Estimated weights'),
+    h('label', { ...CHK, title: 'Body groups by weight: include weights estimated from the growth charts' }, h('input', { type: 'checkbox', checked: state.estimated, onchange: (e) => { state.estimated = e.target.checked; } }), 'Estimated weights'),
     h('button', { class: 'btn primary', type: 'button', onclick: run }, 'Compare'));
   run();
 }

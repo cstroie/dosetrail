@@ -11,14 +11,13 @@ import './dx-command-palette.js';
 import { me, logout, changePassword } from '../core/api.js';
 import { live } from '../core/live.js';
 
+// Overview is on the logo in the context bar. Doses, Analysis and Registers carry their own tab bars.
 const NAV = [
-  ['overview', 'index.html', 'overview'],
   ['studies', 'studies.html', 'studies'],
   ['charts', 'charts.html', 'charts'],
   ['drl', 'drl.html', 'drl'],
-  ['reports', 'reports.html', 'reports'],
+  ['analysis', 'analysis.html', 'analysis'],
   ['quality', 'followups.html', 'quality'],
-  ['analysis', 'analysis.html', 'charts'],
   ['alerts', 'alerts.html', 'alerts'],
 ];  // Admin lives in the account menu, for admins only
 
@@ -42,12 +41,12 @@ class DtShell extends HTMLElement {
     kids.filter((n) => !ctxExtras.includes(n)).forEach((n) => work.append(n));
 
     const rail = h('nav', { class: 'rail', 'aria-label': 'Main' },
-      h('span', { class: 'logo', role: 'img', 'aria-label': 'Dozimetrix' }, icon('logo', 26, 2)),
+      h('a', { class: 'logo', href: 'index.html', 'aria-label': `Dozimetrix · ${t('nav.overview')}`, title: t('nav.overview'), 'aria-current': page === 'overview' ? 'page' : false }, icon('logo', 26, 2)),
       NAV.map(([key, href, ic]) => h('a', { href, 'aria-current': key === page ? 'page' : false, title: t(`nav.${key}`) },
         key === 'alerts' ? h('span', { class: 'dot', 'aria-hidden': 'true' }) : null,
         icon(ic, 20), t(`nav.${key}.short`))));
 
-    // Quality (registers) is for the exporter and admin roles, as on the server
+    // Registers (quality) are for the exporter and admin roles, as on the server
     me().then((u) => { if (u && !u.roles.some((r) => r === 'exporter' || r === 'admin')) rail.querySelector('a[href="followups.html"]')?.remove(); }).catch(() => {});
 
     this._sub = h('span', { class: 'muted' });
