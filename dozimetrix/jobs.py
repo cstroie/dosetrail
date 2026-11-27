@@ -21,6 +21,8 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,83 @@ LOG_NAME = "jobs.log"
 LOG_LINES = 60
 WRITE_EVERY_S = 2.0
 START_GRACE_S = 20  # a job started from the web takes a moment to open its lock
+
+
+
+@dataclass
+class JobState:
+    """Enhanced job state with retry tracking."""
+    job: str
+    options: dict
+    by: str
+    state: str = "pending"  # pending, running, done, failed, dead_letter
+    pid: int | None = None
+    started: str | None = None
+    finished: str | None = None
+    lines: list[str] = field(default_factory=list)
+    error: str | None = None
+    result: dict | None = None
+    retry_count: int = 0
+    max_retries: int = 3
+    last_attempt: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "job": self.job,
+            "options": self.options,
+            "by": self.by,
+            "state": self.state,
+            "pid": self.pid,
+            "started": self.started,
+            "finished": self.finished,
+            "lines": self.lines,
+            "error": self.error,
+            "result": self.result,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "last_attempt": self.last_attempt,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "JobState":
+        return cls(
+            job=data.get("job", ""),
+            options=data.get("options", {}),
+            by=data.get("by", ""),
+            state=data.get("state", "pending"),
+            pid=data.get("pid"),
+            started=data.get("started"),
+            finished=data.get("finished"),
+            lines=data.get("lines", []),
+            error=data.get("error"),
+            result=data.get("result"),
+            retry_count=data.get("retry_count", 0),
+            max_retries=data.get("max_retries", 3),
+            last_attempt=data.get("last_attempt"),
+        )
+
+
+def is_dead_letter(state: dict | JobState) -> bool:
+    """Check if a job is in dead letter state."""
+    if isinstance(state, JobState):
+        return state.state == "dead_letter"
+    return state.get("state") == "dead_letter"
+
+
+def should_retry(state: dict | JobState) -> bool:
+    """Check if a failed job should be retried."""
+    if isinstance(state, JobState):
+        return state.state == "failed" and state.retry_count < state.max_retries
+    return state.get("state") == "failed" and state.get("retry_count", 0) < state.get("max_retries", 3)
+
+
+def increment_retry(state: JobState) -> JobState:
+    """Create a new state with incremented retry count."""
+    state.retry_count += 1
+    state.state = "pending"
+    state.last_attempt = _now()
+    return state
+
 
 JOBS: dict[str, dict] = {
     "maintain": {
@@ -115,28 +194,31 @@ def execute(maker, name: str, run, options: dict, by: str, path: Path, say=print
     """Run ``run(progress)`` as job ``name`` under the lock and record its state. ``Busy`` when
     another job is running. Returns what ``run`` returns; an exception is recorded and raised."""
     with locked(path):
-        state = {"job": name, "options": options, "by": by, "state": "running", "pid": os.getpid(),
-                 "started": _now(), "lines": []}
-        _store(maker, state)
+        job_state = JobState(job=name, options=options, by=by, state="running", pid=os.getpid(),
+                             started=_now())
+        _store(maker, job_state.to_dict())
         last = [time.monotonic()]
 
         def progress(msg: str) -> None:
             say(msg)
-            state["lines"] = (state["lines"] + [str(msg)[:300]])[-LOG_LINES:]
+            job_state.lines = (job_state.lines + [str(msg)[:300]])[-LOG_LINES:]
             if time.monotonic() - last[0] >= WRITE_EVERY_S:
                 last[0] = time.monotonic()
-                _store(maker, state)
+                _store(maker, job_state.to_dict())
 
         try:
             result = run(progress)
         except BaseException as e:
-            state.update(state="failed", finished=_now(), error=f"{type(e).__name__}: {e}")
-            _store(maker, state)
+            job_state.state = "failed"
+            job_state.finished = _now()
+            job_state.error = f"{type(e).__name__}: {e}"
+            _store(maker, job_state.to_dict())
             raise
         ok = result.get("ok", True) if isinstance(result, dict) else True
-        state.update(state="done" if ok else "failed", finished=_now(),
-                     result=result if isinstance(result, dict) else None)
-        _store(maker, state)
+        job_state.state = "done" if ok else "failed"
+        job_state.finished = _now()
+        job_state.result = result if isinstance(result, dict) else None
+        _store(maker, job_state.to_dict())
         return result
 
 
@@ -149,6 +231,11 @@ def current(session: Session, path: Path) -> dict | None:
         started = dt.datetime.fromisoformat(st["started"]) if st.get("started") else None
         if started is None or (dt.datetime.now() - started).total_seconds() > START_GRACE_S:
             st["state"] = "interrupted"
+    # Add retry info if present
+    if st:
+        st.setdefault("retry_count", 0)
+        st.setdefault("max_retries", 3)
+        st.setdefault("last_attempt", None)
     return st
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 
-
 # Serial numbers some vendors write when they have none (Toshiba: SERIALNO). Treating them
 # as a real serial would merge every such scanner, in every hospital, into one device.
 PLACEHOLDER_SERIALS = {"serialno", "serial", "unknown", "none", "n/a", "na", "null", "-"}

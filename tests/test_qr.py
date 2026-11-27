@@ -4,8 +4,6 @@ import datetime as dt
 import socket
 
 import pytest
-
-from dozimetrix.ingest.parse import parse as parse_object
 from pydicom.dataset import Dataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian
 from pynetdicom import AE, evt
@@ -23,6 +21,7 @@ from sqlalchemy import select
 from dozimetrix.db.migrate import upgrade
 from dozimetrix.db.models import Study
 from dozimetrix.db.session import make_engine, make_sessionmaker
+from dozimetrix.ingest.parse import parse as parse_object
 from dozimetrix.net import qr
 from dozimetrix.net.spool import Spool, SpoolWorker
 from tests import dicom_factory as f

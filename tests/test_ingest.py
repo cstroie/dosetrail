@@ -545,8 +545,9 @@ def test_legacy_ge_ct_without_ctdivol_is_kept_as_technique_only():
 
 
 def test_placeholder_birth_dates_are_not_birth_dates():
-    from dozimetrix.ingest.parse import _birth_date
     import datetime as dt
+
+    from dozimetrix.ingest.parse import _birth_date
     for v in ("17530101", "19000101", "00000000", "", None, "18580101"):
         assert _birth_date(v) is None
     assert _birth_date("20100315") == dt.date(2010, 3, 15)

@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from dozimetrix import classify
-from dozimetrix.classify import default_rules, Rules, normalise, view_code
+from dozimetrix.classify import Rules, normalise, view_code
 from dozimetrix.db.models import (
     Classification,
     ClassificationStatus,

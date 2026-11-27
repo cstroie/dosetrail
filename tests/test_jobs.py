@@ -7,9 +7,9 @@ import datetime as dt
 import pytest
 
 from dozimetrix import jobs
+from dozimetrix.db.migrate import upgrade
 from dozimetrix.db.models import AppSetting
 from dozimetrix.db.session import make_engine, make_sessionmaker
-from dozimetrix.db.migrate import upgrade
 
 
 @pytest.fixture()

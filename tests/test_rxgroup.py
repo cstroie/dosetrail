@@ -77,6 +77,7 @@ def test_last_resort_rule_does_not_hide_a_specific_name(session):
 def test_run_reclassifies_every_study_of_a_long_list(session, monkeypatch):
     """The chunk generator once sliced a list the loop had rebound: only the first batch ran."""
     import datetime as dt
+
     from dozimetrix.db.models import Classification, Event, Study
 
     load_all(session)
@@ -126,6 +127,7 @@ def rxprotocols_inf():
 
 def _dx_study(session, uid, protocol, age_days, weight=None, code="RG-CR"):
     import datetime as dt
+
     from dozimetrix.db.models import Event, Study
 
     st = Study(study_uid=uid, modality="DX", study_datetime=dt.datetime(2026, 2, 1), source_kind="test",

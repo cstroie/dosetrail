@@ -248,7 +248,6 @@ def update(session: Session, study_ids: Iterable[int] | None = None, describer: 
     the exposures are classified (their exam code is stored with the bands) and whenever age or
     weight change (derive() does both). Replaces the rows of the studies it touches."""
     from .db.models import Event, ExposureBand, SizeSource, Study
-
     from .stats import StatsError
 
     stats: Counter = Counter()

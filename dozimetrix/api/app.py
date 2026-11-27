@@ -366,7 +366,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     engine = engine or make_engine(settings.database_url)
     maker = make_sessionmaker(engine)
     secret = secret or load_or_create_secret(settings.secret_file)
-    app = FastAPI(title="Dozimetrix", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Dozimetrix", docs_url="/api/docs", redoc_url="/api/redoc", openapi_url="/api/openapi.json")
     app.state.secret = secret
     app.state.settings = settings
     app.state.fixed_now = now  # tests only
@@ -1459,7 +1459,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             ts = int(marker.read_text().strip())
         except (OSError, ValueError):
             return {"state": "never", "last_ok": None, "age_h": None, "max_hours": 26}
-        last = dt.datetime.fromtimestamp(ts, dt.timezone.utc)
+        last = dt.datetime.fromtimestamp(ts, dt.UTC)
         age_h = max(0.0, (dt.datetime.now().timestamp() - ts) / 3600)
         return {"state": "ok" if age_h <= 26 else "stale", "last_ok": last.isoformat(),
                 "age_h": round(age_h, 1), "max_hours": 26}
@@ -1675,7 +1675,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     def services_health(session: Session) -> list[dict]:
         """The background services, for any signed-in user: state ok | warn | alert | idle."""
         from .. import __version__
-        from ..db.models import AppSetting, HisLookup
+        from ..db.models import AppSetting
         from ..his import servers
         from ..net import nodes
 
@@ -2143,7 +2143,6 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     @app.get("/api/alert-rules")
     def alert_rules(user: User = Depends(current_user), session: Session = Depends(db)):
         from ..db.models import AlertRule
-
         from ..seeds.loader import _toml
 
         seeded = {r["key"] for r in _toml("alert_rules.toml")["rule"]}

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import pytest
-from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / "dozimetrix" / "web"
 PAGES = sorted(WEB.glob("*.html"))
