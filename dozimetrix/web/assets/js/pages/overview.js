@@ -1,11 +1,11 @@
-// Overview: studies per modality, alert queue, device feed health, exam lookup, CT series.
+// Overview: studies per modality, alert queue, device feed health, exam lookup.
 
 import '../components/dx-shell.js';
 import { h, append, clear, toast, panelHead, pageHead } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { num, ago, dateTime } from '../core/format.js';
 import { live } from '../core/live.js';
-import { overview, lookup, studyHref, studyLabel, ackAlert, deadlineDone, isSample, dropCache, studies } from '../core/api.js';
+import { overview, lookup, studyHref, studyLabel, ackAlert, deadlineDone, isSample, dropCache } from '../core/api.js';
 
 // the API's groups are CT, DX, RF, XA, MG, NM, PT; anything else takes the accent
 const MOD_COLOR = { CT: '--m-ct', DX: '--m-dx', CR: '--m-dx', RF: '--m-rf', XA: '--m-xa', MG: '--m-mg', NM: '--m-nm', PT: '--m-pt' };
@@ -157,86 +157,6 @@ function lookupPanel() {
       h('span', { class: 'muted small' }, t('overview.lookup.hint'))));
 }
 
-/** CT series (events) panel: shows recent CT acquisitions with DLP and CTDIvol. */
-async function eventsPanel() {
-  // Fetch recent CT studies (last 7 days by default)
-  const data = await studies({ q: 'modality:CT origin:local -phantom date:7d', sort: 'date', dir: 'desc', size: 20 });
-  const rows = data.rows || [];
-  if (!rows.length) return null;
-
-  const header = h('div', { class: 'evb-header', role: 'row' },
-    h('span', { class: 'muted', style: { 'font-size': '11px' } }, t('overview.event')),
-    h('span', { class: 'muted', style: { 'font-size': '11px' } }, t('overview.dlp')),
-    h('span', { class: 'muted', style: { 'font-size': '11px', 'text-align': 'right' } }, t('overview.ctdivol')));
-
-  const list = h('div', { class: 'evb-list', role: 'table', 'aria-label': t('overview.events') });
-  list.append(header);
-
-  for (const s of rows) {
-    const events = s.events || { spiral: 0, axial: 0, localizer: 0 };
-    const totalEvents = events.spiral + events.axial + events.localizer;
-    if (!totalEvents) continue;
-
-    const dlpStr = s.dlp_total != null ? num(s.dlp_total, 1) : '—';
-    const ctdiStr = s.ctdivol_max != null ? num(s.ctdivol_max, 2) : '—';
-
-    // Determine event type from the protocol/description
-    const desc = s.description || s.protocol || '';
-    const hasSpiral = events.spiral > 0;
-    const hasLocalizer = events.localizer > 0;
-    const hasAxial = events.axial > 0;
-
-    // If only localizer (topogram)
-    if (hasLocalizer && !hasSpiral && !hasAxial) {
-      for (let i = 0; i < events.localizer; i++) {
-        const eventDiv = h('div', { class: 'evb-row', role: 'row' },
-          h('span', { class: 'evb-event' }, 'Topogram'),
-          h('span', { class: 'evb-dlp mono' }, dlpStr),
-          h('i', { class: 'loc', style: { width: '2%' } }),
-          h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
-        list.append(eventDiv);
-      }
-      continue;
-    }
-
-    // Localizer events first
-    if (hasLocalizer) {
-      for (let i = 0; i < events.localizer; i++) {
-        const eventDiv = h('div', { class: 'evb-row', role: 'row' },
-          h('span', { class: 'evb-event' }, 'Topogram'),
-          h('span', { class: 'evb-dlp mono' }, dlpStr),
-          h('i', { class: 'loc', style: { width: '2%' } }),
-          h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
-        list.append(eventDiv);
-      }
-    }
-
-    // Spiral event
-    if (hasSpiral) {
-      const eventDiv = h('div', { class: 'evb-row', role: 'row' },
-        h('span', { class: 'evb-event' }, desc),
-        h('span', { class: 'evb-dlp mono' }, dlpStr),
-        h('i', { class: 'loc', style: { width: '66%' } }),
-        h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
-      list.append(eventDiv);
-    }
-
-    // Axial event
-    if (hasAxial) {
-      const eventDiv = h('div', { class: 'evb-row', role: 'row' },
-        h('span', { class: 'evb-event' }, desc),
-        h('span', { class: 'evb-dlp mono' }, dlpStr),
-        h('i', { class: 'loc', style: { width: '32%' } }),
-        h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
-      list.append(eventDiv);
-    }
-  }
-
-  return h('section', { class: 'panel', 'aria-labelledby': 'h-ev' },
-    panelHead(t('overview.events'), { id: 'h-ev' }),
-    list);
-}
-
 // Reporting deadlines of Order 1255/2016 (art. 8 quarterly, art. 12 annual): shown as the date
 // approaches; a person marks one as sent, Dozimetrix sends nothing.
 function deadlinePanel(list, reload) {
@@ -265,14 +185,13 @@ async function render(quiet = false) {
   if (!quiet) page.replaceChildren(h('div', { class: 'state', 'aria-busy': 'true' }, h('span', { class: 'skeleton' }), h('span', { class: 'skeleton', style: { width: '60%' } })));
   try {
     const data = await overview();
-    const evPanel = await eventsPanel();
     page.replaceChildren(
       pageHead(t('overview.title'), { style: { 'align-items': 'baseline', gap: '12px' } },
         h('span', { class: 'muted mono' }, dateTime(data.generated))),
       // replaceChildren() would print a null as the text "null" (no deadline left to show)
       ...[deadlinePanel(data.deadlines, render),
         kpis(data.modalities),
-        h('div', { class: 'cols stack mt-3' }, evPanel, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), servicesPanel(), lookupPanel())].filter(Boolean));
+        h('div', { class: 'cols stack mt-3' }, alertQueue(data.alerts, data.generated, data.alerts_open), feedHealth(data.feeds, data.generated), servicesPanel(), lookupPanel())].filter(Boolean));
   } catch (err) {
     page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'),
       h('span', { class: 'muted mono' }, err.message), h('button', { class: 'btn', type: 'button', onclick: render }, t('state.retry'))));
