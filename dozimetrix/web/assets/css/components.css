@@ -273,6 +273,8 @@ table.grid.svc-table { width: 100%; min-width: 0; table-layout: auto; }
 .chk { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); color: var(--muted); }
 .num-input { width: 64px; }
 .small { font-size: var(--fs-xs); }
+/* QA add row: fields and the button share one bottom edge, so the inputs line up */
+.qa-add { align-items: flex-end; }
 .drl-kpis { margin: var(--sp-3) 0 var(--sp-2); }
 .drl-kpis .kpi .v { text-align: right; }
 .drl-kpis .kpi .m { grid-column: 1 / -1; }
