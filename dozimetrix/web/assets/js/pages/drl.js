@@ -153,11 +153,16 @@ function draw() {
     ['Exam', 'Group', 'Quantity', 'DRL', state.by === 'device' ? 'Device' : '', 'n', 'P25', 'Median', 'P75', 'Median / DRL', 'Status']
       .map((c, i) => h('th', { class: i >= 5 && i <= 8 ? 'r' : '' }, c))));
   const body = h('tbody');
+  let lastExam = null;
   for (const r of rows) {
+    // the exam name is written once per exam, on the first row of its block; a block starts a new group
+    const firstOfExam = r.exam !== lastExam;
+    lastExam = r.exam;
     const groups = r.groups.length ? r.groups : [null];
     groups.forEach((g, i) => {
-      body.append(h('tr', { class: g && g.status === 'well_above' ? 'hot' : '' },
-        h('td', { title: r.exam }, i ? '' : r.exam_meaning),
+      const cls = [g && g.status === 'well_above' ? 'hot' : '', firstOfExam && !i ? 'group-start' : ''].filter(Boolean).join(' ');
+      body.append(h('tr', { class: cls },
+        h('td', { title: r.exam }, firstOfExam && !i ? r.exam_meaning : ''),
         h('td', {}, i ? '' : (r.band_label || 'all')),
         h('td', {}, i ? '' : `${QUANTITY[r.quantity] || r.quantity} · ${r.applies_to}`),
         h('td', { class: 'r' }, i ? '' : `${shown(r.reference, r.unit)} ${shownUnit(r.unit).unit}`),

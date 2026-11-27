@@ -84,12 +84,22 @@ const REPORTS = {
     render: (r) => [
       r.image_quality_note ? h('p', { class: 'panel', style: { padding: 'var(--sp-3)' } }, h('strong', {}, 'Image quality: '), r.image_quality_note) : h('p', { class: 'muted' }, 'No image-quality note was recorded for this comparison.'),
       kpiRow(Object.entries(r.summary).map(([k, v]) => [k.replace('_', ' '), v])),
-      dataTable([{ key: 'exam', label: 'Exam' }, { key: 'band', label: 'Group' }, { key: 'quantity', label: 'Quantity' }, { key: 'n_before', label: 'n before', right: true }, { key: 'n_after', label: 'n after', right: true }, { key: 'median_before', label: 'Median before', right: true }, { key: 'median_after', label: 'Median after', right: true }, { key: 'change', label: 'Change', right: true, fmt: (v) => `${v > 0 ? '+' : ''}${num(100 * v, 1)} %` }, { key: 'p', label: 'p', right: true, fmt: (v) => (v < 0.0001 ? '< 0.0001' : num(v, 4)) }, { key: 'ratio_after', label: '× DRL after', right: true }, { get: (x) => tag(x.verdict.replace('_', ' '), x.verdict === 'lower' ? 'ok' : x.verdict === 'higher' ? 'alert' : ''), label: '' }], r.rows),
+      dataTable([{ get: (x) => (x._first ? x.exam : h('span', {})), label: 'Exam' }, { key: 'band', label: 'Group' }, { key: 'quantity', label: 'Quantity' }, { key: 'n_before', label: 'n before', right: true }, { key: 'n_after', label: 'n after', right: true }, { key: 'median_before', label: 'Median before', right: true }, { key: 'median_after', label: 'Median after', right: true }, { key: 'change', label: 'Change', right: true, fmt: (v) => `${v > 0 ? '+' : ''}${num(100 * v, 1)} %` }, { key: 'p', label: 'p', right: true, fmt: (v) => (v < 0.0001 ? '< 0.0001' : num(v, 4)) }, { key: 'ratio_after', label: '× DRL after', right: true }, { get: (x) => tag(x.verdict.replace('_', ' '), x.verdict === 'lower' ? 'ok' : x.verdict === 'higher' ? 'alert' : ''), label: '' }], examBlocks(r.rows)),
     ],
   },
 };
 
 function block(title, body) { return section(title, { level: 3 }, body); }
+
+/** Rows of one exam form a block: the exam shows on its first row only, and the block starts a new group. */
+function examBlocks(rows) {
+  let last = null;
+  return rows.map((x) => {
+    const first = x.exam !== last;
+    last = x.exam;
+    return { ...x, _first: first, _cls: first ? 'group-start' : '' };
+  });
+}
 
 const url = new URLSearchParams(location.search);
 const state = { name: REPORTS[url.get('r')] ? url.get('r') : 'dose-check', q: url.get('q') ?? 'origin:local', quarters: Number(url.get('quarters')) || 1,

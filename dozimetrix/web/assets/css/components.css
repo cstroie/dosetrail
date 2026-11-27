@@ -66,6 +66,8 @@ dx-data-grid[data-density="comfortable"] .grid td { padding: 9px 8px; }
 .grid tbody tr[aria-selected="true"] td { background: var(--accent-soft); }
 .grid tbody tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .grid tr.hot td:first-child { box-shadow: inset 3px 0 0 var(--alert); }
+.grid tr.group-start td { border-top: 1px solid var(--line, var(--border, #ccc)); }
+.grid tbody tr.group-start:first-child td { border-top: 0; }
 .grid-status { padding: 0 12px; }
 .grid-status.loading { display: flex; flex-direction: column; gap: 8px; padding: 14px 12px; }
 .grid-status .empty, .grid-status .error { padding: 18px 0; }
