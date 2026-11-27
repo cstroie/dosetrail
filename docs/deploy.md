@@ -35,18 +35,61 @@ The site secret (`secret_file`) is created on first use. Back it up: pseudonyms 
 sessions depend on it.
 
 ## 4. Services
+Four daemons: `web` (`dozimetrix serve`), `receive` (DICOM SCP), `his` (HIS/RIS lookup,
+only with a HIS server) and `qr` (`dozimetrix qr --loop`: PACS query/retrieve, every
+`--interval` seconds, default hourly; SIGTERM lets the current run finish). Every
+command takes the global options `--pidfile`, `--log-file` and `--log-level`.
+
+### systemd
 ```sh
 cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
+cp deploy/systemd/dozimetrix.env /etc/default/dozimetrix   # optional: extra arguments
 systemctl daemon-reload
-systemctl enable --now dozimetrix-web dozimetrix-receive dozimetrix-qr.timer
+systemctl enable --now dozimetrix-web dozimetrix-receive dozimetrix-qr
 systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
+systemctl enable --now dozimetrix-maintain.timer dozimetrix-backup.timer dozimetrix-backup-check.timer
 ```
+Logs go to the journal: `journalctl -u dozimetrix-qr -f`. Change the user or paths with
+`systemctl edit dozimetrix-<name>`.
+
+### OpenRC
+One init script, one symlink per daemon; output goes to `/var/log/dozimetrix/<daemon>.log`
+(supervise-daemon restarts a daemon that dies):
+```sh
+install -m755 deploy/openrc/dozimetrix.initd /etc/init.d/dozimetrix
+for d in web receive his qr; do ln -sf dozimetrix /etc/init.d/dozimetrix.$d; done
+install -m644 deploy/openrc/dozimetrix.confd /etc/conf.d/dozimetrix   # user, paths, arguments
+rc-update add dozimetrix.web default; rc-service dozimetrix.web start   # same for receive, qr, his
+```
+`/etc/conf.d/dozimetrix` is shared; `/etc/conf.d/dozimetrix.<daemon>` overrides one daemon.
+The periodic jobs (backup 02:30, maintain 03:30, backup check Sunday 06:00) run from cron
+instead of timers: install cronie or dcron, then
+`install -m644 deploy/cron/dozimetrix /etc/cron.d/dozimetrix` (edit paths and user to
+match the conf.d file).
+
+### Log rotation
+For the log files (OpenRC, cron, `--log-file`): `install -m644 deploy/logrotate/dozimetrix
+/etc/logrotate.d/dozimetrix` (weekly, 8 kept, copytruncate: no restart needed).
+
+### Command line (no init system, development)
+```sh
+deploy/dozimetrix-ctl start web                # foreground, output on the terminal
+LOGDIR=var/log deploy/dozimetrix-ctl start qr  # foreground, output in var/log/qr.log
+deploy/dozimetrix-ctl start all                # all four in the background, var/log/*.log
+deploy/dozimetrix-ctl status                   # all; exits 3 if one is not running
+deploy/dozimetrix-ctl stop all
+deploy/dozimetrix-ctl restart web --port 8105  # extra arguments for the sub-command
+```
+Pidfiles are kept in `var/run/` (`RUNDIR`). Other settings: `QR_ARGS`, `WEB_ARGS`,
+`RECEIVE_ARGS`, `HIS_ARGS`, `LOG_LEVEL`, `DOZIMETRIX_CONFIG`, `STOP_TIMEOUT` (qr:
+`QR_STOP_TIMEOUT`, 300 s).
+
 - `dozimetrix-web` listens on `[web] host:port` (default 127.0.0.1:8104); publish it through an HTTPS reverse proxy
   (nginx, Apache) and set `secure_cookies = true`.
 - `dozimetrix-receive` listens for DICOM on `[dicom] port` (11112). Register
   `AE DOZIMETRIX / host / 11112` on the modalities and the PACS that should send dose
   objects; restrict callers with `allowed_aets`.
-- `dozimetrix-qr.timer` queries the PACS every hour for the last two days, one day and one
+- `dozimetrix-qr` queries the PACS every hour for the last two days, one day and one
   modality at a time (many PACS cap the number of studies a query returns; set
   `max_results` and capped days are split into time windows).
 - Three ways to get data in:

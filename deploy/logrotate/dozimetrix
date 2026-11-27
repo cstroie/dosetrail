@@ -1,0 +1,12 @@
+# /etc/logrotate.d/dozimetrix
+# copytruncate: the daemons keep their file open and need no signal.
+/var/log/dozimetrix/*.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su dozimetrix dozimetrix
+}

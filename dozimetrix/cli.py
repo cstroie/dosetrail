@@ -1384,6 +1384,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", metavar="PATH", help="the configuration file (default: "
                    "./dozimetrix.toml, ~/.config/dozimetrix/dozimetrix.toml, "
                    "/etc/dozimetrix/dozimetrix.toml)")
+    p.add_argument("--pidfile", metavar="PATH",
+                   help="write the process id here (removed on exit)")
+    p.add_argument("--log-file", metavar="PATH",
+                   help="append output and log records to this file instead of the terminal")
+    p.add_argument("--log-level", metavar="LEVEL", type=str.upper,
+                   choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                   help="log level (default: the command's own, INFO or WARNING)")
     sub = p.add_subparsers(dest="command", required=True)
 
     m = sub.add_parser("migrate", help="create/upgrade the database schema")
@@ -1672,12 +1679,86 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--port", type=int)
     q.add_argument("--aec", help="PACS AE title")
     q.add_argument("--aet", help="our AE title")
+    q.add_argument("--loop", action="store_true",
+                   help="run as a daemon: repeat every --interval seconds until SIGTERM")
+    q.add_argument("--interval", type=int, default=3600,
+                   help="with --loop: seconds between the start of two runs (default 3600)")
     q.add_argument("--url")
     q.set_defaults(func=_cmd_qr)
 
     i = sub.add_parser("info", help="show configuration")
     i.set_defaults(func=_cmd_info)
     return p
+
+
+def _setup_process(args: argparse.Namespace) -> None:
+    """--log-file, --log-level and --pidfile, shared by every command."""
+    import atexit
+    import logging
+    import os
+
+    if args.log_file:
+        os.makedirs(os.path.dirname(os.path.abspath(args.log_file)), exist_ok=True)
+        f = open(args.log_file, "a", buffering=1, encoding="utf-8")  # noqa: SIM115
+        os.dup2(f.fileno(), 1)  # also catches output of C libraries and child processes
+        os.dup2(f.fileno(), 2)
+        sys.stdout = f
+        sys.stderr = f
+    if args.log_level:
+        # set first: a command's own basicConfig later is then a no-op
+        logging.basicConfig(level=args.log_level, force=True,
+                            format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    if args.pidfile:
+        path = os.path.abspath(args.pidfile)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(f"{os.getpid()}\n")
+        pid = os.getpid()
+
+        def _remove() -> None:
+            try:
+                with open(path) as fh:
+                    if fh.read().strip() == str(pid):
+                        os.remove(path)
+            except OSError:
+                pass
+
+        atexit.register(_remove)
+
+        def _term(signum, frame):  # SIGTERM: exit normally so atexit runs
+            raise SystemExit(128 + signum)
+
+        import signal
+
+        if signal.getsignal(signal.SIGTERM) in (signal.SIG_DFL, None):
+            signal.signal(signal.SIGTERM, _term)
+
+
+def _qr_loop(args: argparse.Namespace) -> int:
+    """qr --loop: one run every --interval seconds; SIGTERM ends it after the current run."""
+    import signal
+    import threading
+    import time
+
+    stop = threading.Event()
+
+    def _term(signum, frame):
+        print("qr: stop requested, finishing the current run", flush=True)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, _term)
+    signal.signal(signal.SIGINT, _term)
+    while not stop.is_set():
+        started = time.monotonic()
+        try:
+            rc = _cmd_qr(args)
+            print(f"qr: run finished (exit {rc})", flush=True)
+        except Exception as e:  # noqa: BLE001 – a failed run must not end the daemon
+            import logging
+
+            logging.getLogger("dozimetrix.qr").exception("qr run failed: %s", e)
+        stop.wait(max(0.0, args.interval - (time.monotonic() - started)))
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1687,9 +1768,12 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError as e:
         print(f"dozimetrix: {e}", file=sys.stderr)
         return 2
+    _setup_process(args)
     from .api.data import QueryError
 
     try:
+        if getattr(args, "loop", False) and args.func is _cmd_qr:
+            return _qr_loop(args)
         return args.func(args)
     except QueryError as e:  # a filter that does not parse: not a report on everyone
         print(f"dozimetrix: {e}", file=sys.stderr)

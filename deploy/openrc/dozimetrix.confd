@@ -1,0 +1,15 @@
+# /etc/conf.d/dozimetrix: shared by dozimetrix.web, .receive, .his and .qr.
+# One daemon only: /etc/conf.d/dozimetrix.<daemon> (read after this file).
+
+#DOZIMETRIX_USER=dozimetrix
+#DOZIMETRIX_GROUP=dozimetrix
+#DOZIMETRIX_HOME=/opt/dozimetrix
+#DOZIMETRIX_BIN=/opt/dozimetrix/.venv/bin/dozimetrix
+#DOZIMETRIX_CONFIG=/etc/dozimetrix/dozimetrix.toml
+#LOGDIR=/var/log/dozimetrix
+#LOG_LEVEL=INFO
+
+#WEB_ARGS="--host 127.0.0.1 --port 8104"
+#RECEIVE_ARGS="--port 11112"
+#HIS_ARGS=""
+#QR_ARGS="--days 2 --interval 3600"

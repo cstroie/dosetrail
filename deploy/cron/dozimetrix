@@ -1,0 +1,12 @@
+# /etc/cron.d/dozimetrix: periodic jobs for hosts without systemd timers
+# (OpenRC with cronie, dcron or busybox crond with cron.d support).
+# On systemd hosts use deploy/systemd/*.timer instead, not both.
+# Paths and user must match /etc/conf.d/dozimetrix.
+#
+# m  h  dom mon dow user        command
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+30 2  *   *   *   root        /opt/dozimetrix/deploy/backup/dozimetrix-backup /etc/dozimetrix/backup.conf >>/var/log/dozimetrix/backup.log 2>&1
+30 3  *   *   *   dozimetrix  /opt/dozimetrix/.venv/bin/dozimetrix --config /etc/dozimetrix/dozimetrix.toml --log-file /var/log/dozimetrix/maintain.log maintain
+0  6  *   *   0   root        /opt/dozimetrix/deploy/backup/dozimetrix-restore --check >>/var/log/dozimetrix/backup-check.log 2>&1

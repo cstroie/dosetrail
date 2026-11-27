@@ -1,16 +1,25 @@
 [Unit]
-Description=Dozimetrix PACS query/retrieve (last two days)
+Description=Dozimetrix PACS query/retrieve loop (last two days, hourly)
 After=network-online.target mariadb.service
 Wants=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 User=dozimetrix
 Group=dozimetrix
 WorkingDirectory=/opt/dozimetrix
-ExecStart=/opt/dozimetrix/.venv/bin/dozimetrix qr --days 2
+Environment=QR_ARGS="--days 2 --interval 3600"
+EnvironmentFile=-/etc/default/dozimetrix
+ExecStart=/opt/dozimetrix/.venv/bin/dozimetrix $DOZIMETRIX_OPTS qr --loop $QR_ARGS
+# SIGTERM lets the current run finish
+TimeoutStopSec=300
+Restart=on-failure
+RestartSec=30
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/var/lib/dozimetrix
+
+[Install]
+WantedBy=multi-user.target

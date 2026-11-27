@@ -1,0 +1,52 @@
+#!/sbin/openrc-run
+# Dozimetrix daemons under OpenRC (supervise-daemon). One script, one symlink
+# per daemon:
+#   install -m755 dozimetrix.initd /etc/init.d/dozimetrix
+#   for d in web receive his qr; do ln -s dozimetrix /etc/init.d/dozimetrix.$d; done
+#   install -m644 dozimetrix.confd /etc/conf.d/dozimetrix
+#   rc-update add dozimetrix.web default
+# Settings: /etc/conf.d/dozimetrix (shared), /etc/conf.d/dozimetrix.<daemon> (one).
+
+DAEMON="${RC_SVCNAME#dozimetrix.}"
+
+: "${DOZIMETRIX_USER:=dozimetrix}"
+: "${DOZIMETRIX_GROUP:=$DOZIMETRIX_USER}"
+: "${DOZIMETRIX_HOME:=/opt/dozimetrix}"
+: "${DOZIMETRIX_BIN:=$DOZIMETRIX_HOME/.venv/bin/dozimetrix}"
+: "${DOZIMETRIX_CONFIG:=/etc/dozimetrix/dozimetrix.toml}"
+: "${LOGDIR:=/var/log/dozimetrix}"
+
+description="Dozimetrix ${DAEMON}"
+supervisor=supervise-daemon
+command="$DOZIMETRIX_BIN"
+command_user="${DOZIMETRIX_USER}:${DOZIMETRIX_GROUP}"
+directory="$DOZIMETRIX_HOME"
+output_log="$LOGDIR/${DAEMON}.log"
+error_log="$LOGDIR/${DAEMON}.log"
+respawn_delay=5
+respawn_max=10
+respawn_period=600
+
+case "$DAEMON" in
+    web)     sub="serve ${WEB_ARGS}" ;;
+    receive) sub="receive ${RECEIVE_ARGS}" ;;
+    his)     sub="his run ${HIS_ARGS}" ;;
+    qr)      sub="qr --loop ${QR_ARGS:---days 2 --interval 3600}"
+             # finishes the current run on SIGTERM
+             retry="${QR_STOP_TIMEOUT:-TERM/300/KILL/5}" ;;
+    *)       sub="" ;;
+esac
+command_args="--config $DOZIMETRIX_CONFIG ${LOG_LEVEL:+--log-level $LOG_LEVEL} $sub"
+
+depend() {
+    need net
+    after mariadb mysql postgresql
+}
+
+start_pre() {
+    if [ -z "$sub" ]; then
+        eerror "Use a symlink: dozimetrix.web, .receive, .his or .qr (not $RC_SVCNAME)"
+        return 1
+    fi
+    checkpath -d -m 0750 -o "$command_user" "$LOGDIR"
+}

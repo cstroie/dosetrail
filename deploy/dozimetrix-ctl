@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# Control script for the Dozimetrix daemons: start/stop/restart/status.
+#
+# Daemons: web (serve), receive (DICOM SCP), his (HIS/RIS lookup), qr (PACS
+# query/retrieve loop), or "all".
+#
+# start/restart of ONE daemon stay in the foreground (like Type=simple in
+# systemd and supervise-daemon in OpenRC); output goes to the terminal unless
+# LOGDIR is set. start/restart of "all" backgrounds each daemon with nohup and
+# always logs to $LOGDIR/<daemon>.log (default var/log).
+#
+# Usage:
+#   deploy/dozimetrix-ctl start web [extra args]   # foreground
+#   deploy/dozimetrix-ctl start all                # background, logs in var/log
+#   deploy/dozimetrix-ctl stop {web|receive|his|qr|all}
+#   deploy/dozimetrix-ctl restart {web|receive|his|qr|all} [extra args]
+#   deploy/dozimetrix-ctl status [daemon|all]
+#
+# Environment:
+#   RUNDIR=var/run  LOGDIR=  STOP_TIMEOUT=15  DOZIMETRIX_CONFIG=  LOG_LEVEL=
+#   QR_ARGS="--days 2 --interval 3600"  WEB_ARGS=  RECEIVE_ARGS=  HIS_ARGS=
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+DAEMONS=(web receive his qr)
+RUNDIR="${RUNDIR:-var/run}"
+STOP_TIMEOUT="${STOP_TIMEOUT:-15}"
+QR_ARGS="${QR_ARGS:---days 2 --interval 3600}"
+
+if [[ -x .venv/bin/dozimetrix ]]; then
+    DOZ=(.venv/bin/dozimetrix)
+elif [[ -x .python/bin/dozimetrix ]]; then
+    DOZ=(.python/bin/dozimetrix)
+elif command -v dozimetrix >/dev/null; then
+    DOZ=(dozimetrix)
+else
+    DOZ=(python3 -m dozimetrix.cli)
+fi
+
+# The dozimetrix sub-command of a daemon, with its default and env arguments.
+daemon_cmd() {
+    case "$1" in
+        web)     CMD=(serve ${WEB_ARGS:-}) ;;
+        receive) CMD=(receive ${RECEIVE_ARGS:-}) ;;
+        his)     CMD=(his run ${HIS_ARGS:-}) ;;
+        qr)      CMD=(qr --loop ${QR_ARGS}) ;;
+        *) echo "error: unknown daemon '$1' (web, receive, his, qr, all)" >&2; exit 2 ;;
+    esac
+}
+
+pidfile() { echo "$RUNDIR/$1.pid"; }
+
+# RUNNING_PID on a live process, STALE_PID on a dead one. 0 = running.
+check_pid() {
+    RUNNING_PID=""; STALE_PID=""
+    local f pid
+    f="$(pidfile "$1")"
+    if [[ -f "$f" ]]; then
+        pid="$(cat "$f")"
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            RUNNING_PID="$pid"; return 0
+        fi
+        STALE_PID="$pid"
+    fi
+    return 1
+}
+
+global_args() {
+    GLOBAL=(--pidfile "$(pidfile "$1")")
+    [[ -n "${DOZIMETRIX_CONFIG:-}" ]] && GLOBAL+=(--config "$DOZIMETRIX_CONFIG")
+    [[ -n "${LOG_LEVEL:-}" ]] && GLOBAL+=(--log-level "$LOG_LEVEL")
+    [[ -n "${LOGDIR:-}" ]] && GLOBAL+=(--log-file "$LOGDIR/$1.log")
+    return 0
+}
+
+do_status() {
+    if check_pid "$1"; then
+        echo "$1: running (pid $RUNNING_PID)"; return 0
+    elif [[ -n "$STALE_PID" ]]; then
+        echo "$1: not running (stale pidfile, pid $STALE_PID)"
+    else
+        echo "$1: not running"
+    fi
+    return 1
+}
+
+do_stop() {
+    if check_pid "$1"; then
+        echo "Stopping $1 (pid $RUNNING_PID)..."
+        kill -TERM "$RUNNING_PID"
+        local waited=0 timeout="$STOP_TIMEOUT"
+        # qr finishes its current run on SIGTERM: give it longer
+        [[ "$1" == qr ]] && timeout="${QR_STOP_TIMEOUT:-300}"
+        while kill -0 "$RUNNING_PID" 2>/dev/null; do
+            if (( waited >= timeout )); then
+                echo "warning: $1 (pid $RUNNING_PID) still running after ${timeout}s, sending SIGKILL" >&2
+                kill -KILL "$RUNNING_PID" 2>/dev/null || true
+                break
+            fi
+            sleep 1; waited=$((waited + 1))
+        done
+        rm -f "$(pidfile "$1")"
+    elif [[ -n "$STALE_PID" ]]; then
+        echo "$1: stale pidfile (pid $STALE_PID), removing"
+        rm -f "$(pidfile "$1")"
+    else
+        echo "$1: not running"
+    fi
+}
+
+prepare_start() {
+    if check_pid "$1"; then
+        echo "error: $1 is already running (pid $RUNNING_PID)" >&2; return 1
+    elif [[ -n "$STALE_PID" ]]; then
+        echo "$1: stale pidfile (pid $STALE_PID), removing"
+        rm -f "$(pidfile "$1")"
+    fi
+    mkdir -p "$RUNDIR"
+    [[ -n "${LOGDIR:-}" ]] && mkdir -p "$LOGDIR"
+    daemon_cmd "$1"; global_args "$1"
+}
+
+start_fg() {
+    local d="$1"; shift
+    prepare_start "$d" || exit 1
+    echo "Starting $d..."
+    exec "${DOZ[@]}" "${GLOBAL[@]}" "${CMD[@]}" "$@"
+}
+
+start_bg() {
+    LOGDIR="${LOGDIR:-var/log}"
+    prepare_start "$1" || return 0
+    echo "Starting $1 (log: $LOGDIR/$1.log)..."
+    nohup "${DOZ[@]}" "${GLOBAL[@]}" "${CMD[@]}" </dev/null >>"$LOGDIR/$1.log" 2>&1 &
+}
+
+cmd="${1:-}"; target="${2:-}"
+[[ $# -gt 0 ]] && shift
+[[ $# -gt 0 ]] && shift
+
+if [[ "$target" == all || ( -z "$target" && "$cmd" == status ) ]]; then
+    targets=("${DAEMONS[@]}")
+else
+    targets=("$target")
+fi
+
+case "$cmd" in
+    start|restart)
+        [[ -n "$target" ]] || { echo "error: name a daemon or 'all'" >&2; exit 2; }
+        if [[ "$cmd" == restart ]]; then
+            for d in "${targets[@]}"; do daemon_cmd "$d"; do_stop "$d"; done
+        fi
+        if [[ "$target" == all ]]; then
+            for d in "${targets[@]}"; do start_bg "$d"; done
+        else
+            start_fg "$target" "$@"
+        fi
+        ;;
+    stop)
+        [[ -n "$target" ]] || { echo "error: name a daemon or 'all'" >&2; exit 2; }
+        for d in "${targets[@]}"; do daemon_cmd "$d"; do_stop "$d"; done
+        ;;
+    status)
+        rc=0
+        for d in "${targets[@]}"; do daemon_cmd "$d"; do_status "$d" || rc=3; done
+        exit $rc
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status} {web|receive|his|qr|all} [extra args]" >&2
+        exit 2
+        ;;
+esac
