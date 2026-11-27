@@ -34,7 +34,7 @@ const REPORTS = {
     ],
   },
   collimation: {
-    title: 'Collimation', about: 'The exposed field area (DAP ÷ air kerma) per room against the department for the same exam and age group. Every exam high by the same factor points to a DAP-meter calibration error; only some exams high points to open collimation. A calibration factor from the QA register is applied first.',
+    title: 'Collimation', about: 'The exposed field area (DAP ÷ air kerma) per room against the department for the same exam and patient group (ICRP 135 / RP 185: head by age, the rest by weight). Every exam high by the same factor points to a DAP-meter calibration error; only some exams high points to open collimation. A calibration factor from the QA register is applied first.',
     render: (r) => [
       dataTable([{ key: 'device', label: 'Room' }, { get: (x) => tag({ uniform_high: 'all exams high · calibration?', uniform_low: 'all exams low · calibration?', collimation: 'some exams high · collimation', ok: 'ok' }[x.verdict], x.verdict === 'ok' ? 'ok' : 'warn'), label: 'Verdict' }, { key: 'groups', label: 'Groups', right: true }, { key: 'median_ratio', label: 'Median ratio', right: true }, { key: 'high_groups', label: `High groups (≥ ${r.high}×)`, right: true }, { key: 'exposures', label: 'Exposures', right: true }], r.rooms),
       block('Where it is high', dataTable([{ key: 'device', label: 'Room' }, { key: 'exam', label: 'Exam' }, { key: 'band', label: 'Age' }, { key: 'n', label: 'n', right: true }, { key: 'median_area_cm2', label: 'Field area, cm²', right: true }, { key: 'dept_area_cm2', label: 'Department, cm²', right: true }, { key: 'ratio', label: 'Ratio', right: true }],
@@ -42,10 +42,10 @@ const REPORTS = {
     ],
   },
   'scan-length': {
-    title: 'CT scan length', about: 'Series much longer than the department\'s for the same exam and age group (≥ the ratio × the median and above P95): a head scan running into the neck, an abdomen extended into the chest. Extra rotations at the ends of a helical scan are not in the dose report and are not measured.',
+    title: 'CT scan length', about: 'Series much longer than the department\'s for the same exam and patient group (ICRP 135 / RP 185: head by age, the rest by weight; ≥ the ratio × the median and above P95): a head scan running into the neck, an abdomen extended into the chest. Extra rotations at the ends of a helical scan are not in the dose report and are not measured.',
     render: (r) => [
       kpiRow([['Flagged series', r.flagged_total]]),
-      block('Exam and age group', dataTable([{ key: 'exam', label: 'Exam' }, { key: 'band', label: 'Age' }, { key: 'n', label: 'n', right: true }, { key: 'median_mm', label: 'Median', right: true }, { key: 'p75_mm', label: 'P75', right: true }, { key: 'p95_mm', label: 'P95', right: true }, { key: 'max_mm', label: 'Max', right: true }, { key: 'flagged', label: 'Flagged', right: true }], r.groups)),
+      block('Exam and patient group', dataTable([{ key: 'exam', label: 'Exam' }, { key: 'band', label: 'Patient group' }, { key: 'n', label: 'n', right: true }, { key: 'median_mm', label: 'Median', right: true }, { key: 'p75_mm', label: 'P75', right: true }, { key: 'p95_mm', label: 'P95', right: true }, { key: 'max_mm', label: 'Max', right: true }, { key: 'flagged', label: 'Flagged', right: true }], r.groups)),
       block('Rooms', dataTable([{ key: 'device', label: 'Room' }, { key: 'series', label: 'Series', right: true }, { key: 'flagged', label: 'Flagged', right: true }, { key: 'flagged_pct', label: 'Share', right: true, fmt: pct }], r.rooms)),
       block('Flagged series', dataTable([{ get: (x) => link(x.study_id), label: 'Study' }, { key: 'device', label: 'Room' }, { key: 'time', label: 'Time', fmt: (v) => v.replace('T', ' ') }, { key: 'exam', label: 'Exam' }, { key: 'band', label: 'Age' }, { key: 'protocol', label: 'Protocol' }, { key: 'length_mm', label: 'Length, mm', right: true }, { key: 'median_mm', label: 'Median, mm', right: true }, { key: 'ratio', label: 'Ratio', right: true }], r.flagged)),
     ],

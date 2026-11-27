@@ -31,7 +31,7 @@ async function load() {
   clear(host).append(h('p', { class: 'muted' }, 'Loading…'));
   let r;
   try { r = await ctKFactors(); } catch (e) { clear(host).append(h('p', { class: 'error' }, e.message)); return; }
-  const area = h('textarea', { class: 'input mono', rows: 10, style: { width: '100%' }, spellcheck: false, 'aria-label': 'Coefficients as CSV' },
+  const area = h('textarea', { class: 'input mono', rows: 10, style: { width: '100%', height: 'auto', 'min-height': 'calc(10lh + 1.5rem)', padding: '6px 8px' }, spellcheck: false, 'aria-label': 'Coefficients as CSV' },
     [HEADER, ...r.rows.map((x) => `${x.region},${x.age_to_years ?? ''},${x.phantom_cm},${x.k},"${x.source.replaceAll('"', "'")}"`)].join('\n'));
   const save = async () => {
     let rows;

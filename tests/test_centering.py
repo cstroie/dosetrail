@@ -86,6 +86,10 @@ def test_what_is_not_measured_says_why():
 
 
 def test_off_by_default_and_stored_per_study(session, monkeypatch):
+    # the default, whatever the machine's own TOML says
+    monkeypatch.setattr("dozimetrix.config.load_settings",
+                        lambda: type("S", (), {"measure_centering": False})())
+    centering.enabled.cache_clear()
     assert not centering.enabled()  # nothing is read from pixels unless the TOML says so
     dev = Device(display_name="CT A", identity_key="ce-a", is_local=True)
     session.add(dev)

@@ -19,7 +19,7 @@ def test_long_scans_are_flagged_per_group(session):
     for i, mm in enumerate(lengths):
         s = Study(study_uid=f"sl.{i}", modality="CT", device_id=dev.id, study_datetime=T,
                   study_description="Head^CAP_SPIRAL_NATIV (Child)", source_kind="test",
-                  age_days=900)
+                  age_days=900, weight_kg=12.0)
         s.events = [Event(protocol="Topogram", is_localizer=True, scan_length_mm=500.0),
                     Event(protocol="Head", dlp=500.0, ctdivol=25.0, scan_length_mm=mm),
                     Event(protocol="Bolus monitor", dlp=1.0, scan_length_mm=30.0)]

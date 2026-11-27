@@ -20,7 +20,7 @@ def _room(session, name, factor_by_exam, n=12):
     session.flush()
     for i in range(n):
         s = Study(study_uid=f"{name}.{i}", modality="DX", device_id=dev.id, study_datetime=T,
-                  study_description="Rx", source_kind="test", age_days=AGE)
+                  study_description="Rx", source_kind="test", age_days=AGE, weight_kg=25.0)
         s.events = [Event(protocol=p, view=v, dap=0.4 * f, rp_dose=0.001 * 1.0)
                     for (p, v), f in zip(EXAMS, factor_by_exam, strict=True)]
         session.add(s)

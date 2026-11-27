@@ -33,7 +33,7 @@ follow-ups (see `qa.py`). Not built: a PDF digest, organ dose. Unchecked: no CT 
    gives the exposed field area. Compare it with the anatomy and the detector size. This
    separates over-collimation from a DAP calibration error, e.g. a room whose DAP is several
    times its peers' at similar kV and mAs.
-    *Built: `reports/collimation.py`, `/api/reports/collimation`. The detector size is not stored, so the field area is compared with the department's median for the same exam and age group, not with the detector.*
+    *Built: `reports/collimation.py`, `/api/reports/collimation`. The detector size is not stored, so the field area is compared with the department's median for the same exam and ICRP 135 / RP 185 patient group, not with the detector.*
 5. **CT scan length and overranging.** Compare the scanned length with the exam region (a head
    scan running into the neck, an abdomen scan extended into the chest). Show scan length
    outliers per protocol. (DoseWatch.)

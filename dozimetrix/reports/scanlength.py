@@ -1,9 +1,10 @@
-"""CT scan length: outliers per exam and age group, the sign of a scan that runs past its region
+"""CT scan length: outliers per exam and patient group, the sign of a scan that runs past its region
 (a head scan into the neck, an abdomen scan extended into the chest).
 
 The scanned length of each diagnostic series is compared with the department's median for its
-national exam code and age group; a series is flagged when it is at least ``ratio`` × the median
-and above the group's P95. Per room the report gives the share flagged, which tells a habit
+national exam code and patient group (ICRP 135 / RP 185: head by age, the rest by weight; an
+estimated weight counts as unknown); a series is flagged when it is at least ``ratio`` × the
+median and above the group's P95. Per room the report gives the share flagged, which tells a habit
 (one room, one operator's protocol edit) from a one-off. Overranging in the strict sense (the
 extra rotations a helical scan adds at both ends) is not in the dose report and not measured:
 the length is the planned scan range plus whatever the operator added.
@@ -15,13 +16,14 @@ import csv
 from collections import defaultdict
 from typing import IO
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, or_, select
 from sqlalchemy.orm import Session
 
 from ..classify import normalise
-from ..db.models import Classification, Code, CodeSystem, Event, Study
+from ..db.models import Classification, Code, CodeSystem, Event, SizeSource, Study
+from ..grid import Grid
 from ..protocols import _NOT_DIAGNOSTIC, MIN_SCAN_MM
-from ..stats import BandLookup, quantile
+from ..stats import quantile
 
 NATIONAL = "ro-drl-ms838-2025"
 MIN_N = 20
@@ -34,10 +36,12 @@ def build(session: Session, conds: list, min_n: int = MIN_N, ratio: float = RATI
 
     system = session.scalar(select(CodeSystem.id).where(CodeSystem.key == NATIONAL))
     names = device_names(session)
-    band = BandLookup(session, "ro-drl-age", "age")
+    grid = Grid(session)
+    weight = case((Study.weight_source == SizeSource.estimated_reference, None),
+                  else_=Study.weight_kg)
     groups: dict[tuple, list[tuple]] = defaultdict(list)
     rows = session.execute(
-        select(Study.id, Study.device_id, Study.study_datetime, Study.age_days, Code.code,
+        select(Study.id, Study.device_id, Study.study_datetime, Study.age_days, weight, Code.code,
                Event.protocol, Event.scan_length_mm)
         .select_from(Event).join(Study, Study.id == Event.study_id)
         .join(Classification, (Classification.study_id == Study.id)
@@ -46,9 +50,9 @@ def build(session: Session, conds: list, min_n: int = MIN_N, ratio: float = RATI
         .where(Study.modality.in_(("CT", "PT")), Event.is_localizer.is_not(True),
                Event.scan_length_mm >= MIN_SCAN_MM,
                or_(Event.event_type.is_(None), Event.event_type != "stationary"), *conds))
-    for sid, device_id, when, age, code, protocol, length in rows:
-        b = band(age)
-        if b is None or _NOT_DIAGNOSTIC.search(normalise(protocol)):
+    for sid, device_id, when, age, wt, code, protocol, length in rows:
+        b = grid.group(NATIONAL, code, age, wt)
+        if b in ("?", "age:?", "weight:?") or _NOT_DIAGNOSTIC.search(normalise(protocol)):
             continue
         groups[(code, b)].append((length, sid, device_id, when, protocol))
 
@@ -67,10 +71,10 @@ def build(session: Session, conds: list, min_n: int = MIN_N, ratio: float = RATI
             room_out[x[2]] += 1
             flagged.append({"study_id": x[1], "device": names.get(x[2], f"Device {x[2]}"),
                             "time": x[3].isoformat(timespec="minutes") if x[3] else None,
-                            "exam": code, "band": band.label.get(b, b), "protocol": x[4],
+                            "exam": code, "band": grid.labels.get(b, b), "protocol": x[4],
                             "length_mm": round(x[0]), "median_mm": round(med),
                             "ratio": round(x[0] / med, 2)})
-        table.append({"exam": code, "band": band.label.get(b, b), "n": len(v),
+        table.append({"exam": code, "band": grid.labels.get(b, b), "n": len(v),
                       "median_mm": round(med), "p75_mm": round(quantile(lengths, 0.75)),
                       "p95_mm": round(p95), "max_mm": round(lengths[-1]), "flagged": len(out)})
     table.sort(key=lambda r: (-r["flagged"], r["exam"], r["band"]))
@@ -87,7 +91,7 @@ def write_csv(rep: dict, target: IO[bytes]) -> None:
 
     text = io.TextIOWrapper(target, encoding="utf-8-sig", newline="", write_through=True)
     w = csv.writer(text)
-    w.writerow(["study_id", "room", "time", "exam", "age_group", "protocol", "length_mm",
+    w.writerow(["study_id", "room", "time", "exam", "patient_group", "protocol", "length_mm",
                 "median_mm", "ratio"])
     for r in rep["flagged"]:
         w.writerow([r["study_id"], r["device"], r["time"], r["exam"], r["band"], r["protocol"],
