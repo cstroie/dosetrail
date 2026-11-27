@@ -10,7 +10,7 @@ import { h, toast, panelHead } from '../core/dom.js';
 import { confirmDialog, promptDialog } from '../core/confirm.js';
 import { t } from '../core/i18n.js';
 import { num, smart, dap, dapUnit, mmss, dateTime, patientSummary } from '../core/format.js';
-import { studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, dropCache, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
+import { study, studies, deviceMap, drl, studyHref, studyLabel, exportUrl, modalities, profileOf, isSample, me, dropCache, getPref, putPref, sharedViews, createView, deleteView } from '../core/api.js';
 import { prefs } from '../core/prefs.js';
 import { splitModality, scopeQuery, retab, withoutAuto, normaliseSaved, scopeWarnings } from '../core/query.js';
 import { live } from '../core/live.js';
@@ -237,60 +237,10 @@ function preview(s, profile, profiles) {
     kv.push([c.unit ? `${c.label} (${c.unit})` : c.label, typeof v === 'string' ? v : v.textContent, true]);
   }
 
-  // CT series (events) panel for CT studies
-  let eventsPanel = null;
-  if (s.group === 'CT' && s.events && (s.events.spiral + s.events.axial + s.events.localizer > 0)) {
-    const dlpStr = s.dlp_total != null ? num(s.dlp_total, 1) : '—';
-    const ctdiStr = s.ctdivol_max != null ? num(s.ctdivol_max, 2) : '—';
-    const desc = s.description || s.protocol || '';
-    const hasSpiral = s.events.spiral > 0;
-    const hasLocalizer = s.events.localizer > 0;
-    const hasAxial = s.events.axial > 0;
-
-    const header = h('div', { class: 'evb-header', role: 'row' },
-      h('span', { class: 'muted', style: { 'font-size': '11px' } }, t('overview.event')),
-      h('span', { class: 'muted', style: { 'font-size': '11px' } }, t('overview.dlp')),
-      h('span', { class: 'muted', style: { 'font-size': '11px', 'text-align': 'right' } }, t('overview.ctdivol')));
-
-    const list = h('div', { class: 'evb-list', role: 'table', 'aria-label': t('overview.events') });
-    list.append(header);
-
-    // Localizer events first
-    if (hasLocalizer) {
-      for (let i = 0; i < s.events.localizer; i++) {
-        const eventDiv = h('div', { class: 'evb-row', role: 'row' },
-          h('span', { class: 'evb-event' }, 'Topogram'),
-          h('span', { class: 'evb-dlp mono' }, dlpStr),
-          h('i', { class: 'loc', style: { width: '2%' } }),
-          h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
-        list.append(eventDiv);
-      }
-    }
-
-    // Spiral event
-    if (hasSpiral) {
-      const eventDiv = h('div', { class: 'evb-row', role: 'row' },
-        h('span', { class: 'evb-event' }, desc),
-        h('span', { class: 'evb-dlp mono' }, dlpStr),
-        h('i', { class: 'loc', style: { width: '66%' } }),
-        h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
-      list.append(eventDiv);
-    }
-
-    // Axial event
-    if (hasAxial) {
-      const eventDiv = h('div', { class: 'evb-row', role: 'row' },
-        h('span', { class: 'evb-event' }, desc),
-        h('span', { class: 'evb-dlp mono' }, dlpStr),
-        h('i', { class: 'loc', style: { width: '32%' } }),
-        h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
-      list.append(eventDiv);
-    }
-
-    eventsPanel = h('section', { class: 'panel', 'aria-labelledby': 'h-ev' },
-      panelHead(t('overview.events'), { id: 'h-ev' }),
-      list);
-  }
+  // CT series: the study's own events, loaded on selection (the list rows carry only counts)
+  const ev = s.events || {};
+  const eventsPanel = s.group === 'CT' && (ev.spiral || 0) + (ev.axial || 0) + (ev.localizer || 0) > 0
+    ? ctEvents(s) : null;
 
   return h('div', {},
     h('div', { class: 'row', style: { padding: '12px 12px 0' } }, h('a', { class: 'btn xs', href: studyHref(s) }, `Open ${studyLabel(s)}`)),
@@ -456,3 +406,36 @@ async function init() {
 }
 
 init().catch((err) => page.replaceChildren(h('div', { class: 'state' }, h('span', { class: 'tag alert' }, 'Error'), t('state.error'), h('span', { class: 'muted mono' }, err.message))));
+
+/** The CT events of a study as a bar grid: event, DLP (bar, share of the study's DLP), CTDIvol. */
+const eventCache = new Map();
+function ctEvents(s) {
+  const ref = s.id ?? s.accession;
+  const grid = h('div', { class: 'evb', role: 'table', 'aria-label': t('overview.events') },
+    h('span', { class: 'muted', style: { 'grid-column': '1 / -1' } }, t('state.loading')));
+  if (!eventCache.has(ref)) eventCache.set(ref, study(ref).then((d) => d.events || []));
+  eventCache.get(ref).then((events) => {
+    const rows = events.filter((e) => e.dlp != null || e.ctdivol != null);
+    const total = rows.reduce((a, e) => a + (e.dlp || 0), 0);
+    const head = (k, right) => h('span', { class: 'evb-h', role: 'columnheader', style: right ? { 'text-align': 'right' } : {} }, t(k));
+    grid.replaceChildren(head('overview.event'), head('overview.dlp'), head('overview.ctdivol', true));
+    if (!rows.length) {
+      grid.append(h('span', { class: 'muted', style: { 'grid-column': '1 / -1' } }, t('state.empty')));
+      return;
+    }
+    for (const e of rows) {
+      const name = e.protocol || (e.localizer ? 'Topogram' : e.type) || `#${e.no}`;
+      const pct = total > 0 && e.dlp ? Math.max(1, (100 * e.dlp) / total) : 0;
+      grid.append(
+        h('span', { class: 'evb-n', title: name, role: 'cell' }, name),
+        h('i', { class: e.localizer ? 'loc' : '', style: { width: `${pct}%` }, role: 'cell',
+                 title: e.dlp != null ? `${num(e.dlp, 1)} mGy·cm` : '—' }),
+        h('span', { class: 'mono', role: 'cell', style: { 'text-align': 'right' } },
+          e.ctdivol != null ? num(e.ctdivol, 2) : '—'));
+    }
+  }).catch(() => {
+    eventCache.delete(ref);
+    grid.replaceChildren(h('span', { class: 'muted', style: { 'grid-column': '1 / -1' } }, t('state.error')));
+  });
+  return grid;
+}
