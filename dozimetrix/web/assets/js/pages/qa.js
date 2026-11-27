@@ -46,8 +46,8 @@ async function loadRegister() {
   };
   const del = async (x) => { if (await confirmDialog('Delete this entry? A wrong calibration factor is corrected by deleting it.', { title: 'Delete entry', label: 'Delete', danger: true })) { try { await deleteQA(x.id); loadRegister(); loadDue(); } catch (e) { toast(e.message); } } };
   clear(regHost).append(
-    !admin ? null : h('div', { class: 'row', style: { 'align-items': 'flex-end', gap: 'var(--sp-2)', 'flex-wrap': 'wrap' } },
-      field('Kind', kind), field('Done on', done), field('Next due', next), field('Factor', factor, 'DAP meter only'), field('Result', result), field('Note', note),
+    !admin ? null : h('div', { class: 'row qa-add' },
+      field('Kind', kind), field('Done on', done), field('Next due', next), field('Factor (DAP meter only)', factor), field('Result', result), field('Note', note),
       h('button', { class: 'btn primary', type: 'button', onclick: add }, 'Add')),
     dataTable([{ get: (x) => KINDS[x.kind] || x.kind, label: 'Kind' }, { key: 'done_on', label: 'Done' }, { key: 'next_due', label: 'Next due' }, { key: 'factor', label: 'Factor', right: true }, { key: 'result', label: 'Result' }, { key: 'note', label: 'Note' }, { key: 'entered_by', label: 'By' },
       { get: (x) => (admin ? h('button', { class: 'btn xs ghost danger', type: 'button', onclick: () => del(x) }, 'Delete') : null), label: '' }], rows, 'Nothing recorded for this device.'));
