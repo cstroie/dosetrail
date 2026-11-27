@@ -156,6 +156,25 @@ table.grid.svc-table { width: 100%; min-width: 0; table-layout: auto; }
 .res:hover { border-color: var(--accent); }
 .res .d { grid-column: 2 / 4; color: var(--muted); }
 
+/* CT series (events) panel */
+.evb { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--panel); }
+.evb-header { display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel-2); font-weight: 600; }
+.evb-header > span { white-space: nowrap; }
+.evb-list { max-height: 220px; overflow: auto; }
+.evb-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--line); align-items: center; }
+.evb-row:last-child { border-bottom: 0; }
+.evb-row:hover { background: var(--panel-2); }
+.evb-event { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.evb-row .loc { height: 6px; border-radius: 3px; background: var(--seq); display: inline-block; min-width: 4px; }
+.evb-ctdivol { white-space: nowrap; font-size: var(--fs-sm); color: var(--text); }
+.evb-dlp { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+
+@media (max-width: 575.98px) {
+  .evb-header { grid-template-columns: 1fr; gap: 4px; }
+  .evb-row { grid-template-columns: 1fr; gap: 4px; }
+  .evb-row .loc { width: 100% !important; margin-top: 2px; }
+}
+
 /* ---------- studies: split view ---------- */
 .split { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
 .split > dx-data-grid { flex: 999 1 720px; }

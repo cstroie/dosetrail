@@ -236,9 +236,66 @@ function preview(s, profile, profiles) {
     const v = c.render(s);
     kv.push([c.unit ? `${c.label} (${c.unit})` : c.label, typeof v === 'string' ? v : v.textContent, true]);
   }
+
+  // CT series (events) panel for CT studies
+  let eventsPanel = null;
+  if (s.group === 'CT' && s.events && (s.events.spiral + s.events.axial + s.events.localizer > 0)) {
+    const dlpStr = s.dlp_total != null ? num(s.dlp_total, 1) : '—';
+    const ctdiStr = s.ctdivol_max != null ? num(s.ctdivol_max, 2) : '—';
+    const desc = s.description || s.protocol || '';
+    const hasSpiral = s.events.spiral > 0;
+    const hasLocalizer = s.events.localizer > 0;
+    const hasAxial = s.events.axial > 0;
+
+    const header = h('div', { class: 'evb-header', role: 'row' },
+      h('span', { class: 'muted', style: { 'font-size': '11px' } }, t('overview.event')),
+      h('span', { class: 'muted', style: { 'font-size': '11px' } }, t('overview.dlp')),
+      h('span', { class: 'muted', style: { 'font-size': '11px', 'text-align': 'right' } }, t('overview.ctdivol')));
+
+    const list = h('div', { class: 'evb-list', role: 'table', 'aria-label': t('overview.events') });
+    list.append(header);
+
+    // Localizer events first
+    if (hasLocalizer) {
+      for (let i = 0; i < s.events.localizer; i++) {
+        const eventDiv = h('div', { class: 'evb-row', role: 'row' },
+          h('span', { class: 'evb-event' }, 'Topogram'),
+          h('span', { class: 'evb-dlp mono' }, dlpStr),
+          h('i', { class: 'loc', style: { width: '2%' } }),
+          h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
+        list.append(eventDiv);
+      }
+    }
+
+    // Spiral event
+    if (hasSpiral) {
+      const eventDiv = h('div', { class: 'evb-row', role: 'row' },
+        h('span', { class: 'evb-event' }, desc),
+        h('span', { class: 'evb-dlp mono' }, dlpStr),
+        h('i', { class: 'loc', style: { width: '66%' } }),
+        h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
+      list.append(eventDiv);
+    }
+
+    // Axial event
+    if (hasAxial) {
+      const eventDiv = h('div', { class: 'evb-row', role: 'row' },
+        h('span', { class: 'evb-event' }, desc),
+        h('span', { class: 'evb-dlp mono' }, dlpStr),
+        h('i', { class: 'loc', style: { width: '32%' } }),
+        h('span', { class: 'evb-ctdivol mono', style: { 'text-align': 'right' } }, ctdiStr));
+      list.append(eventDiv);
+    }
+
+    eventsPanel = h('section', { class: 'panel', 'aria-labelledby': 'h-ev' },
+      panelHead(t('overview.events'), { id: 'h-ev' }),
+      list);
+  }
+
   return h('div', {},
     h('div', { class: 'row', style: { padding: '12px 12px 0' } }, h('a', { class: 'btn xs', href: studyHref(s) }, `Open ${studyLabel(s)}`)),
     h('dl', { class: 'kv' }, kv.flatMap(([k, v, mono]) => [h('dt', {}, k), h('dd', mono ? { class: 'mono' } : {}, v ?? '—')])),
+    eventsPanel,
     flags.length ? h('div', { class: 'row', style: { padding: '0 12px 12px' } }, flags) : null);
 }
 
