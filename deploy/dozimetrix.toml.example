@@ -38,6 +38,11 @@ retrieve = "get"                             # get (C-GET, no PACS setup) | move
 modalities = ["CT", "DX", "CR", "RF", "XA", "MG", "SR"]   # queried one at a time
 # max_results = 500                          # the PACS's C-FIND cap; days are split if hit
 
+[qr]
+# the dozimetrix-qr daemon (qr --loop); --days and --interval on the command line override these
+# days = 2                                   # studies of the last N days, re-queried on every run
+# interval = 720                             # seconds between the start of two runs (12 min)
+
 [notify]
 # Alert notifications (rules with "notify" on, studies from the last 48 h). Messages carry
 # no patient identifiers, only a link to the study (login needed). What an admin sets in the

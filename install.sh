@@ -330,7 +330,6 @@ if (( DO_SERVICES )) && [[ "$INIT" != none ]]; then
     if ask "Install and enable the $INIT services (web, receive + periodic jobs)?"; then
         if [[ "$INIT" == systemd ]]; then
             run $SUDO cp "$SRC"/deploy/systemd/*.service "$SRC"/deploy/systemd/*.timer /etc/systemd/system/
-            [[ -f /etc/default/dozimetrix ]] || run $SUDO cp "$SRC/deploy/systemd/dozimetrix.env" /etc/default/dozimetrix
             run $SUDO systemctl daemon-reload
             run $SUDO systemctl enable --now dozimetrix-web dozimetrix-receive
             if ask "Also start dozimetrix-qr? (it queries the PACS: set [pacs] in $CONF first)"; then

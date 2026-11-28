@@ -28,10 +28,10 @@ respawn_max=10
 respawn_period=600
 
 case "$DAEMON" in
-    web)     sub="serve ${WEB_ARGS}" ;;
-    receive) sub="receive ${RECEIVE_ARGS}" ;;
-    his)     sub="his run ${HIS_ARGS}" ;;
-    qr)      sub="qr --loop ${QR_ARGS:---days 2 --interval 720}"
+    web)     sub="serve" ;;
+    receive) sub="receive" ;;
+    his)     sub="his run" ;;
+    qr)      sub="qr --loop"
              # finishes the current run on SIGTERM
              retry="${QR_STOP_TIMEOUT:-TERM/300/KILL/5}" ;;
     *)       sub="" ;;

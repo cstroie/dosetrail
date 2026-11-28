@@ -51,6 +51,9 @@ class Settings:
     pacs_modalities: list[str] = field(
         default_factory=lambda: ["CT", "DX", "CR", "RF", "XA", "MG", "NM", "PT", "SR"])
     pacs_max_results: int | None = None  # the PACS C-FIND cap, if any
+    # qr --loop daemon: studies of the last qr_days days, one run every qr_interval seconds
+    qr_days: int = 2
+    qr_interval: int = 720
     # report specs (dozimetrix/specs): the folder a dropped spec file is picked up from, and the
     # folder of trusted Python plugins that register fields / transforms / kinds
     specs_dir: Path = field(default_factory=lambda: _config_dir() / "specs")
@@ -120,6 +123,9 @@ def load_settings() -> Settings:
             s.pacs_move_destination = pacs.get("move_destination", s.pacs_move_destination)
             s.pacs_modalities = list(pacs.get("modalities", s.pacs_modalities))
             s.pacs_max_results = pacs.get("max_results", s.pacs_max_results)
+            qr = raw.get("qr", {})
+            s.qr_days = max(1, int(qr.get("days", s.qr_days)))
+            s.qr_interval = max(1, int(qr.get("interval", s.qr_interval)))
             sec = raw.get("security", {})
             if "secret_file" in sec:
                 s.secret_file = Path(sec["secret_file"]).expanduser()

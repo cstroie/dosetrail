@@ -37,13 +37,12 @@ sessions depend on it.
 ## 4. Services
 Four daemons: `web` (`dozimetrix serve`), `receive` (DICOM SCP), `his` (HIS/RIS lookup,
 only with a HIS server) and `qr` (`dozimetrix qr --loop`: PACS query/retrieve, every
-`--interval` seconds, default 720, every 12 minutes; SIGTERM lets the current run finish). Every
+`[qr] interval` seconds, default 720, every 12 minutes, over the last `[qr] days`, default 2; SIGTERM lets the current run finish). Every
 command takes the global options `--pidfile`, `--log-file` and `--log-level`.
 
 ### systemd
 ```sh
 cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
-cp deploy/systemd/dozimetrix.env /etc/default/dozimetrix   # optional: extra arguments
 systemctl daemon-reload
 systemctl enable --now dozimetrix-web dozimetrix-receive dozimetrix-qr
 systemctl enable --now dozimetrix-his   # only with a HIS server (see below)
@@ -58,7 +57,7 @@ One init script, one symlink per daemon; output goes to `/var/log/dozimetrix/<da
 ```sh
 install -m755 deploy/openrc/dozimetrix.initd /etc/init.d/dozimetrix
 for d in web receive his qr; do ln -sf dozimetrix /etc/init.d/dozimetrix.$d; done
-install -m644 deploy/openrc/dozimetrix.confd /etc/conf.d/dozimetrix   # user, paths, arguments
+install -m644 deploy/openrc/dozimetrix.confd /etc/conf.d/dozimetrix   # user, paths, config file
 rc-update add dozimetrix.web default; rc-service dozimetrix.web start   # same for receive, qr, his
 ```
 `/etc/conf.d/dozimetrix` is shared; `/etc/conf.d/dozimetrix.<daemon>` overrides one daemon.
@@ -80,8 +79,7 @@ deploy/dozimetrix-ctl status                   # all; exits 3 if one is not runn
 deploy/dozimetrix-ctl stop all
 deploy/dozimetrix-ctl restart web --port 8105  # extra arguments for the sub-command
 ```
-Pidfiles are kept in `var/run/` (`RUNDIR`). Other settings: `QR_ARGS`, `WEB_ARGS`,
-`RECEIVE_ARGS`, `HIS_ARGS`, `LOG_LEVEL`, `DOZIMETRIX_CONFIG`, `STOP_TIMEOUT` (qr:
+Pidfiles are kept in `var/run/` (`RUNDIR`). Other settings: `LOG_LEVEL`, `DOZIMETRIX_CONFIG`, `STOP_TIMEOUT` (qr:
 `QR_STOP_TIMEOUT`, 300 s).
 
 - `dozimetrix-web` listens on `[web] host:port` (default 127.0.0.1:8104); publish it through an HTTPS reverse proxy
@@ -89,7 +87,7 @@ Pidfiles are kept in `var/run/` (`RUNDIR`). Other settings: `QR_ARGS`, `WEB_ARGS
 - `dozimetrix-receive` listens for DICOM on `[dicom] port` (11112). Register
   `AE DOZIMETRIX / host / 11112` on the modalities and the PACS that should send dose
   objects; restrict callers with `allowed_aets`.
-- `dozimetrix-qr` queries the PACS every 12 minutes for the last two days, one day and one
+- `dozimetrix-qr` queries the PACS every `[qr] interval` (12 minutes) for the last `[qr] days` (two), one day and one
   modality at a time (many PACS cap the number of studies a query returns; set
   `max_results` and capped days are split into time windows).
 - Three ways to get data in:

@@ -8,8 +8,3 @@
 #DOZIMETRIX_CONFIG=/etc/dozimetrix/dozimetrix.toml
 #LOGDIR=/var/log/dozimetrix
 #LOG_LEVEL=INFO
-
-#WEB_ARGS="--host 127.0.0.1 --port 8104"
-#RECEIVE_ARGS="--port 11112"
-#HIS_ARGS=""
-#QR_ARGS="--days 2 --interval 720"

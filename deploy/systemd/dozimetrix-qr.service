@@ -8,9 +8,7 @@ Type=simple
 User=dozimetrix
 Group=dozimetrix
 WorkingDirectory=/opt/dozimetrix
-Environment=QR_ARGS="--days 2 --interval 720"
-EnvironmentFile=-/etc/default/dozimetrix
-ExecStart=/opt/dozimetrix/.venv/bin/dozimetrix $DOZIMETRIX_OPTS qr --loop $QR_ARGS
+ExecStart=/opt/dozimetrix/.venv/bin/dozimetrix qr --loop
 # SIGTERM lets the current run finish
 TimeoutStopSec=300
 Restart=on-failure

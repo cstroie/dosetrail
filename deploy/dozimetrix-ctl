@@ -18,14 +18,12 @@
 #
 # Environment:
 #   RUNDIR=var/run  LOGDIR=  STOP_TIMEOUT=15  DOZIMETRIX_CONFIG=  LOG_LEVEL=
-#   QR_ARGS="--days 2 --interval 720"  WEB_ARGS=  RECEIVE_ARGS=  HIS_ARGS=
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 DAEMONS=(web receive his qr)
 RUNDIR="${RUNDIR:-var/run}"
 STOP_TIMEOUT="${STOP_TIMEOUT:-15}"
-QR_ARGS="${QR_ARGS:---days 2 --interval 720}"
 
 if [[ -x .venv/bin/dozimetrix ]]; then
     DOZ=(.venv/bin/dozimetrix)
@@ -37,13 +35,13 @@ else
     DOZ=(python3 -m dozimetrix.cli)
 fi
 
-# The dozimetrix sub-command of a daemon, with its default and env arguments.
+# The dozimetrix sub-command of a daemon (settings come from the config file).
 daemon_cmd() {
     case "$1" in
-        web)     CMD=(serve ${WEB_ARGS:-}) ;;
-        receive) CMD=(receive ${RECEIVE_ARGS:-}) ;;
-        his)     CMD=(his run ${HIS_ARGS:-}) ;;
-        qr)      CMD=(qr --loop ${QR_ARGS}) ;;
+        web)     CMD=(serve) ;;
+        receive) CMD=(receive) ;;
+        his)     CMD=(his run) ;;
+        qr)      CMD=(qr --loop) ;;
         *) echo "error: unknown daemon '$1' (web, receive, his, qr, all)" >&2; exit 2 ;;
     esac
 }

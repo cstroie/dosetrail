@@ -1251,7 +1251,7 @@ def _cmd_qr(args: argparse.Namespace) -> int:
         start = dt.date.fromisoformat(args.date_from)
         end = dt.date.fromisoformat(args.date_to) if args.date_to else today
     else:
-        start, end = today - dt.timedelta(days=args.days - 1), today
+        start, end = today - dt.timedelta(days=(args.days or s.qr_days) - 1), today
     worker = SpoolWorker(Spool(s.spool_dir), maker, _secret(), keep=s.keep_received)
 
     def drain() -> int:
@@ -1653,7 +1653,7 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--node", help="DICOM node name (default: the first query/retrieve node)")
     q.add_argument("--from", dest="date_from", help="first study date YYYY-MM-DD")
     q.add_argument("--to", dest="date_to", help="last study date (default today)")
-    q.add_argument("--days", type=int, default=2, help="without --from: last N days")
+    q.add_argument("--days", type=int, help="without --from: last N days (default [qr] days, 2)")
     q.add_argument("--modalities", help="comma list (default [pacs] modalities: "
                    "CT,DX,CR,RF,XA,MG,SR); queried one at a time")
     q.add_argument("--retrieve", choices=["get", "move"],
@@ -1681,8 +1681,9 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--aet", help="our AE title")
     q.add_argument("--loop", action="store_true",
                    help="run as a daemon: repeat every --interval seconds until SIGTERM")
-    q.add_argument("--interval", type=int, default=720,
-                   help="with --loop: seconds between the start of two runs (default 720)")
+    q.add_argument("--interval", type=int,
+                   help="with --loop: seconds between the start of two runs "
+                        "(default [qr] interval, 720)")
     q.add_argument("--url")
     q.set_defaults(func=_cmd_qr)
 
@@ -1757,7 +1758,8 @@ def _qr_loop(args: argparse.Namespace) -> int:
             import logging
 
             logging.getLogger("dozimetrix.qr").exception("qr run failed: %s", e)
-        stop.wait(max(0.0, args.interval - (time.monotonic() - started)))
+        interval = args.interval or load_settings().qr_interval  # [qr] re-read: no restart
+        stop.wait(max(0.0, interval - (time.monotonic() - started)))
     return 0
 
 
