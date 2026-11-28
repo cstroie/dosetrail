@@ -350,9 +350,27 @@ fi
 
 # --------------------------------------------------------------- done
 step "Done"
+# the web service writes the one-time setup PIN when it starts: show it here
+SETUP_PIN=""
+if (( ! DRY && ! CHECK_ONLY )); then
+    web_up() { case "$INIT" in
+        systemd) systemctl is-active --quiet dozimetrix-web ;;
+        openrc) rc-service dozimetrix.web status >/dev/null 2>&1 ;;
+        *) return 1 ;; esac; }
+    if web_up; then
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            SETUP_PIN=$($SUDO cat "$DATA_DIR/setup-token" 2>/dev/null || true)
+            [[ -n "$SETUP_PIN" ]] && break
+            sleep 1
+        done
+    fi
+fi
+if [[ -n "$SETUP_PIN" ]]; then
+    echo "  ${B}First-run setup PIN: $SETUP_PIN${N}   (a new one is issued if the web service restarts)"
+fi
 cat <<EOF
-  Open  http://127.0.0.1:$WEB_PORT/setup  to finish with the first-run wizard.
-  The one-time setup token is in the web service log and in $DATA_DIR/setup-token.
+  Open  http://127.0.0.1:$WEB_PORT/setup  to finish with the first-run wizard (host and port: [web] in $CONF).
+  The one-time setup PIN is in the web service log and in $DATA_DIR/setup-token.
   Back up $DATA_DIR/secret once it exists: pseudonyms and sessions depend on it.
   Put an HTTPS reverse proxy (nginx, Apache) in front of the web UI; keep secure_cookies = true.
   DICOM: register AE DOZIMETRIX / this host / $DICOM_PORT on the modalities and the PACS.

@@ -1,9 +1,10 @@
 """First-run setup wizard (``/setup``): checks, the first admin, site name, growth tables.
 
 While the database has no user, every page redirects to ``/setup``. The first step needs a
-one-time setup token: the web service prints it to its log at start and writes it to
-``<data_dir>/setup-token`` (mode 0600), so only someone with access to the server can claim
-a fresh install, even on a public URL. Creating the first admin signs them in; the later
+one-time setup token (a 4-digit PIN): the web service prints it to its log at start and writes
+it to ``<data_dir>/setup-token`` (mode 0600), so only someone with access to the server can claim
+a fresh install, even on a public URL. A PIN is short, so it is replaced by a new one after
+``MAX_TOKEN_FAILS`` wrong guesses (on top of the per-address throttle). Creating the first admin signs them in; the later
 steps (site, DICOM nodes, growth tables) are ordinary admin calls, and the wizard can be
 opened again from ``/setup`` by an admin until it is marked done.
 """
@@ -24,6 +25,7 @@ from .db.models import AppSetting, CodeSystem, DicomNode, Institution, Reference
 log = logging.getLogger("dozimetrix.setup")
 DONE_KEY = "setup.done"
 SITE_KEY = "site"
+MAX_TOKEN_FAILS = 10  # wrong guesses (from any address) before the PIN is replaced
 ALL_ROLES = "viewer,exporter,pid,importer,admin"
 
 
@@ -63,7 +65,7 @@ def is_done(session: Session) -> bool:
 
 def issue_token(data_dir: Path) -> str:
     """A new one-time token: logged, and written to <data_dir>/setup-token (0600)."""
-    token = secrets.token_urlsafe(18)
+    token = f"{secrets.randbelow(10000):04d}"  # a PIN: easy to read off a log and type
     path = Path(data_dir) / "setup-token"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,7 +89,8 @@ def drop_token(data_dir: Path) -> None:
 def check_token(expected: str | None, given: str | None) -> None:
     if not expected or not given or not secrets.compare_digest(expected, given.strip()):
         raise SetupError("wrong setup token (see the web service's log, or the "
-                         "setup-token file in the data folder)")
+                         "setup-token file in the data folder; after "
+                         f"{MAX_TOKEN_FAILS} wrong tries a new one is issued)")
 
 
 def status(session: Session, settings) -> dict:

@@ -4,6 +4,10 @@
 url = "mysql+pymysql://dozimetrix:CHANGE-ME@localhost/dozimetrix?charset=utf8mb4"
 # test_url = "mysql+pymysql://dozimetrix:CHANGE-ME@localhost/dozimetrix_test?charset=utf8mb4"   # optional: the test suite also runs on this scratch DB (it is wiped)
 
+[paths]
+data_dir = "/var/lib/dozimetrix"           # the writable data folder (the units allow only this one);
+                                             # the first-run setup PIN is written here
+
 [security]
 secret_file = "/var/lib/dozimetrix/secret"   # created on first start; back it up
 session_hours = 12

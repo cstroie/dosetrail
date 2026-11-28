@@ -20,6 +20,7 @@ def _app(tmp_path):
 def test_first_run(tmp_path, monkeypatch):
     app, c = _app(tmp_path)
     token = app.state.setup_token
+    assert token and len(token) == 4 and token.isdigit()
     assert token and (tmp_path / "data" / "setup-token").read_text().strip() == token
     # every page leads to the wizard; it is open while no account exists
     r = c.get("/", follow_redirects=False)
@@ -56,3 +57,20 @@ def test_first_run(tmp_path, monkeypatch):
     assert c.get("/api/setup/status").status_code == 401
     assert c.get("/setup", follow_redirects=False).headers["location"] == "/login"
     assert c.get("/login").status_code == 200
+
+
+def test_pin_is_replaced_after_wrong_guesses(tmp_path, monkeypatch):
+    from dozimetrix import setup
+
+    pins = iter([1111, 2222, 3333])
+    monkeypatch.setattr(setup.secrets, "randbelow", lambda n: next(pins))
+    app, c = _app(tmp_path)
+    assert app.state.setup_token == "1111"
+    for _ in range(setup.MAX_TOKEN_FAILS - 1):
+        c.post("/api/setup/database", json={"token": "0000"})
+    assert app.state.setup_token == "1111"  # not yet
+    c.post("/api/setup/database", json={"token": "0000"})
+    assert app.state.setup_token == "2222"  # replaced, also on disk
+    assert (tmp_path / "data" / "setup-token").read_text().strip() == "2222"
+    assert c.post("/api/setup/database", json={"token": "1111"}).status_code == 400
+    assert c.post("/api/setup/database", json={"token": "2222"}).status_code == 200

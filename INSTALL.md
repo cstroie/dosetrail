@@ -14,7 +14,7 @@ git clone https://github.com/cstroie/dozimetrix.git && cd dozimetrix
 sudo ./install.sh           # install, with a question before every step
 ```
 
-Then open `http://127.0.0.1:8104/setup`. The first-run wizard asks for the one-time setup token
+Then open `http://127.0.0.1:8104/setup`. The first-run wizard asks for the one-time setup token (a 4-digit PIN, shown at the end of `install.sh`)
 (in the web service log and in `/var/lib/dozimetrix/setup-token`), creates the first
 administrator and configures the site and the PACS node.
 

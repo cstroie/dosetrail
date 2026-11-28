@@ -458,6 +458,7 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
     from .. import setup as first_run
 
     app.state.setup_token = None
+    app.state.setup_fails = 0
 
     def setup_token(session: Session) -> str | None:
         """The one-time token while no account exists (issued at start, or lazily)."""
@@ -489,6 +490,10 @@ def create_app(settings: Settings | None = None, engine: Engine | None = None,
             first_run.check_token(setup_token(session), token)
         except first_run.SetupError:
             throttle.fail(request, "setup")
+            app.state.setup_fails += 1
+            if app.state.setup_fails >= first_run.MAX_TOKEN_FAILS:  # a PIN is guessable: rotate
+                app.state.setup_fails = 0
+                app.state.setup_token = first_run.issue_token(settings.data_dir)
             raise
 
     def _setup(fn):

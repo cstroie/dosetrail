@@ -21,7 +21,7 @@ is the difference between 25 ms and 10 s per page of results.
 
 ## 3. Install
 
-**First-run wizard.** On an empty database every page leads to `/setup`. The web service prints a one-time setup token to its log and writes it to `<data_dir>/setup-token` (0600); entering it proves access to the server. The wizard checks the installation, can create the schema and load the seed data, creates the first administrator (all roles, signed in at once), and then asks for the site name, a PACS node (with C-ECHO) and the growth tables. An admin can open `/setup` again later. The manual steps below do the same from the command line.
+**First-run wizard.** On an empty database every page leads to `/setup`. The web service prints a one-time setup token (a 4-digit PIN; a new one is issued after 10 wrong tries) to its log and writes it to `<data_dir>/setup-token` (0600); entering it proves access to the server. The wizard checks the installation, can create the schema and load the seed data, creates the first administrator (all roles, signed in at once), and then asks for the site name, a PACS node (with C-ECHO) and the growth tables. An admin can open `/setup` again later. The manual steps below do the same from the command line.
 
 ```sh
 python3.12 -m venv /opt/dozimetrix/.venv
