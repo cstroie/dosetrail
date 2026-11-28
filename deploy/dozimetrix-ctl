@@ -18,14 +18,14 @@
 #
 # Environment:
 #   RUNDIR=var/run  LOGDIR=  STOP_TIMEOUT=15  DOZIMETRIX_CONFIG=  LOG_LEVEL=
-#   QR_ARGS="--days 2 --interval 3600"  WEB_ARGS=  RECEIVE_ARGS=  HIS_ARGS=
+#   QR_ARGS="--days 2 --interval 720"  WEB_ARGS=  RECEIVE_ARGS=  HIS_ARGS=
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 DAEMONS=(web receive his qr)
 RUNDIR="${RUNDIR:-var/run}"
 STOP_TIMEOUT="${STOP_TIMEOUT:-15}"
-QR_ARGS="${QR_ARGS:---days 2 --interval 3600}"
+QR_ARGS="${QR_ARGS:---days 2 --interval 720}"
 
 if [[ -x .venv/bin/dozimetrix ]]; then
     DOZ=(.venv/bin/dozimetrix)

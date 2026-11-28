@@ -1681,8 +1681,8 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--aet", help="our AE title")
     q.add_argument("--loop", action="store_true",
                    help="run as a daemon: repeat every --interval seconds until SIGTERM")
-    q.add_argument("--interval", type=int, default=3600,
-                   help="with --loop: seconds between the start of two runs (default 3600)")
+    q.add_argument("--interval", type=int, default=720,
+                   help="with --loop: seconds between the start of two runs (default 720)")
     q.add_argument("--url")
     q.set_defaults(func=_cmd_qr)
 

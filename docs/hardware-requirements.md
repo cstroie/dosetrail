@@ -114,7 +114,7 @@ All four roles run from the same Python process (single binary, different entryp
 |---------|---------|------------------|-------|
 | **Web (uvicorn workers)** | 4–8 workers × 1 thread | 200–400 MB each | CPU-bound on stats; scale workers to vCPU count |
 | **Receive (DICOM SCP)** | 1 main + worker pool | 150–300 MB | I/O-bound; handles C-STORE, spools to disk |
-| **QR (query/retrieve)** | 1 (scheduled hourly) | 200–500 MB | Bursty; pulls from PACS, spikes CPU on classification |
+| **QR (query/retrieve)** | 1 (loop, every 12 min) | 200–500 MB | Bursty; pulls from PACS, spikes CPU on classification |
 | **HIS worker** | 1 (daemon) | 100–200 MB | Low CPU; rate-limited by HIS API |
 | **Maintenance (nightly)** | 1 (cron) | 500 MB – 2 GB | Reclassify at 600k studies takes ~10 s; memory peaks at band lookup |
 

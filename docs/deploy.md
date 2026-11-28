@@ -1,6 +1,6 @@
 # Deploying Dozimetrix (plain install)
 
-A single machine runs everything: MariaDB, the web UI/API, the DICOM receiver and an hourly
+A single machine runs everything: MariaDB, the web UI/API, the DICOM receiver and a 12-minute
 query/retrieve job. Docker images will follow; this guide uses systemd only.
 
 ## 1. System
@@ -37,7 +37,7 @@ sessions depend on it.
 ## 4. Services
 Four daemons: `web` (`dozimetrix serve`), `receive` (DICOM SCP), `his` (HIS/RIS lookup,
 only with a HIS server) and `qr` (`dozimetrix qr --loop`: PACS query/retrieve, every
-`--interval` seconds, default hourly; SIGTERM lets the current run finish). Every
+`--interval` seconds, default 720, every 12 minutes; SIGTERM lets the current run finish). Every
 command takes the global options `--pidfile`, `--log-file` and `--log-level`.
 
 ### systemd
@@ -89,7 +89,7 @@ Pidfiles are kept in `var/run/` (`RUNDIR`). Other settings: `QR_ARGS`, `WEB_ARGS
 - `dozimetrix-receive` listens for DICOM on `[dicom] port` (11112). Register
   `AE DOZIMETRIX / host / 11112` on the modalities and the PACS that should send dose
   objects; restrict callers with `allowed_aets`.
-- `dozimetrix-qr` queries the PACS every hour for the last two days, one day and one
+- `dozimetrix-qr` queries the PACS every 12 minutes for the last two days, one day and one
   modality at a time (many PACS cap the number of studies a query returns; set
   `max_results` and capped days are split into time windows).
 - Three ways to get data in:

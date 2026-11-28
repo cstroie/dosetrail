@@ -1,5 +1,5 @@
 [Unit]
-Description=Dozimetrix PACS query/retrieve loop (last two days, hourly)
+Description=Dozimetrix PACS query/retrieve loop (last two days, every 12 minutes)
 After=network-online.target mariadb.service
 Wants=network-online.target
 
@@ -8,7 +8,7 @@ Type=simple
 User=dozimetrix
 Group=dozimetrix
 WorkingDirectory=/opt/dozimetrix
-Environment=QR_ARGS="--days 2 --interval 3600"
+Environment=QR_ARGS="--days 2 --interval 720"
 EnvironmentFile=-/etc/default/dozimetrix
 ExecStart=/opt/dozimetrix/.venv/bin/dozimetrix $DOZIMETRIX_OPTS qr --loop $QR_ARGS
 # SIGTERM lets the current run finish
