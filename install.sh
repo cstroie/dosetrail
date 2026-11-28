@@ -253,8 +253,11 @@ ask "Install Dozimetrix into $APP_HOME/.venv from $SRC?" || die "nothing to do w
 run $SUDO "$APP_HOME/.venv/bin/pip" install --upgrade pip
 run $SUDO "$APP_HOME/.venv/bin/pip" install --upgrade "${SRC}${PIP_EXTRA}"
 # the unit files and the backup scripts expect $APP_HOME/deploy
-run $SUDO rm -rf "$APP_HOME/deploy"
-run $SUDO cp -r "$SRC/deploy" "$APP_HOME/deploy"
+# (skip when installing from the checkout that already is $APP_HOME: rm would delete the source)
+if [[ "$(realpath "$SRC")" != "$(realpath "$APP_HOME")" ]]; then
+    run $SUDO rm -rf "$APP_HOME/deploy"
+    run $SUDO cp -r "$SRC/deploy" "$APP_HOME/deploy"
+fi
 ok "application installed"
 DOZ=("$APP_HOME/.venv/bin/dozimetrix" --config "$CONF")
 as_app() {  # run a command as the service account
